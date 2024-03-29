@@ -5,9 +5,7 @@ import useq
 
 from pymmcore_plus import CMMCorePlus
 from pathlib import Path
-
-# TEMP
-import matplotlib.pyplot as plt
+from skimage import io
 
 
 parent_dir = Path("C:/Program Files/Micro-Manager-2.0-20240130")
@@ -16,12 +14,13 @@ config_dir = parent_dir / config_file
 
 class Imager():
 
-	def __init__(self, mm_dir, save_dir, cfg_file=None):
+	def __init__(self, mm_dir, save_dir, cfg_file=None, prefix=""):
 
 		self.mmc = CMMCorePlus()
 		self.mmc.setDeviceAdapterSearchPaths([mm_dir])
 
 		self.save_dir = Path(save_dir)
+		self.prefix = prefix
 
 		# TEMP
 		self.i = 0
@@ -81,16 +80,14 @@ class Imager():
 		(self.save_dir / file).write_text(mda_sequence.yaml())
 
 	@mmc.mda.events.frameReady.connect 
-	def on_frame(image: np.ndarray, event: useq.MDAEvent):
+	def on_frame(self, image: np.ndarray, event: useq.MDAEvent):
 		print(
 			f"received frame: {image.shape}, {image.dtype} "
 			f"@ index {event.index}, z={event.z_pos}"
 		)
 
 		# Save image here
-		# How to save multichannel tiff?? 
-		# TEMP
-		plt.imsave(self.save_dir / f"{i}.png", image)
+		io.imsave(self.save_dir / f"{self.prefix}_{vent.index}.tif", image)
 
 
 if __name__ == "__main__":
