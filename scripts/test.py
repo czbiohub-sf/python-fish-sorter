@@ -8,8 +8,11 @@ from pathlib import Path
 from skimage import io
 
 
-parent_dir = Path("C:/Program Files/Micro-Manager-2.0-20240130")
-config_file = "test.cfg"
+save_dir = Path("C:/Users/Chan Zuckerberg/Documents/data_mk")
+parent_dir = Path("C:/Users/Chan Zuckerberg/Documents/biOptics/micromanager-configs")
+config_file = "20240222 - LeicaDMI - AndorZyla.cfg"
+# parent_dir = Path("C:/Program Files/Micro-Manager-2.0-20240130")
+# config_file = "test.cfg"
 config_dir = parent_dir / config_file
 
 class Imager():
@@ -17,7 +20,7 @@ class Imager():
     def __init__(self, mm_dir, save_dir, cfg_file=None, prefix=""):
 
         self.mmc = CMMCorePlus()
-        self.mmc.setDeviceAdapterSearchPaths([mm_dir])
+        self.mmc.setDeviceAdapterSearchPaths([str(mm_dir)])
 
         self.save_dir = Path(save_dir)
         self.prefix = prefix
@@ -31,12 +34,12 @@ class Imager():
         
         if cfg_file is None:
             # Load demo config by default
-            mmc.loadSystemConfiguration()
+            self.mmc.loadSystemConfiguration()
         else:
-            mmc.loadSystemConfiguration(cfg_file)
+            self.mmc.loadSystemConfiguration(cfg_file)
 
-        mmc.snapImage()
-        print(mmc.getImage())
+        self.mmc.snapImage()
+        print(self.mmc.getImage())
 
     def set_channels(self):
         # Determine a good way to make this configurable
@@ -76,7 +79,11 @@ class Imager():
     def save_sequence(self, file, mda_sequence):
         (self.save_dir / file).write_text(mda_sequence.yaml())
 
-    @mmc.mda.events.frameReady.connect 
+    def dec(func):
+        def hidden(self):
+            self.mmc.mda.events.frameReady.connect(func)
+
+    @dec 
     def on_frame(self, image: np.ndarray, event: useq.MDAEvent):
         print(
             f"received frame: {image.shape}, {image.dtype} "
@@ -88,9 +95,10 @@ class Imager():
 
 
 if __name__ == "__main__":
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--mmdir')
-    parser.add_argument('--cfg')
-    args = parser.parse_args()
+    # parser = argparse.ArgumentParser()
+    # parser.add_argument('--mmdir')
+    # parser.add_argument('--cfg')
+    # args = parser.parse_args()
 
-    Imager(args.mm_dir, args.cfg)
+    # Imager(args.mm_dir, args.cfg)
+    Imager(parent_dir, save_dir, cfg_file=config_file, prefix="test")
