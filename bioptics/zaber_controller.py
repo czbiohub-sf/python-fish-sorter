@@ -8,7 +8,7 @@ from zaber_motion.exceptions.connection_failed_exception import ConnectionFailed
 from zaber_motion.exceptions.movement_failed_exception import MovementFailedException
 
 class ZaberController():
-    """Communicate with Zaber devices over serial to move the stage or the gripper
+    """Communicate with Zaber devices over serial to move the stages
     """
 
     def __init__(self, config: dict, env='prod'):
@@ -17,7 +17,7 @@ class ZaberController():
         :param config: The zaber specific parameters defined in the 
                     zaber_config.json file
         :type config: dict {'port': <name of the serial port>,
-                    'location': <x,y,z>, ...} 
+                    'location': <x, y, p>, ...} 
         :param env: The environment to run the Zaber Controller.
         :type env: string, either 'prod' or 'dev'
         """
@@ -63,28 +63,28 @@ class ZaberController():
         logging.info('Closed Zaber device connection')
 
     def _set_axis(self, stage):
-        """Set the x y z stage dictionary variables based off the peripheral name
+        """Set the x, y, p stage dictionary variables based off the peripheral name
 
-        :param stage: zaber x,y,z stage
+        :param stage: zaber x, y, p stage
         :type stage: tuple of zaber device objects
         """
 
         for i in range(3):
             name = stage.get_axis(i+1).peripheral_name
-            if name == 'LSQ450D-E01T3A':
+            if name == 'T-LSQ150D':
                 self.stage_axes.update({'x': stage.get_axis(i+1)})
                 self.stage_axes['x'].settings.set("maxspeed", self.config['max_speed']['x'], Units.VELOCITY_MILLIMETRES_PER_SECOND)
-            elif name == 'LSQ075B-T4A-ENG2690':
+            elif name == 'A-LSQ150A-E01':
                 self.stage_axes.update({'y': stage.get_axis(i+1)})
                 self.stage_axes['y'].settings.set("maxspeed", self.config['max_speed']['y'], Units.VELOCITY_MILLIMETRES_PER_SECOND)
-            elif name == 'LSQ150B-T3A':
-                self.stage_axes.update({'z': stage.get_axis(i+1)})
-                self.stage_axes['z'].settings.set("maxspeed", self.config['max_speed']['z'], Units.VELOCITY_MILLIMETRES_PER_SECOND)
+            elif name == 'T-LSQ075B':
+                self.stage_axes.update({'p': stage.get_axis(i+1)})
+                self.stage_axes['p'].settings.set("maxspeed", self.config['max_speed']['p'], Units.VELOCITY_MILLIMETRES_PER_SECOND)
 
     def home_arm(self, arm: Optional[list]=None):
         """Home either all or a subset of the devices
 
-        The devices include the xyz stages. The order in which
+        The devices include the x, y, p stages. The order in which
         it homes is dependent on the list passed. The order is important 
         to ensure the device does not crash while homing.
 
@@ -94,17 +94,17 @@ class ZaberController():
         :raises: Any Zaber exception requires restart and reinitialization of Zaber connection
         """
         
-        home = ['z','x','y'] if arm == None else arm
+        home = ['p','x','y'] if arm == None else arm
         for h in home:
             try:
                 self._move_arm(h)
             except:
                 raise
+    
+    def move_arm(self, arm: str, dist: Optional[float]=None, is_relative: bool=False):
+        """Move any arm 'x','y','p' by a fixed amount
 
-    def _move_arm(self, arm: str, dist: Optional[float]=None, is_relative: bool=False):
-        """Move any arm 'x','y','z' by a fixed amount
-
-        :param arm: The arm to move x' or 'y' or 'z'
+        :param arm: The arm to move x' or 'y' or 'p'
         :type arm: str
         :param dist: The distance to move in mm, if None: home arm, defaults to None
         :type dist: float, optional
@@ -128,5 +128,20 @@ class ZaberController():
             logging.critical('Failed to move {} arm'.format(device_arm))
             logging.critical('Stuck At: {}, Desired Pos: {}'.format(cur_pos, dist))
             raise
+        except ConnectionFailedException:
+            logging.critical('Zaber Connection Failed')
+
+    def get_pos(self, arm: str) -> float:
+        """returns the positon of the zaber stage
+
+        :param arm: The arm to move x' or 'y' or 'p'
+        :type arm: str
+        :return: The stage location position in mm
+        :rtype: float
+        """
+        
+        device_arm = self.stage_axes[arm]
+        try:
+            return device_arm.get_position(unit=Units.LENGTH_MILLIMETRES)
         except ConnectionFailedException:
             logging.critical('Zaber Connection Failed')

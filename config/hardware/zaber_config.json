@@ -4,36 +4,36 @@
         "home": {
             "x": 0,
             "y": 0,
-            "z": 0,
+            "p": 0,
             "description": "The zero home position to not use slow home speed"
         },
         "max_position": {
             "x": 150,
             "y": 150,
-            "z": 75,
+            "p": 75,
             "description": "The max stage axis position in mm"
         },
         "max_speed": {
             "x": 300,
-            "y": 100,
-            "z": 100,
+            "y": 300,
+            "p": 300,
             "description": "The speed of the stages for all general movements"
         },
         "pipette": {
                 "swing": {
-                    "z": 37.5,
+                    "p": 37.5,
                     "description": "The height to move pipette in order to rotate it in/out from the microscope"
                 },
                 "pick": {
-                    "z": 37.5,
+                    "p": 37.5,
                     "description": "The pipette height to pick"
                 },    
                 "clearance": {
-                    "z": 25,
+                    "p": 25,
                     "description": "The pipette height to clear the destination plate"
                 },
                 "dispense": {
-                    "z": 30,
+                    "p": 30,
                     "description": "The pipette height to dispense"
                 }
             }
