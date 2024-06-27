@@ -6,18 +6,18 @@ import useq
 from pymmcore_plus import CMMCorePlus
 from pathlib import Path
 from skimage import io
+from time import perf_counter
 
 
 save_dir = Path("C:/Users/Chan Zuckerberg/Documents/data_mk")
-parent_dir = Path("C:/Users/Chan Zuckerberg/Documents/biOptics/micromanager-configs")
-config_file = "20240222 - LeicaDMI - AndorZyla.cfg"
-# parent_dir = Path("C:/Program Files/Micro-Manager-2.0-20240130")
-# config_file = "test.cfg"
-config_dir = parent_dir / config_file
+cfg_dir = Path("C:/Users/Chan Zuckerberg/Documents/python-fish-sorter/micromanager-configs")
+cfg_file = "20240222 - LeicaDMI - AndorZyla.cfg"
+mm_dir = Path("C:/Program Files/Micro-Manager-2.0-20240130")
+cfg_path = cfg_dir / cfg_file
 
 class Imager():
 
-    def __init__(self, mm_dir, save_dir, cfg_file=None, prefix=""):
+    def __init__(self, mm_dir, save_dir, cfg_path=None, prefix=""):
 
         self.mmc = CMMCorePlus()
         self.mmc.setDeviceAdapterSearchPaths([str(mm_dir)])
@@ -32,14 +32,22 @@ class Imager():
         self.z_plan = None
         self.axis_order = "cpgz" # ie. at each g, do a full z iteration
         
-        if cfg_file is None:
+        print("Loading mm config")
+        t0 = perf_counter()
+        if cfg_path is None:
             # Load demo config by default
             self.mmc.loadSystemConfiguration()
         else:
-            self.mmc.loadSystemConfiguration(cfg_file)
+            self.mmc.loadSystemConfiguration(cfg_path)
+        print(f"Finished loading mm config in {perf_counter()-t0} s")
 
         self.mmc.snapImage()
         print(self.mmc.getImage())
+        print("Snapped image")
+
+        print("Capturing mosaic")
+        self.image()
+        print("Finished capturing mosaic")
 
     def set_channels(self):
         # Determine a good way to make this configurable
@@ -58,13 +66,20 @@ class Imager():
         self.z_plan = {"range": range, "step": step}
 
     def image(self):
-        mda_sequence = MDASequence(
+        # mda_sequence = useq.MDASequence(
+        #     channels=self.channels,
+        #     stage_positions=self.stage_positions,
+        #     grid_plan=self.grid_plan,
+        #     z_plan=self.z_plan,
+        #     axis_order=self.axis_order,  
+        # )
+        mda_sequence = useq.MDASequence(
             channels=self.channels,
             stage_positions=self.stage_positions,
             grid_plan=self.grid_plan,
             z_plan=self.z_plan,
             axis_order=self.axis_order,  
-        )
+        )        
         self.save_sequence('test.yaml', mda_sequence)
 
         # Run it!
@@ -101,4 +116,4 @@ if __name__ == "__main__":
     # args = parser.parse_args()
 
     # Imager(args.mm_dir, args.cfg)
-    Imager(parent_dir, save_dir, cfg_file=config_file, prefix="test")
+    Imager(mm_dir, save_dir, cfg_path=cfg_path, prefix="test")
