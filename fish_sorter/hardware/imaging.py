@@ -7,17 +7,19 @@ from pymmcore_plus import CMMCorePlus
 from pathlib import Path
 from skimage import io
 
-
+# TODO move mm dir out to another config file
+mm_dir = Path("C:/Program Files/Micro-Manager-2.0-20240130")
+# TODO make save dir configurable
 save_dir = Path("C:/Users/Chan Zuckerberg/Documents/data_mk")
-parent_dir = Path("C:/Users/Chan Zuckerberg/Documents/biOptics/micromanager-configs")
-config_file = "20240222 - LeicaDMI - AndorZyla.cfg"
-# parent_dir = Path("C:/Program Files/Micro-Manager-2.0-20240130")
-# config_file = "test.cfg"
-config_dir = parent_dir / config_file
+
+cfg_dir = Path().absolute().parent / "micromanager-configs"
+# TODO make cfg file configurable
+cfg_file = "20240222 - LeicaDMI - AndorZyla.cfg"
+cfg_path = cfg_dir / cfg_file
 
 class Imager():
 
-    def __init__(self, mm_dir, save_dir, cfg_file=None, prefix=""):
+    def __init__(self, mm_dir, save_dir, cfg_path=None, prefix=""):
 
         self.mmc = CMMCorePlus()
         self.mmc.setDeviceAdapterSearchPaths([str(mm_dir)])
@@ -40,6 +42,19 @@ class Imager():
 
         self.mmc.snapImage()
         print(self.mmc.getImage())
+
+    def imageHere(self):
+        self.mmc.snapImage()
+        return self.mmc.getImage()
+
+    def imageMosaic(
+        self,
+        channels: dict,
+        grid_plan, # TODOOOO what is this
+        axis_order: str = "cpgz", # ie. at each g, do a full z iteration
+    ):
+        self.channels = []
+        # TODOOOO
 
     def set_channels(self):
         # Determine a good way to make this configurable
@@ -79,11 +94,11 @@ class Imager():
     def save_sequence(self, file, mda_sequence):
         (self.save_dir / file).write_text(mda_sequence.yaml())
 
-    def dec(func):
+    def frame_handler(func):
         def hidden(self):
             self.mmc.mda.events.frameReady.connect(func)
 
-    @dec 
+    @frame_handler 
     def on_frame(self, image: np.ndarray, event: useq.MDAEvent):
         print(
             f"received frame: {image.shape}, {image.dtype} "
@@ -95,10 +110,5 @@ class Imager():
 
 
 if __name__ == "__main__":
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument('--mmdir')
-    # parser.add_argument('--cfg')
-    # args = parser.parse_args()
-
-    # Imager(args.mm_dir, args.cfg)
-    Imager(parent_dir, save_dir, cfg_file=config_file, prefix="test")
+    imager = Imager(mm_dir, save_dir, cfg_path=cfg_path, prefix="test")
+    imager.imageMosaic()
