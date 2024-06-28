@@ -6,6 +6,7 @@ import useq
 from pymmcore_plus import CMMCorePlus
 from pathlib import Path
 from skimage import io
+from time import perf_counter
 
 # TODO move mm dir out to another config file
 mm_dir = Path("C:/Program Files/Micro-Manager-2.0-20240130")
@@ -34,14 +35,22 @@ class Imager():
         self.z_plan = None
         self.axis_order = "cpgz" # ie. at each g, do a full z iteration
         
-        if cfg_file is None:
+        print("Loading mm config")
+        t0 = perf_counter()
+        if cfg_path is None:
             # Load demo config by default
             self.mmc.loadSystemConfiguration()
         else:
-            self.mmc.loadSystemConfiguration(cfg_file)
+            self.mmc.loadSystemConfiguration(cfg_path)
+        print(f"Finished loading mm config in {perf_counter()-t0} s")
 
         self.mmc.snapImage()
         print(self.mmc.getImage())
+        print("Snapped image")
+
+        print("Capturing mosaic")
+        self.image()
+        print("Finished capturing mosaic")
 
     def imageHere(self):
         self.mmc.snapImage()
@@ -73,13 +82,20 @@ class Imager():
         self.z_plan = {"range": range, "step": step}
 
     def image(self):
-        mda_sequence = MDASequence(
+        # mda_sequence = useq.MDASequence(
+        #     channels=self.channels,
+        #     stage_positions=self.stage_positions,
+        #     grid_plan=self.grid_plan,
+        #     z_plan=self.z_plan,
+        #     axis_order=self.axis_order,  
+        # )
+        mda_sequence = useq.MDASequence(
             channels=self.channels,
             stage_positions=self.stage_positions,
             grid_plan=self.grid_plan,
             z_plan=self.z_plan,
             axis_order=self.axis_order,  
-        )
+        )        
         self.save_sequence('test.yaml', mda_sequence)
 
         # Run it!
