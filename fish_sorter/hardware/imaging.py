@@ -58,28 +58,52 @@ class Imager():
 
     def imageMosaic(
         self,
-        channels: dict,
-        grid_plan, # TODOOOO what is this
+        channels: Dict[str],
+        pos0: tuple,
+        fov_dims: tuple,
+        grid_dims: tuple,
+        overlap: float,
         axis_order: str = "cpgz", # ie. at each g, do a full z iteration
     ):
-        self.channels = []
+        self.channels = [{"config": ch.key, "exposure": ch.value} for ch in channels]
         # TODOOOO
+        mda_sequence = useq.MDASequence(
+            channels=[{"config": ch.key, "exposure": ch.value} for ch in channels],
+            stage_positions=generatePos(pos0, fov_dims, grid_dims, overlap),
+            axis_order=self.axis_order,  
+        )        
+        # self.save_sequence('test.yaml', mda_sequence)
 
-    def set_channels(self):
-        # Determine a good way to make this configurable
-        self.channels = [
-            {"config": "DAPI", "exposure": 50},
-            {"config": "FITC", "exposure": 80},
-        ]
+        # Run it!
+        self.mmc.run_mda(mda_sequence)
 
-    def set_pos0(self, x0, y0, z0):
-        self.stage_positions = [(x0, y0, z0)]
+    def generatePos(
+        self,
+        pos0: tuple,
+        fov_dims: tuple,
+        grid_dims: tuple,
+        overlap: float,
+    ):
 
-    def set_grid(self, width, height, rows, cols):
-        self.grid_plan = {"fov_width": width, "fov_height": height, "rows": rows, "columns": cols}
+        # TODO
+        pass
+    
 
-    def set_zstack(self, range, step):
-        self.z_plan = {"range": range, "step": step}
+    # def set_channels(self):
+    #     # Determine a good way to make this configurable
+    #     self.channels = [
+    #         {"config": "DAPI", "exposure": 50},
+    #         {"config": "FITC", "exposure": 80},
+    #     ]
+
+    # def set_pos0(self, x0, y0, z0):
+    #     self.stage_positions = [(x0, y0, z0)]
+
+    # def set_grid(self, width, height, rows, cols):
+    #     self.grid_plan = {"fov_width": width, "fov_height": height, "rows": rows, "columns": cols}
+
+    # def set_zstack(self, range, step):
+    #     self.z_plan = {"range": range, "step": step}
 
     def image(self):
         # mda_sequence = useq.MDASequence(
@@ -116,13 +140,17 @@ class Imager():
 
     @frame_handler 
     def on_frame(self, image: np.ndarray, event: useq.MDAEvent):
+        # print(
+        #     f"received frame: {image.shape}, {image.dtype} "
+        #     f"@ index {event.index}, z={event.z_pos}"
+        # )
+
         print(
-            f"received frame: {image.shape}, {image.dtype} "
-            f"@ index {event.index}, z={event.z_pos}"
+            f"received frame: {image.shape}, {image.dtype} @ index {event.index}, z={event.z_pos}"
         )
 
         # Save image here
-        io.imsave(self.save_dir / f"{self.prefix}_{vent.index}.tif", image)
+        io.imsave(self.save_dir / f"{self.prefix}_{event.index}.tif", image)
 
 
 if __name__ == "__main__":
