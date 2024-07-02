@@ -52,24 +52,23 @@ class Imager():
         self.image()
         print("Finished capturing mosaic")
 
-    def imageHere(self):
+    def image_here(self):
         self.mmc.snapImage()
         return self.mmc.getImage()
 
-    def imageMosaic(
+    def image_mosaic(
         self,
         channels: Dict[str],
-        pos0: tuple,
-        fov_dims: tuple,
-        grid_dims: tuple,
-        overlap: float,
+        corners_px: List[float], # [TL x, TL y, BR x, BR y]
+        fov_dims_px: tuple,
+        overlap_frac: float,
         axis_order: str = "cpgz", # ie. at each g, do a full z iteration
     ):
         self.channels = [{"config": ch.key, "exposure": ch.value} for ch in channels]
         # TODOOOO
         mda_sequence = useq.MDASequence(
             channels=[{"config": ch.key, "exposure": ch.value} for ch in channels],
-            stage_positions=generatePos(pos0, fov_dims, grid_dims, overlap),
+            stage_positions=generatePos(corners_px, fov_dims_px, overlap_frac),
             axis_order=self.axis_order,  
         )        
         # self.save_sequence('test.yaml', mda_sequence)
@@ -77,24 +76,40 @@ class Imager():
         # Run it!
         self.mmc.run_mda(mda_sequence)
 
-    def generatePos(
+    def calc_positions(
         self,
-        pos0: tuple,
-        fov_dims: tuple,
-        grid_dims: tuple,
-        overlap: float,
+        corners_px: np.ndarray, # [ [TL x, TL y], [BR x, BR y] ]
+        fov_dims_px: tuple,
+        overlap_frac: float,
     ):
+    # TODO include z pos?
 
-        # TODO
-        pass
-    
+        def calc_grid_size(total_px, fov_dim, overlap_frac):
+            overlap_px = fov_dim * overlap_frac
+            return np.ceiling((total_px - overlap_px) / (fov_dim - overlap_px))
 
-    # def set_channels(self):
-    #     # Determine a good way to make this configurable
-    #     self.channels = [
-    #         {"config": "DAPI", "exposure": 50},
-    #         {"config": "FITC", "exposure": 80},
-    #     ]
+        # TODO clean up with numpy style operation
+        grid_dims = (
+            calc_grid_size(corners_px[0, 1] - corners_px[0, 0], fov_dims_px[0], overlap_frac),
+            calc_grid_size(corners_px[1, 1] - corners_px[1, 0], fov_dims_px[1], overlap_frac),
+        )
+
+        def calc_pos0(grid_dim, center_px, fov_dim, overlap_frac):
+            overlap_px = fov_dim * overlap_frac
+            total_px = grid_dim * (fov_dim - overlap_px) - overlap_px
+            return center_px - (total_px / 2)
+
+        pos0 = (
+            calc_pos0(grid_dims[0], (corners_px[0, 1] + corners_px[0, 0]) / 2, fov_dims_px[0], overlap_frac),
+            calc_pos0(grid_dims[1], (corners_px[1, 1] + corners_px[1, 0]) / 2, fov_dims_px[1], overlap_frac),
+        )
+
+        return [
+            (
+                pos0[0] + (fov_dims_px[0] * (1- overlap_frac) * x_index),
+                pos0[1] + (fov_dims_px[1] * (1- overlap_frac) * y_index),
+            ) for x_index in range(0, grid_dims[0]) for y_index in range(0, grid_dims[1])
+        ]
 
     # def set_pos0(self, x0, y0, z0):
     #     self.stage_positions = [(x0, y0, z0)]
@@ -105,25 +120,18 @@ class Imager():
     # def set_zstack(self, range, step):
     #     self.z_plan = {"range": range, "step": step}
 
-    def image(self):
-        # mda_sequence = useq.MDASequence(
-        #     channels=self.channels,
-        #     stage_positions=self.stage_positions,
-        #     grid_plan=self.grid_plan,
-        #     z_plan=self.z_plan,
-        #     axis_order=self.axis_order,  
-        # )
-        mda_sequence = useq.MDASequence(
-            channels=self.channels,
-            stage_positions=self.stage_positions,
-            grid_plan=self.grid_plan,
-            z_plan=self.z_plan,
-            axis_order=self.axis_order,  
-        )        
-        self.save_sequence('test.yaml', mda_sequence)
+    # def image(self):
+    #     mda_sequence = useq.MDASequence(
+    #         channels=self.channels,
+    #         stage_positions=self.stage_positions,
+    #         grid_plan=self.grid_plan,
+    #         z_plan=self.z_plan,
+    #         axis_order=self.axis_order,  
+    #     )        
+    #     self.save_sequence('test.yaml', mda_sequence)
 
-        # Run it!
-        self.mmc.run_mda(mda_sequence)
+    #     # Run it!
+    #     self.mmc.run_mda(mda_sequence)
 
     def pause(self):
         self.mmc.mda.toggle_pause()
