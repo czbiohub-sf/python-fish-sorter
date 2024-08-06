@@ -14,10 +14,10 @@
             "description": "The max stage axis position in mm"
         },
         "max_speed": {
-            "x": 300,
-            "y": 300,
-            "p": 300,
-            "description": "The speed of the stages for all general movements"
+            "x": 65471,
+            "y": 1816431,
+            "p": 65364,
+            "description": "The speed of the stages for all general movements in command data units"
         },
         "pipette": {
                 "swing": {
@@ -25,7 +25,7 @@
                     "description": "The height to move pipette in order to rotate it in/out from the microscope"
                 },
                 "pick": {
-                    "p": 37.5,
+                    "p": 60,
                     "description": "The pipette height to pick"
                 },    
                 "clearance": {

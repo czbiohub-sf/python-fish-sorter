@@ -3,12 +3,14 @@ import logging
 from time import sleep
 from typing import Optional, Tuple
 from zaber_motion import Library, Units
-from zaber_motion.ascii import Connection, Axis
+from zaber_motion.binary import Connection, Device, CommandCode
 from zaber_motion.exceptions.connection_failed_exception import ConnectionFailedException
 from zaber_motion.exceptions.movement_failed_exception import MovementFailedException
 
 class ZaberController():
     """Communicate with Zaber devices over serial to move the stages
+        Note that this class is using the zaber_motion.binary library instead of 
+        zaber_motion.ascii because of older T-series devices that do not support the ASCII Protocol
     """
 
     def __init__(self, config: dict, env='prod'):
@@ -23,7 +25,7 @@ class ZaberController():
         """
 
         self.zaber = None
-        self.stage_axes = {}
+        self.stage_alias = {}
         self.config = config
         self.env = env
         self._connect()
@@ -40,7 +42,7 @@ class ZaberController():
                 self.zaber = Connection.open_serial_port(self.config['port'])
                 logging.info('Zaber devices successfully connected')
                 # Set the names and velocities for each axis
-                self._set_axis(self.zaber.detect_devices()[0])
+                self._set_axis()
                 logging.info('Homing all')
                 self.home_arm()
             elif self.env == 'dev':
@@ -48,7 +50,7 @@ class ZaberController():
                 self.zaber = Zaber(self.config['port'])
                 logging.info('Zaber devices successfully connected')
                 # Set the names for each axis
-                self._set_axis(self.zaber.detect_devices()[0])
+                self._set_axis(self.zaber.detect_devices())
                 logging.info('Homing all')
                 self.home_arm()                
         except ConnectionFailedException:
@@ -62,24 +64,27 @@ class ZaberController():
         self.zaber.close()
         logging.info('Closed Zaber device connection')
 
-    def _set_axis(self, stage):
+    def _set_axis(self):
         """Set the x, y, p stage dictionary variables based off the peripheral name
 
         :param stage: zaber x, y, p stage
         :type stage: tuple of zaber device objects
         """
-
-        for i in range(3):
-            name = stage.get_axis(i+1).peripheral_name
+        
+        self.stages = self.zaber.detect_devices()
+        logging.info('Stage list {} '.format(self.stages))
+        for stage in self.stages:
+            name = stage.name
             if name == 'T-LSQ150D':
-                self.stage_axes.update({'x': stage.get_axis(i+1)})
-                self.stage_axes['x'].settings.set("maxspeed", self.config['max_speed']['x'], Units.VELOCITY_MILLIMETRES_PER_SECOND)
+                self.stage_alias[stage] = 'x'
+                stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['x'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)
             elif name == 'A-LSQ150A-E01':
-                self.stage_axes.update({'y': stage.get_axis(i+1)})
-                self.stage_axes['y'].settings.set("maxspeed", self.config['max_speed']['y'], Units.VELOCITY_MILLIMETRES_PER_SECOND)
+                self.stage_alias[stage] = 'y'
+                stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['y'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)
             elif name == 'T-LSQ075B':
-                self.stage_axes.update({'p': stage.get_axis(i+1)})
-                self.stage_axes['p'].settings.set("maxspeed", self.config['max_speed']['p'], Units.VELOCITY_MILLIMETRES_PER_SECOND)
+                self.stage_alias[stage] = 'p'
+                stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['p'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)       
+
 
     def home_arm(self, arm: Optional[list]=None):
         """Home either all or a subset of the devices
@@ -97,7 +102,7 @@ class ZaberController():
         home = ['p','x','y'] if arm == None else arm
         for h in home:
             try:
-                self._move_arm(h)
+                self.move_arm(h)
             except:
                 raise
     
@@ -115,14 +120,18 @@ class ZaberController():
         :raises ConnectionFailedException: Logs if the zaber connection fails
         """
 
-        device_arm = self.stage_axes[arm]
+        for key, value in self.stage_alias.items():
+            if value == arm:
+                device_arm = key
+        
+        
         try:
             if dist is None:
                 device_arm.home()
             elif is_relative:
-                device_arm.move_relative(dist, Units.LENGTH_MILLIMETRES)
+                device_arm.move_relative(dist, Units.LENGTH_MILLIMETRES, timeout = 60)
             else:
-                device_arm.move_absolute(dist, Units.LENGTH_MILLIMETRES)
+                device_arm.move_absolute(dist, Units.LENGTH_MILLIMETRES, timeout = 60)
         except MovementFailedException:
             cur_pos = device_arm.get_position(unit=Units.LENGTH_MILLIMETRES)
             logging.critical('Failed to move {} arm'.format(device_arm))
@@ -140,7 +149,9 @@ class ZaberController():
         :rtype: float
         """
         
-        device_arm = self.stage_axes[arm]
+        for key, value in self.stage_alias.items():
+            if value == arm:
+                device_arm = key
         try:
             return device_arm.get_position(unit=Units.LENGTH_MILLIMETRES)
         except ConnectionFailedException:
