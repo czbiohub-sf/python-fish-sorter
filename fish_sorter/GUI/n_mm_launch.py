@@ -6,15 +6,17 @@ import pymmcore_plus
 
 from pathlib import Path
 from useq import MDASequence, Position
+from GUI.pipette_gui import PipetteWidget
 
 os.environ['MICROMANAGER_PATH'] = "C:/Program Files/Micro-Manager-2.0-20240130"
 micromanager_path = os.environ.get('MICROMANAGER_PATH')
 
 def nmm():
 
-    cfg_dir = Path().absolute().parent / "configs/micromanager"
+    cfg_dir = Path().absolute().parent / "fish_sorter/configs/micromanager"
     cfg_file = "20240718 - LeicaDMI - AndorZyla.cfg"
     cfg_path = cfg_dir / cfg_file
+    print(cfg_path)
 
     v = napari.Viewer()
     dw, main_window = v.window.add_plugin_dock_widget("napari-micromanager")
@@ -48,6 +50,9 @@ def nmm():
     v.window._qt_viewer.console.push(
         {"main_window": main_window, "mmc": core, "sequence": sequence, "np": np}
     )
+
+    pipette = PipetteWidget()
+    v.window.add_dock_widget(pipette, name='pipette')
 
     napari.run()
 

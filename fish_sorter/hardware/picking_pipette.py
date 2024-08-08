@@ -4,7 +4,7 @@ import os
 import sys
 from pathlib import Path
 from time import sleep
-from bioptics import ZaberController
+from zaber_controller import ZaberController
 
 class PickingPipette():
     """Coordinated control of Pipette movement, pneumatics, and dispense plate
