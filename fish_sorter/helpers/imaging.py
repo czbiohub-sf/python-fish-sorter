@@ -4,6 +4,8 @@ import numpy as np
 import os
 import pymmcore_plus
 
+from tqdm import tqdm
+
 from typing import cast
 
 from pathlib import Path
@@ -68,7 +70,7 @@ class MosaicHandler:
         rows = int(sequence.grid_plan.rows)
         cols = int(sequence.grid_plan.columns)
         channels = len(sequence.channels)
-        overlap = int(sequence.grid_plan.overlap)
+        overlap = sequence.grid_plan.overlap
         print(overlap)
 
         idxs = np.zeros((channels, rows, cols))
@@ -88,6 +90,8 @@ class MosaicHandler:
         return rows, cols, channels, overlap, idxs
 
     def get_img(self, row, col, channel, idxs):
+        # TODO write this
+        pass
 
     def stitch_mosaic(self, sequence : MDASequence, img_arr):
         '''
@@ -95,11 +99,13 @@ class MosaicHandler:
         '''
         dir = self.get_dir(sequence)
         num_rows, num_cols, num_channels, overlap, idxs = self.get_mosaic_metadata(sequence)
-        x_overlap = overlap(0)
-        y_overlap = overlap(1)
+        x_overlap = overlap[0] / 100.0
+        y_overlap = overlap[1] / 100.0
 
-        mosaic_x_dim = (IMG_X_PX * num_cols) - (x_overlap * (num_cols- 1))
-        mosaic_y_dim = (IMG_Y_PX * num_rows) - (y_overlap * (num_rows - 1))
+        print(x_overlap)
+
+        mosaic_x_dim = int((IMG_X_PX * num_cols) - (x_overlap * (num_cols - 1)))
+        mosaic_y_dim = int((IMG_Y_PX * num_rows) - (y_overlap * (num_rows - 1)))
 
         mosaic = np.zeros((num_channels, mosaic_y_dim, mosaic_x_dim), dtype=np.uint32)
 
@@ -113,7 +119,8 @@ class MosaicHandler:
             for col in tqdm(range(0, num_cols), desc="Column"):
                 x_start = col * x_translation
 
-                mosaic[y_start : y_start + IMG_Y_PX, x_start : x_start + IMG_X_PX, :] += _get_img(row, col)
+                # TODO test image loading
+                # mosaic[y_start : y_start + IMG_Y_PX, x_start : x_start + IMG_X_PX, :] += get_img(row, col)
 
         # Take average of overlapping areas
         print("Taking average of overlapping areas")

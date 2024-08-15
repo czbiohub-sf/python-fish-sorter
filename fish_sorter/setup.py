@@ -9,5 +9,8 @@ setup(
         'napari',
         'napari-micromanager',
         'zaber_motion',
+        'tqdm',
+        'iter-tools',
+        'useq',
     ],
 )
