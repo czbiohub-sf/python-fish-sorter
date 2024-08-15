@@ -9,7 +9,7 @@ from useq import MDASequence, Position
 from gui.pipette_gui import PipetteWidget
 
 # TODO delete this
-from helpers.imaging import MosaicHandler
+from helpers.mosaic import MosaicHandler
 from gui.tester_gui import TesterWidget
 
 # For simulation

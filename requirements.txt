@@ -1,6 +1,0 @@
-pymmcore-plus
-tqdm
-numpy
-scikit-image
-
-pymodbus
