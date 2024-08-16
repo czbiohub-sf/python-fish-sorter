@@ -13,5 +13,7 @@ setup(
         'iter-tools',
         'useq',
         'argparse',
+        'numpy',
+        'pymodbus',
     ],
 )

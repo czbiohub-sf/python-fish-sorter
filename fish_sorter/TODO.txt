@@ -1,0 +1,11 @@
+BEST PRACTICE:
+Clean up imports
+Clean up type hinting
+Add documentation/comments
+
+WORKFLOW / GENERALIZABILITY FOR OUTSOURCING:
+Write SOP
+Test setup.py
+Add savefile for all experiment parameters
+Add logging
+Move all instrument specific params into configs so it is generalizable for outsourcing
