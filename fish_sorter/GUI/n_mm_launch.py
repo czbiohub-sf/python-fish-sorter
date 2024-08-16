@@ -77,6 +77,7 @@ class nmm:
         sequence = self.mda.value()
         img_arr = self.main_window._core_link._mda_handler._tmp_arrays
         self.mosaic.stitch_mosaic(sequence, img_arr)
+        # self.mosaic.get_mosaic_metadata(sequence)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
