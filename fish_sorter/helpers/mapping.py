@@ -15,10 +15,13 @@ from useq._iter_sequence import _sizes, _used_axes, _iter_axis, _parse_axes
 
 from helpers.constants import PIXELS_TO_MM
 
-class ConversionHandler:
+# TODO standardize coordinate format
+
+class MappingHandler:
     def __init__(self, zaber):
         self.zaber = zaber
         self.home = None # stage units
+        self.transform = None
 
         # TODO save home location in experiment savefile
 
@@ -61,13 +64,27 @@ class ConversionHandler:
             (mm_pos[1] - self.home[1]) / PIXELS_TO_MM,
         ]
 
-    def set_transform(self):
-        # TODO
-        pass
+    def set_transform(self, pos):
+        # User needs to previously set home in TL slot and navigate to TR corner before pressing "calibrate"
+        # TODO: Add user prompt
 
-    def transform_plane(self, ):
-        # TODO
-        pass
+        # Assume input is [x1; y1] (ie. col array)
+        vector = [
+            [self.zaber.get_pos('x') - self.home[0]],
+            [self.zaber.get_pos('y') - self.home[1]],
+        ]
+        # TODO! Does this index correctly
+        theta = np.atan(vector[1] / vector[0])
+
+        self.transform = [
+            [np.cos(theta), -np.sin(theta)],
+            [np.sin(theta), np.cos(theta)]
+        ]
+
+
+    def transform_pos(self, pos):
+        # Assume input is [x1; y1] (ie. col array)
+        return np.matmul(pos, self.transform)
 
         
 
