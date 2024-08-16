@@ -1,3 +1,4 @@
+# TODO clean up the imports
 import napari
 import napari_micromanager
 import numpy as np
@@ -12,9 +13,9 @@ from pathlib import Path
 from useq import MDASequence, Position
 from useq._iter_sequence import _sizes, _used_axes, _iter_axis, _parse_axes
 
-from gui.pipette_gui import PipetteWidget
-
 from itertools import product
+
+from helpers.contants import IMG_X_PX, IMG_Y_PX
 
 try:
     from pymmcore_widgets.useq_widgets import PYMMCW_METADATA_KEY as PYMMCW_METADATA_KEY
@@ -22,10 +23,6 @@ except ImportError:
     # key in MDASequence.metadata where we expect to find pymmcore_widgets metadata
     print('failed')
     PYMMCW_METADATA_KEY = "pymmcore_widgets"
-
-# For Prosilica GT 2050
-IMG_X_PX = 2048
-IMG_Y_PX = 2048
 
 DEFAULT_NAME = "Exp"
 
