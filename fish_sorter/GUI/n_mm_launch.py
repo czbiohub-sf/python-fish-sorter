@@ -8,6 +8,8 @@ from pathlib import Path
 from useq import MDASequence, Position
 from gui.pipette_gui import PipetteWidget
 
+import argparse
+
 # TODO delete this
 from helpers.imaging import MosaicHandler
 from gui.tester_gui import TesterWidget
@@ -77,4 +79,10 @@ class nmm:
         self.mosaic.stitch_mosaic(sequence, img_arr)
 
 if __name__ == "__main__":
-    nmm(sim=True)
+    parser = argparse.ArgumentParser(
+        prog="FishSorter"
+    )
+    parser.add_argument('-s', '--sim', action='store_true')
+    args = parser.parse_args()
+
+    nmm(sim=args.sim)

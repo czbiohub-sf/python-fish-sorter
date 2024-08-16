@@ -12,5 +12,6 @@ setup(
         'tqdm',
         'iter-tools',
         'useq',
+        'argparse',
     ],
 )
