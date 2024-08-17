@@ -1,15 +1,12 @@
 import napari
-import napari_micromanager
 import numpy as np
 import os
-import pymmcore_plus
-
-from pathlib import Path
-from useq import MDASequence, Position
-from gui.pipette_gui import PipetteWidget
-
 import argparse
 
+from pathlib import Path
+from gui.pipette_gui import PipetteWidget
+
+from gui.pipette_gui import PipetteWidget
 # TODO delete this
 from helpers.mosaic import MosaicHandler
 from gui.tester_gui import TesterWidget
@@ -25,7 +22,6 @@ micromanager_path = os.environ.get('MICROMANAGER_PATH')
 
 
 class nmm:
-
     def __init__(self, sim=False):
 
         self.v = napari.Viewer()

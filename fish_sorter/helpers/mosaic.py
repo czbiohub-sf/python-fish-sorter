@@ -1,21 +1,14 @@
-# TODO clean up the imports
-import napari
-import napari_micromanager
 import numpy as np
-import os
-import pymmcore_plus
+import matplotlib.pyplot as plt
 
 from time import perf_counter
 from tqdm import tqdm
-import matplotlib.pyplot as plt
 
 from typing import cast
-
-from pathlib import Path
-from useq import MDASequence, Position
-from useq._iter_sequence import _sizes, _used_axes, _iter_axis, _parse_axes
-
 from itertools import product
+
+from useq import MDASequence, Position
+from useq._iter_sequence import _used_axes, _iter_axis, _parse_axes
 
 from helpers.constants import IMG_X_PX, IMG_Y_PX
 
@@ -27,6 +20,7 @@ except ImportError:
     PYMMCW_METADATA_KEY = "pymmcore_widgets"
 
 DEFAULT_NAME = "Exp"
+
 
 class MosaicHandler:
     def __init__(self):
@@ -55,23 +49,32 @@ class MosaicHandler:
         return sequence
 
     def get_dir(self, sequence: MDASequence) -> str:
-        """Get the file dir from the MDASequence metadata."""
+        """
+        Get the file dir from the MDASequence metadata
+        
+        Copied from napari_micromanager/_mda_handler.py
+        """
         meta = cast("dict", sequence.metadata.get(PYMMCW_METADATA_KEY, {}))
         return cast(str, meta.get('save_dir', None))
 
     def get_filename(self, sequence: MDASequence) -> str:
-        """Get the file name from the MDASequence metadata."""
-        # Copied from https://github.com/pymmcore-plus/napari-micromanager/blob/6c895f36502c9d0eb09839abd82d6dd706af96a4/src/napari_micromanager/_mda_handler.py#L38-L41
+        """
+        Get the file name from the MDASequence metadata
+        
+        Copied from napari_micromanager/_mda_handler.py
+        """
         meta = cast("dict", sequence.metadata.get(PYMMCW_METADATA_KEY, {}))
         return cast(str, meta.get('save_name', DEFAULT_NAME))
 
     def get_mosaic_metadata(self, sequence: MDASequence):
+        """Get mosaic info from the MDASequence metadata"""
+        # General metadata
         rows = int(sequence.grid_plan.rows)
         cols = int(sequence.grid_plan.columns)
         channels = len(sequence.channels)
         overlap = sequence.grid_plan.overlap
-        print(overlap)
 
+        # Get position at each id
         pos_order = np.zeros((rows * cols * channels, 2), dtype=int)
 
         # Snippet below copied from useq._iter_sequence.py
@@ -86,58 +89,41 @@ class MosaicHandler:
 
             pos_order[i] = [grid.row, grid.col]
 
-        pos_order = np.unique(pos_order, axis=0)
-        print(pos_order)
+        # Save order of positions
         idxs = np.zeros((rows, cols), dtype=int)
-        for i, pos in enumerate(pos_order):
-            print(pos)
-            print(i)
+        for i, pos in enumerate(np.unique(pos_order, axis=0)):
             idxs[pos[0], pos[1]] = i
 
-        print(idxs)
-
-        return rows, cols, channels, overlap, pos_order
+        return rows, cols, channels, overlap, idxs
 
     def get_img(self, zarr, row, col, idxs):
-        # print(f"GET_IMG OG SHAPE: {zarr.shape}")
-        t0 = perf_counter()
+        """Get img for a given row and column"""
         idx = int(idxs[row, col])
-        img = zarr[0, idx, :, :, :]
-        t1 = perf_counter()
-        # print(f"GET_IMG TIME: {t1-t0}")
-        # print(f"GET_IMG SHAPE: {img.shape}")
-
-        return img
+        return zarr[0, idx, :, :, :]
 
     def stitch_mosaic(self, sequence : MDASequence, img_arr):
-        '''
-        Assemble mosaic
-        '''
+        """Get img for a given row and column"""
+        # Get metadata
         dir = self.get_dir(sequence)
         num_rows, num_cols, num_channels, overlap, idxs = self.get_mosaic_metadata(sequence)
+
+        # Compute key distances
         x_overlap = int(overlap[0] / 100.0)
         y_overlap = int(overlap[1] / 100.0)
+        x_translation = IMG_X_PX - x_overlap
+        y_translation = IMG_Y_PX - y_overlap
 
-        # print(f"IMG ARR: {img_arr}")
+        # Get zarr array
         zarr_id = list(img_arr)[-1]
-        
-        print(zarr_id)
-        # print(img_arr[zarr_id][0])
         zarr = img_arr[zarr_id][0]
         dtype = zarr.dtype
-        print(zarr)
-        print(dtype)
-        # print(f"ZARR: {zarr[0, 0, 0, 0, 0]}")
 
         # TODO check that zarr array has same dims as mosaic?
 
+        # Initialize empty mosaic
         mosaic_x_dim = int((IMG_X_PX * num_cols) - (x_overlap * (num_cols - 1)))
         mosaic_y_dim = int((IMG_Y_PX * num_rows) - (y_overlap * (num_rows - 1)))
-
         mosaic = np.zeros((num_channels, mosaic_y_dim, mosaic_x_dim), dtype=np.uint32)
-
-        x_translation = IMG_X_PX - x_overlap
-        y_translation = IMG_Y_PX - y_overlap
 
         # Assemble mosaic
         print("Stitching images together")
@@ -145,29 +131,16 @@ class MosaicHandler:
             y_start = int(row * y_translation)
             for col in tqdm(range(0, num_cols), desc="Column"):
                 x_start = int(col * x_translation)
-
-                # if row == 0 and col == 0:
-                #     plt.imsave("test.png", self.get_img(zarr, 0, 0)[0, :, :])
-
-                # TODO test image loading
-                t0 = perf_counter()
-                # print(f"MOSAIC SHAPE {mosaic[:, y_start : y_start + IMG_Y_PX, x_start : x_start + IMG_X_PX].shape}")
-                # print(f"ZARR SHAPE {self.get_img(zarr, row, col).shape}")
                 mosaic[:, y_start : y_start + IMG_Y_PX, x_start : x_start + IMG_X_PX] += self.get_img(zarr, row, col, idxs)
-                t1 = perf_counter()
-                print(f"TIME: {t1-t0}")
 
         # Take average of overlapping areas
         print("Taking average of overlapping areas")
         for row in tqdm(range(1, num_rows), desc="Row"):
-            t0 = perf_counter()
             y_start = int(row * y_translation)
             mosaic[:, y_start : y_start - y_translation + IMG_Y_PX, :] = np.floor_divide(
                 mosaic[:, y_start : y_start - y_translation + IMG_Y_PX, :],
                 2
             ).astype(np.uint32)
-            t1 = perf_counter()
-            print(t1-t0)
         for col in tqdm(range(1, num_cols), desc="Column"):
             x_start = int(col * x_translation)
             mosaic[:, :, x_start : x_start - x_translation + IMG_X_PX] = np.floor_divide(
@@ -181,6 +154,7 @@ class MosaicHandler:
         return mosaic.astype(dtype), zarr_id
 
     def display_mosaic(self, mosaic, zarr_id):
+        """Display mosaic as a napari layer"""
         # Convert into zarr array
         # Create image layer
         pass
