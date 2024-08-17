@@ -45,7 +45,7 @@ class nmm:
             self.core.loadSystemConfiguration(str(cfg_path))
 
         # Load and push sequence
-        self.mosaic = MosaicHandler()
+        self.mosaic = MosaicHandler(self.v)
         self.assign_widgets(self.mosaic.get_sequence())
 
         napari.run()

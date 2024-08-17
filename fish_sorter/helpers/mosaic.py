@@ -23,8 +23,8 @@ DEFAULT_NAME = "Exp"
 
 
 class MosaicHandler:
-    def __init__(self):
-        self.sequence = self.get_sequence()
+    def __init__(self, viewer):
+        self.viewer = viewer
         
     def get_sequence(self):
         sequence = MDASequence(
@@ -114,11 +114,10 @@ class MosaicHandler:
         y_translation = IMG_Y_PX - y_overlap
 
         # Get zarr array
-        zarr_id = list(img_arr)[-1]
-        zarr = img_arr[zarr_id][0]
-        dtype = zarr.dtype
+        arr_data = self.viewer.layers[-1].data
+        dtype = arr_data.dtype
 
-        # TODO check that zarr array has same dims as mosaic?
+        # TODO check that array has same dims as mosaic?
 
         # Initialize empty mosaic
         mosaic_x_dim = int((IMG_X_PX * num_cols) - (x_overlap * (num_cols - 1)))
@@ -131,7 +130,7 @@ class MosaicHandler:
             y_start = int(row * y_translation)
             for col in tqdm(range(0, num_cols), desc="Column"):
                 x_start = int(col * x_translation)
-                mosaic[:, y_start : y_start + IMG_Y_PX, x_start : x_start + IMG_X_PX] += self.get_img(zarr, row, col, idxs)
+                mosaic[:, y_start : y_start + IMG_Y_PX, x_start : x_start + IMG_X_PX] += self.get_img(arr_data, row, col, idxs)
 
         # Take average of overlapping areas
         print("Taking average of overlapping areas")
@@ -151,10 +150,10 @@ class MosaicHandler:
         for channel in range(num_channels):
             plt.imsave(f"test_mosaic_{channel}.png", mosaic[channel, :, :].astype(dtype))
 
-        return mosaic.astype(dtype), zarr_id
+        return mosaic.astype(dtype)
 
-    def display_mosaic(self, mosaic, zarr_id):
+    def display_mosaic(self, mosaic):
         """Display mosaic as a napari layer"""
-        # Convert into zarr array
+        # Convert into array
         # Create image layer
         pass
