@@ -27,12 +27,13 @@ class MosaicHandler:
         self.viewer = viewer
         
     def get_sequence(self):
+        # TODO this needs to be autocomputed based on imaging area
         sequence = MDASequence(
             channels = [
                 {"config": "GFP","exposure": 100}, 
                 {"config": "TXR", "exposure": 100}
             ],
-            grid_plan={"rows": 3, "columns": 1, "relative_to": "top_left", "overlap": 5, "mode": "row_wise_snake"},
+            grid_plan={"rows": 4, "columns": 3, "relative_to": "center", "overlap": 5, "mode": "row_wise_snake"},
             # stage_positions = [
             #     # {"x": 110495.44, "y": 10863.76, "z": 2779.09, "name": "top_R"},
             #     # {"x": 17883.77, "y" : 10166.54, "z": 2779.09, "name": "top_L"},
@@ -91,7 +92,8 @@ class MosaicHandler:
 
         # Save order of positions
         idxs = np.zeros((rows, cols), dtype=int)
-        for i, pos in enumerate(np.unique(pos_order, axis=0)):
+        u, u_idxs = np.unique(pos_order, axis=0, return_index=True)
+        for i, pos in enumerate(u[np.argsort(u_idxs)]):
             idxs[pos[0], pos[1]] = i
 
         return rows, cols, channels, overlap, idxs
@@ -108,8 +110,8 @@ class MosaicHandler:
         num_rows, num_cols, num_channels, overlap, idxs = self.get_mosaic_metadata(sequence)
 
         # Compute key distances
-        x_overlap = int(overlap[0] / 100.0)
-        y_overlap = int(overlap[1] / 100.0)
+        x_overlap = int(IMG_X_PX * overlap[0] / 100.0)
+        y_overlap = int(IMG_Y_PX * overlap[1] / 100.0)
         x_translation = IMG_X_PX - x_overlap
         y_translation = IMG_Y_PX - y_overlap
 
@@ -147,8 +149,12 @@ class MosaicHandler:
                 2
             ).astype(np.uint32)
 
-        for channel in range(num_channels):
-            plt.imsave(f"test_mosaic_{channel}.png", mosaic[channel, :, :].astype(dtype))
+        # # TODO delete this
+        # for channel in range(1, num_channels+1):
+        #     filename = f"test_mosaic_{channel}.png"
+        #     print(f"Saving mosaic {channel}/{num_channels}")
+        #     plt.imsave(filename, mosaic[channel-1, :, :].astype(dtype))
+        #     print(f"Saved mosaic {channel}/{num_channels} to {filename}")
 
         return mosaic.astype(dtype)
 
@@ -156,4 +162,5 @@ class MosaicHandler:
         """Display mosaic as a napari layer"""
         # Convert into array
         # Create image layer
+        # TODO put mosaic in napari viewer
         pass
