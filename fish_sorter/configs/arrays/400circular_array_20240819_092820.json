@@ -5,7 +5,8 @@
         "row_spacing": 1000.0,
         "column_spacing": 1000.0,
         "slot_length": 1750.0,
-        "slot_width": 1750.0
+        "slot_width": 1750.0,
+        "well_shape": "circular"
     },
     "wells": {
         "total_wells": 400,

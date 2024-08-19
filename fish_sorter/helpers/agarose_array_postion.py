@@ -3,7 +3,7 @@ import sys
 import os
 from datetime import datetime
 from pathlib import Path
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QPushButton, QMessageBox
+from PyQt5.QtWidgets import QApplication, QWidget, QComboBox, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QPushButton, QMessageBox
 
 class AgaroseArray(QWidget):
     def __init__(self):
@@ -22,6 +22,8 @@ class AgaroseArray(QWidget):
         self.column_spacing_input = QLineEdit()
         self.length_input = QLineEdit()
         self.width_input = QLineEdit()
+        self.shape_input = QComboBox()
+        self.shape_input.addItems(["circular", "rectangular"])
 
         form_layout.addRow(QLabel('Rows:'), self.rows_input)
         form_layout.addRow(QLabel('Columns:'), self.columns_input)
@@ -29,6 +31,7 @@ class AgaroseArray(QWidget):
         form_layout.addRow(QLabel('Column Spacing [um]:'), self.column_spacing_input)
         form_layout.addRow(QLabel('Slot Length [um]:'), self.length_input)
         form_layout.addRow(QLabel('Slot Width [um]:'), self.width_input)
+        form_layout.addRow(QLabel('Well Shape:'), self.shape_input)
 
         layout.addLayout(form_layout)
 
@@ -48,6 +51,7 @@ class AgaroseArray(QWidget):
             column_spacing = float(self.column_spacing_input.text())
             length = float(self.length_input.text())
             width = float(self.width_input.text())
+            shape = self.shape_input.currentText()
 
             if any(value <= 0 for value in [rows, columns, row_spacing, column_spacing, length, width]):
                 raise ValueError
@@ -58,7 +62,8 @@ class AgaroseArray(QWidget):
                 'row_spacing': row_spacing,
                 'column_spacing': column_spacing,
                 'slot_length': length,
-                'slot_width': width
+                'slot_width': width,
+                'well_shape': shape
             }
 
             num_wells = rows * columns
@@ -77,7 +82,7 @@ class AgaroseArray(QWidget):
             }
 
             date_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            array_file = f"{num_wells}array_{date_stamp}.json"
+            array_file = f"{num_wells}{shape}_array_{date_stamp}.json"
             array_dir = Path().absolute().parent / "configs/arrays"
             array_path = os.path.join(array_dir, array_file)
 
