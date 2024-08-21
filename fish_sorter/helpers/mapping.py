@@ -17,7 +17,7 @@ from useq._iter_sequence import _sizes, _used_axes, _iter_axis, _parse_axes
 
 # TODO standardize coordinate format
 
-class MappingHandler:
+class Mapping:
     def __init__(self, zaber, mda, mmc):
         self.mda = mda
         self.mmc = mmc

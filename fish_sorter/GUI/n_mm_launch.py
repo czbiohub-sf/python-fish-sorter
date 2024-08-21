@@ -9,7 +9,7 @@ from gui.pipette_gui import PipetteWidget
 
 from gui.pipette_gui import PipetteWidget
 # TODO delete this
-from helpers.mosaic import MosaicHandler
+from helpers.mosaic import Mosaic
 from gui.tester_gui import TesterWidget
 
 # For simulation
@@ -48,7 +48,7 @@ class nmm:
             self.core.loadSystemConfiguration(str(cfg_path))
 
         # Load and push sequence
-        self.mosaic = MosaicHandler(self.v)
+        self.mosaic = Mosaic(self.v)
         self.assign_widgets(self.mosaic.get_sequence())
 
         napari.run()
