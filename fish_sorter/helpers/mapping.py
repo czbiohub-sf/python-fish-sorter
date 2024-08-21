@@ -7,7 +7,7 @@ import json
 import pymmcore_plus
 
 from tqdm import tqdm
-from useq import MDASequence
+from useq import MDASequence, Position
 
 from typing import cast
 
@@ -35,6 +35,14 @@ class Mapping:
         # self.zaber.home_arm(['x','y'])
         self.home = np.array([self.zaber.get_pos('x'), self.zaber.get_pos('y')])
 
+    def get_home(self):
+        seq = self.mda.value()
+        
+        for pos in seq.stage_positions:
+            if pos.name == 'home':
+                return (pos.x, pos.y, pos.z)
+
+        return (0.0, 0.0, 0.0)
 
     def px_to_um(self, px_pos):
         # Image coords to stage coords
@@ -123,5 +131,9 @@ class Mapping:
             {"x": pos[0], "y": pos[1], "z": z_pos, "name": name}
         for name, pos in zip(well_names, calib_well_positions)]
         # TODO make this account for previously set sequence too
+        
+        # Update sequence
+        prev_sequence = self.mda.value()
+        
         sequence = MDASequence(stage_positions = mda_positions)
         self.mda.setValue(sequence)

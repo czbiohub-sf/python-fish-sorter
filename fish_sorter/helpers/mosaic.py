@@ -10,7 +10,7 @@ from itertools import product
 from useq import MDASequence, Position
 from useq._iter_sequence import _used_axes, _iter_axis, _parse_axes
 
-from helpers.constants import IMG_X_PX, IMG_Y_PX
+# from helpers.constants import IMG_X_PX, IMG_Y_PX
 
 try:
     from pymmcore_widgets.useq_widgets import PYMMCW_METADATA_KEY as PYMMCW_METADATA_KEY
@@ -33,7 +33,8 @@ class Mosaic:
                 {"config": "GFP","exposure": 100}, 
                 {"config": "TXR", "exposure": 100}
             ],
-            grid_plan = {"rows": 4, "columns": 3, "relative_to": "center", "overlap": 5, "mode": "row_wise_snake"},
+            # grid_plan = {"rows": 4, "columns": 3, "relative_to": "center", "overlap": 5, "mode": "row_wise_snake"},
+            stage_positions = [{"x": 0.0, "y": 0.0, "z": 0.0, "name": "top_R"}],
             # stage_positions = [
             #     # {"x": 110495.44, "y": 10863.76, "z": 2779.09, "name": "top_R"},
             #     # {"x": 17883.77, "y" : 10166.54, "z": 2779.09, "name": "top_L"},
