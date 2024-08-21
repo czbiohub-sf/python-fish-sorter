@@ -2,6 +2,7 @@ import napari
 import numpy as np
 import os
 import argparse
+import types
 
 from pathlib import Path
 from gui.pipette_gui import PipetteWidget
@@ -28,6 +29,8 @@ class nmm:
         dw, self.main_window = self.v.window.add_plugin_dock_widget("napari-micromanager")
         
         self.core = self.main_window._mmc
+        # Overwrite default function so that image is mirrored
+        self.core.getImage = types.MethodType(self.getImageMirrored, self.core)
 
         if sim:
             if FakeDemoCamera is not None:
@@ -49,6 +52,22 @@ class nmm:
         self.assign_widgets(self.mosaic.get_sequence())
 
         napari.run()
+
+    # Overload copied from super class (pymmcore_plus/core/_mmcore_plus.py)
+    @overload
+    def getImageMirrored(self, *, fix: bool = True) -> np.ndarray:  # noqa: D418
+        """Return the internal image buffer."""
+
+    # Overload copied from super class (pymmcore_plus/core/_mmcore_plus.py)
+    @overload
+    def getImageMirrored(self, numChannel: int, *, fix: bool = True) -> np.ndarray:  # noqa
+        """Return the internal image buffer for a given Camera Channel."""
+
+    def getImageMirrored(
+        self, numChannel: int | None = None, *, fix: bool = True
+    ) -> np.ndarray:
+        # Mirror image
+        return np.flip(self.core.getImage(numChannel), axis=1)
 
     def assign_widgets(self, sequence):
         # MDA
