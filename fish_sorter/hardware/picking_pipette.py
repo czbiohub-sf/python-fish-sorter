@@ -15,7 +15,7 @@ class PickingPipette():
         """Runs pipette hardware setup and passes config parameters to each hardware
         
         :param parent_dir: parent directory for config files
-        :type location: str
+        :type parent_dir: str
         :raises FileNotFoundError: loggings critical if the hardware config file not found
         """
         
