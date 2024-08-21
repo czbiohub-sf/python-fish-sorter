@@ -154,9 +154,12 @@ class Mapping:
             plate_data = json.load(f)
 
         # Load metadata
-        plate_name = list(plate_data['dest_plates'])[0]
-        well_names = plate_data['dest_plates'][plate_name]['names']
-        well_pos = np.array(plate_data['dest_plates'][plate_name]['positions']).T
+        well_names = plate_data['wells']['well_names']
+        unformatted_well_pos = np.array(plate_data['wells']['well_coordinates'])
+
+        # Format well positions
+        well_count = int(plate_data['array_design']['rows']) * int(plate_data['array_design']['columns'])
+        well_pos = unformatted_well_pos.reshape(well_count, 2)
 
         # Transform wells
         transformed_well_pos = self.apply_transform(well_pos)
