@@ -36,16 +36,16 @@ class Mapping:
         # self.zaber.home_arm(['x','y'])
         self.home = np.array([self.zaber.get_pos('x'), self.zaber.get_pos('y')])
 
-    def get_home(self):
+    def get_home_pos(self):
         seq = self.mda.value()
 
         for pos in seq.stage_positions:
             if pos.name == 'TL_well':
                 return (pos.x, pos.y, pos.z)
 
-        return (0.0, 0.0, 0.0)
+        return np.array([0.0, 0.0, 0.0])
 
-    def get_calib_point(self):
+    def get_calib_pos(self):
         seq = self.mda.value()
 
         for pos in seq.stage_positions:
@@ -53,7 +53,7 @@ class Mapping:
                 return (pos.x, pos.y, pos.z)
         
         # TODO replace this with a constant to match initialized stage_positions
-        return (100.0, 0.0, 0.0)
+        return np.array([100.0, 0.0, 0.0])
 
     def px_to_rel_um(self, px_pos):
         # Wellplate coords to stage coords
@@ -131,12 +131,7 @@ class Mapping:
         # User needs to previously set home in TL slot and navigate to TR corner before pressing "calibrate"
         # TODO: Add user prompt
 
-        # Assume input is [x1; y1] (ie. col array)
-        vector = [
-            [self.zaber.get_pos('x') - self.home[0]],
-            [self.zaber.get_pos('y') - self.home[1]],
-        ]
-        # TODO! Does this index correctly
+        vector = self.get_calib_pos()[0:2] - self.get_home_pos()[0:2]
         theta = np.arctan(vector[1] / vector[0])
 
         self.transform = np.array([
@@ -184,7 +179,7 @@ class Mapping:
         if well not in self.wells:
             return
 
-        _, _, z = self.get_home()
+        _, _, z = self.get_home_pos()
         xy = self.wells[well].abs_um
         self.mmc.run_mda(Position(x=xy[0], y=xy[1], z, name=well))
 
