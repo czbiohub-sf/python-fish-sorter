@@ -94,11 +94,15 @@ class Mosaic:
 
             pos_order[i] = [grid.row, grid.col]
 
+        # Reference abs position to grid position
+        row_dict = {pos: i for i, pos in enumerate(np.sort(np.unique(pos_order[:,0])))}
+        col_dict = {pos: i for i, pos in enumerate(np.sort(np.unique(pos_order[:,1])))}
+
         # Save order of positions
         idxs = np.zeros((rows, cols), dtype=int)
         u, u_idxs = np.unique(pos_order, axis=0, return_index=True)
         for i, pos in enumerate(u[np.argsort(u_idxs)]):
-            idxs[pos[0], pos[1]] = i
+            idxs[row_dict[pos[0]], col_dict[pos[1]]] = i
 
         return rows, cols, channels, overlap, idxs
 
