@@ -7,7 +7,7 @@ setup(
     install_requires=[
         'pyqt5',
         'napari',
-        'napari-micromanager',
+        'napari-micromanager==0.1.0',
         'zaber_motion',
         'tqdm',
         'iter-tools',
