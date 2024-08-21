@@ -24,6 +24,7 @@ class Mapping:
         self.zaber = zaber
         self.home = np.array([0, 0]) # stage units
         self.transform = [[1, 0], [0, 1]]
+        self.wells = {}
 
         # TODO save home location in experiment savefile
 
@@ -37,14 +38,52 @@ class Mapping:
 
     def get_home(self):
         seq = self.mda.value()
-        
+
         for pos in seq.stage_positions:
-            if pos.name == 'home':
+            if pos.name == 'TL_well':
                 return (pos.x, pos.y, pos.z)
 
         return (0.0, 0.0, 0.0)
 
-    def px_to_um(self, px_pos):
+    def get_calib_point(self):
+        seq = self.mda.value()
+
+        for pos in seq.stage_positions:
+            if pos.name == 'TR_well':
+                return (pos.x, pos.y, pos.z)
+        
+        # TODO replace this with a constant to match initialized stage_positions
+        return (100.0, 0.0, 0.0)
+
+    def px_to_rel_um(self, px_pos):
+        # Wellplate coords to stage coords
+       
+        if self.home is None:
+            # TODO add user prompt to set home
+            return
+
+        # Assume px pos is 2x1 array or list
+        # TODO! make this computationally cleaner
+        return [
+            (px_pos[0] * self.mmc.getPixelSizeUm()) + self.home[0],
+            (px_pos[1] * self.mmc.getPixelSizeUm()) + self.home[1],
+        ]
+
+    def rel_um_to_px(self, um_pos):
+        # Wellplate coords to image coords
+   
+        if self.home is None:
+            # TODO add user prompt to set home
+            return
+
+        # Assume mm pos is 2x1 array or list
+        # TODO! make this computationally cleaner
+        return [
+            (um_pos[0] - self.home[0]) / self.mmc.getPixelSizeUm(),
+            (um_pos[1] - self.home[1]) / self.mmc.getPixelSizeUm(),
+        ]
+
+    def px_to_abs_um(self, px_pos):
         # Image coords to stage coords
        
         if self.home is None:
@@ -58,7 +97,7 @@ class Mapping:
             (px_pos[1] * self.mmc.getPixelSizeUm()) + self.home[1],
         ]
 
-    def um_to_px(self, um_pos):
+    def abs_um_to_px(self, um_pos):
         # Stage coords to image coords
    
         if self.home is None:
@@ -72,7 +111,8 @@ class Mapping:
             (um_pos[1] - self.home[1]) / self.mmc.getPixelSizeUm(),
         ]
 
-    def rel_to_abs(self, rel_pos):
+    def rel_um_to_abs_um(self, rel_pos):
+        # Wellplate coords to stage coords
         # Assume input is a np array, with each position as a row array [[x1; y1], [x2, y2], ...] 
         
         # Ideally, user has previously set home
@@ -80,6 +120,7 @@ class Mapping:
         return rel_pos += self.home
 
     def abs_to_rel(self, abs_pos):
+        # Stage coords to wellplate coords
         # Assume input is a np array, with each position as a row array [[x1; y1], [x2, y2], ...] 
 
         # Ideally, user has previously set home
@@ -110,7 +151,7 @@ class Mapping:
         # TODO: Add user prompt if not
         return np.dir(pos, self.transform)
 
-    def load_plate(self, filename):
+    def load_wells(self, filename):
         # User needs to previously set home in TL slot and set transform
         # TODO: Add user prompt
 
@@ -124,16 +165,27 @@ class Mapping:
 
         # Transform wells
         transformed_well_pos = self.apply_transform(well_pos)
-        abs_well_pos = self.rel_to_abs(transformed_well_pos)
+        abs_well_pos = self.rel_um_to_abs_um(transformed_well_pos)
+        px_well_pos = self.rel_um_to_px(transformed_well_pos)
 
         # Load sequence
-        mda_positions = [
-            {"x": pos[0], "y": pos[1], "z": z_pos, "name": name}
-        for name, pos in zip(well_names, calib_well_positions)]
-        # TODO make this account for previously set sequence too
-        
-        # Update sequence
-        prev_sequence = self.mda.value()
-        
-        sequence = MDASequence(stage_positions = mda_positions)
-        self.mda.setValue(sequence)
+        self.wells = [
+            {
+                name : {
+                "raw_rel_um":  well_pos,
+                "calib_rel_um": transformed_well_pos,
+                "abs_um": abs_well_pos,
+                "px": px_well_pos,
+                }
+            } for name, pos in zip(well_names, calib_well_positions)
+        ]
+
+    def go_to_well(self, well: str):
+        if well not in self.wells:
+            return
+
+        _, _, z = self.get_home()
+        xy = self.wells[well].abs_um
+        self.mmc.run_mda(Position(x=xy[0], y=xy[1], z, name=well))
+
+# TODO make this work with dispense plate too
