@@ -15,6 +15,9 @@ from pathlib import Path
 from useq import MDASequence, Position
 from useq._iter_sequence import _sizes, _used_axes, _iter_axis, _parse_axes
 
+# TODO dynamically load pixel count
+from constants import IMG_X_PX, IMG_Y_PX
+
 # TODO standardize coordinate format
 
 class Mapping:
@@ -22,110 +25,73 @@ class Mapping:
         self.mda = mda
         self.mmc = mmc
         self.zaber = zaber
-        self.home = np.array([0, 0]) # stage units
+        self.um_home = np.array([0.0, 0.0])
+        self.um_calib = np.array([100.0, 0.0])
         self.transform = [[1, 0], [0, 1]]
         self.wells = {}
 
         # TODO save home location in experiment savefile
-
 
     def set_home(self):
         # User needs to navigate to home location (TL corner) before pressing "calibrate"
         # TODO: Add user prompt
 
         # self.zaber.home_arm(['x','y'])
-        self.home = np.array([self.zaber.get_pos('x'), self.zaber.get_pos('y')])
+        self.um_home = np.array([self.zaber.get_pos('x'), self.zaber.get_pos('y')])
 
     def get_home_pos(self):
         seq = self.mda.value()
 
         for pos in seq.stage_positions:
             if pos.name == 'TL_well':
-                return (pos.x, pos.y, pos.z)
+                return np.array([pos.x, pos.y])
 
-        return np.array([0.0, 0.0, 0.0])
+        return np.array([0.0, 0.0])
 
     def get_calib_pos(self):
         seq = self.mda.value()
 
         for pos in seq.stage_positions:
             if pos.name == 'TR_well':
-                return (pos.x, pos.y, pos.z)
+                return np.array([pos.x, pos.y])
         
         # TODO replace this with a constant to match initialized stage_positions
-        return np.array([100.0, 0.0, 0.0])
+        return np.array([100.0, 0.0])
+
+    def get_center_to_corner_offset_um_um(self, px2um):
+        return np.array(
+            [
+                IMG_X_PX * px2um / 2,
+                IMG_Y_PX * px2um / 2,
+            ]
+        )
 
     def px_to_rel_um(self, px_pos):
         # Wellplate coords to stage coords
-       
-        if self.home is None:
-            # TODO add user prompt to set home
-            return
+        return (px_pos * px2um) - um_offset
 
-        # Assume px pos is 2x1 array or list
-        # TODO! make this computationally cleaner
-        return [
-            (px_pos[0] * self.mmc.getPixelSizeUm()) + self.home[0],
-            (px_pos[1] * self.mmc.getPixelSizeUm()) + self.home[1],
-        ]
-
-    def rel_um_to_px(self, um_pos):
+    def rel_um_to_px(self, rel_um_pos):
         # Wellplate coords to image coords
-   
-        if self.home is None:
-            # TODO add user prompt to set home
-            return
+        px2um = self.mmc.getPixelSizeUm()
+        um_offset = self.get_center_to_corner_offset_um()
+        
+        return (rel_um_pos + um_offset) / px2um
 
-        # Assume mm pos is 2x1 array or list
-        # TODO! make this computationally cleaner
-        return [
-            (um_pos[0] - self.home[0]) / self.mmc.getPixelSizeUm(),
-            (um_pos[1] - self.home[1]) / self.mmc.getPixelSizeUm(),
-        ]
+    def rel_um_to_abs_um(self, rel_um_pos):
+        # Wellplate coords to stage coords
+        return rel_um_pos += self.um_home + um_offset
+
+    def abs_to_rel(self, abs_um_pos):
+        # Stage coords to wellplate coords
+        return abs_um_pos -= self.um_home + um_offset
 
     def px_to_abs_um(self, px_pos):
         # Image coords to stage coords
-       
-        if self.home is None:
-            # TODO add user prompt to set home
-            return
+        return self.rel_um_to_abs_um(self.px_to_rel_um(px_pos))
 
-        # Assume px pos is 2x1 array or list
-        # TODO! make this computationally cleaner
-        return [
-            (px_pos[0] * self.mmc.getPixelSizeUm()) + self.home[0],
-            (px_pos[1] * self.mmc.getPixelSizeUm()) + self.home[1],
-        ]
-
-    def abs_um_to_px(self, um_pos):
+    def abs_um_to_px(self, abs_um_pos):
         # Stage coords to image coords
-   
-        if self.home is None:
-            # TODO add user prompt to set home
-            return
-
-        # Assume mm pos is 2x1 array or list
-        # TODO! make this computationally cleaner
-        return [
-            (um_pos[0] - self.home[0]) / self.mmc.getPixelSizeUm(),
-            (um_pos[1] - self.home[1]) / self.mmc.getPixelSizeUm(),
-        ]
-
-    def rel_um_to_abs_um(self, rel_pos):
-        # Wellplate coords to stage coords
-        # Assume input is a np array, with each position as a row array [[x1; y1], [x2, y2], ...] 
-        
-        # Ideally, user has previously set home
-        # TODO: Add user prompt if not
-        return rel_pos += self.home
-
-    def abs_to_rel(self, abs_pos):
-        # Stage coords to wellplate coords
-        # Assume input is a np array, with each position as a row array [[x1; y1], [x2, y2], ...] 
-
-        # Ideally, user has previously set home
-        # TODO: Add user prompt if not
-        return rel_pos -= self.home
+        return self.rel_um_to_px(self.abs_um_to_rel_um(px_pos))
 
     def set_transform(self, pos):
         # User needs to previously set home in TL slot and navigate to TR corner before pressing "calibrate"
