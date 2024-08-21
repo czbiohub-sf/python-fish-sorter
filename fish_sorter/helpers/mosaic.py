@@ -33,7 +33,7 @@ class MosaicHandler:
                 {"config": "GFP","exposure": 100}, 
                 {"config": "TXR", "exposure": 100}
             ],
-            grid_plan={"rows": 4, "columns": 3, "relative_to": "center", "overlap": 5, "mode": "row_wise_snake"},
+            grid_plan = {"rows": 4, "columns": 3, "relative_to": "center", "overlap": 5, "mode": "row_wise_snake"},
             # stage_positions = [
             #     # {"x": 110495.44, "y": 10863.76, "z": 2779.09, "name": "top_R"},
             #     # {"x": 17883.77, "y" : 10166.54, "z": 2779.09, "name": "top_L"},
