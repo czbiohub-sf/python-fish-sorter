@@ -89,6 +89,15 @@ class nmm:
         self.pipette = PipetteWidget()
         self.v.window.add_dock_widget(self.pipette, name='pipette')
 
+        # Plate calibration
+        self.pc = PlateCalibrationWidget(mmcore=mmc)
+        self.pc.setPlate("6-well")
+        self.v.window.add_dock_widget(self.pc, name='plates')
+
+        # Stage
+        self.s = StageWidget("XY")
+        self.v.window.add_dock_widget(self.s, name='stage')
+
     def run(self):
         sequence = self.mda.value()
         img_arr = self.main_window._core_link._mda_handler._tmp_arrays
