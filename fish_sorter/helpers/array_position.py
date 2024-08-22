@@ -5,7 +5,7 @@ from datetime import datetime
 from pathlib import Path
 from PyQt5.QtWidgets import QApplication, QWidget, QComboBox, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QPushButton, QMessageBox
 
-class AgaroseArray(QWidget):
+class GenerateArray(QWidget):
     def __init__(self):
         super().__init__()
         self.initUI()
@@ -23,7 +23,7 @@ class AgaroseArray(QWidget):
         self.length_input = QLineEdit()
         self.width_input = QLineEdit()
         self.shape_input = QComboBox()
-        self.shape_input.addItems(["circular", "rectangular"])
+        self.shape_input.addItems(["circular_array", "rectangular_array", "well_plate"])
 
         form_layout.addRow(QLabel('Rows:'), self.rows_input)
         form_layout.addRow(QLabel('Columns:'), self.columns_input)
@@ -81,8 +81,8 @@ class AgaroseArray(QWidget):
                 'wells': well_def
             }
 
-            date_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            array_file = f"{num_wells}{shape}_array_{date_stamp}.json"
+            date_stamp = datetime.now().strftime("%Y%m%d")
+            array_file = f"{num_wells}{shape}{date_stamp}.json"
             array_dir = Path().absolute().parent / "configs/arrays"
             array_path = os.path.join(array_dir, array_file)
 
@@ -107,7 +107,8 @@ class AgaroseArray(QWidget):
         for r in range(rows):
             row_label = get_column_name(r + 1)
             for c in range(columns):
-                well_names.append(f"{row_label}{c + 1}")
+                col_label = f"{c + 1:02}"
+                well_names.append(f"{row_label}{col_label}")
         return well_names
 
     def generate_well_coordinates(self, rows, columns, row_spacing, column_spacing, length, width):
@@ -118,6 +119,6 @@ class AgaroseArray(QWidget):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    ex = AgaroseArray()
+    ex = GenerateArray()
     ex.show()
     sys.exit(app.exec_())
