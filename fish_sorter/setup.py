@@ -15,5 +15,6 @@ setup(
         'argparse',
         'numpy',
         'pymodbus',
+        'pymmcore-widgets',
     ],
 )

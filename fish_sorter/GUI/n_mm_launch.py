@@ -5,8 +5,10 @@ import argparse
 import types
 
 from pathlib import Path
-from gui.pipette_gui import PipetteWidget
 from typing import overload
+
+from pymmcore_widgets import StageWidget
+from pymmcore_widgets.hcs._plate_calibration_widget import PlateCalibrationWidget
 
 from gui.pipette_gui import PipetteWidget
 # TODO delete this
