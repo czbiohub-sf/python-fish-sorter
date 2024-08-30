@@ -3,9 +3,9 @@ import sys
 import os
 from datetime import datetime
 from pathlib import Path
-from PyQt5.QtWidgets import QApplication, QWidget, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QPushButton, QMessageBox
+from PyQt5.QtWidgets import QApplication, QWidget, QComboBox, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QPushButton, QMessageBox
 
-class AgaroseArray(QWidget):
+class GenerateArray(QWidget):
     def __init__(self):
         super().__init__()
         self.initUI()
@@ -22,6 +22,8 @@ class AgaroseArray(QWidget):
         self.column_spacing_input = QLineEdit()
         self.length_input = QLineEdit()
         self.width_input = QLineEdit()
+        self.shape_input = QComboBox()
+        self.shape_input.addItems(["circular_array", "rectangular_array", "well_plate"])
 
         form_layout.addRow(QLabel('Rows:'), self.rows_input)
         form_layout.addRow(QLabel('Columns:'), self.columns_input)
@@ -29,6 +31,7 @@ class AgaroseArray(QWidget):
         form_layout.addRow(QLabel('Column Spacing [um]:'), self.column_spacing_input)
         form_layout.addRow(QLabel('Slot Length [um]:'), self.length_input)
         form_layout.addRow(QLabel('Slot Width [um]:'), self.width_input)
+        form_layout.addRow(QLabel('Well Shape:'), self.shape_input)
 
         layout.addLayout(form_layout)
 
@@ -48,6 +51,7 @@ class AgaroseArray(QWidget):
             column_spacing = float(self.column_spacing_input.text())
             length = float(self.length_input.text())
             width = float(self.width_input.text())
+            shape = self.shape_input.currentText()
 
             if any(value <= 0 for value in [rows, columns, row_spacing, column_spacing, length, width]):
                 raise ValueError
@@ -58,7 +62,8 @@ class AgaroseArray(QWidget):
                 'row_spacing': row_spacing,
                 'column_spacing': column_spacing,
                 'slot_length': length,
-                'slot_width': width
+                'slot_width': width,
+                'well_shape': shape
             }
 
             num_wells = rows * columns
@@ -76,8 +81,8 @@ class AgaroseArray(QWidget):
                 'wells': well_def
             }
 
-            date_stamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            array_file = f"{num_wells}array_{date_stamp}.json"
+            date_stamp = datetime.now().strftime("%Y%m%d")
+            array_file = f"{num_wells}{shape}{date_stamp}.json"
             array_dir = Path().absolute().parent / "configs/arrays"
             array_path = os.path.join(array_dir, array_file)
 
@@ -102,7 +107,8 @@ class AgaroseArray(QWidget):
         for r in range(rows):
             row_label = get_column_name(r + 1)
             for c in range(columns):
-                well_names.append(f"{row_label}{c + 1}")
+                col_label = f"{c + 1:02}"
+                well_names.append(f"{row_label}{col_label}")
         return well_names
 
     def generate_well_coordinates(self, rows, columns, row_spacing, column_spacing, length, width):
@@ -113,6 +119,6 @@ class AgaroseArray(QWidget):
 
 if __name__ == '__main__':
     app = QApplication(sys.argv)
-    ex = AgaroseArray()
+    ex = GenerateArray()
     ex.show()
     sys.exit(app.exec_())

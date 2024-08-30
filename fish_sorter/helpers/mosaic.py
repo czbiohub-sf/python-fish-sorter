@@ -10,7 +10,7 @@ from itertools import product
 from useq import MDASequence, Position
 from useq._iter_sequence import _used_axes, _iter_axis, _parse_axes
 
-from helpers.constants import IMG_X_PX, IMG_Y_PX
+# from helpers.constants import IMG_X_PX, IMG_Y_PX
 
 try:
     from pymmcore_widgets.useq_widgets import PYMMCW_METADATA_KEY as PYMMCW_METADATA_KEY
@@ -22,7 +22,7 @@ except ImportError:
 DEFAULT_NAME = "Exp"
 
 
-class MosaicHandler:
+class Mosaic:
     def __init__(self, viewer):
         self.viewer = viewer
         
@@ -33,7 +33,11 @@ class MosaicHandler:
                 {"config": "GFP","exposure": 100}, 
                 {"config": "TXR", "exposure": 100}
             ],
-            grid_plan={"rows": 4, "columns": 3, "relative_to": "center", "overlap": 5, "mode": "row_wise_snake"},
+            # grid_plan = {"rows": 4, "columns": 3, "relative_to": "center", "overlap": 5, "mode": "row_wise_snake"},
+            stage_positions = [
+                {"x": 0.0, "y": 0.0, "z": 0.0, "name": "TL_well"},
+                {"x": 100.0, "y": 0.0, "z": 0.0, "name": "TR_well"},
+            ],
             # stage_positions = [
             #     # {"x": 110495.44, "y": 10863.76, "z": 2779.09, "name": "top_R"},
             #     # {"x": 17883.77, "y" : 10166.54, "z": 2779.09, "name": "top_L"},
@@ -94,11 +98,15 @@ class MosaicHandler:
         #     print(position)
         #     pos_order[i] = [grid.row, grid.col]
 
+        # Reference abs position to grid position
+        row_dict = {pos: i for i, pos in enumerate(np.sort(np.unique(pos_order[:,0])))}
+        col_dict = {pos: i for i, pos in enumerate(np.sort(np.unique(pos_order[:,1])))}
+
         # Save order of positions
         idxs = np.zeros(np.shape(pos_list), dtype=int)
         u, u_idxs = np.unique(pos_order, axis=0, return_index=True)
         for i, pos in enumerate(u[np.argsort(u_idxs)]):
-            idxs[pos[0], pos[1]] = i
+            idxs[row_dict[pos[0]], col_dict[pos[1]]] = i
 
         return rows, cols, channels, overlap, idxs
 

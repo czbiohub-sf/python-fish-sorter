@@ -2,13 +2,17 @@ import napari
 import numpy as np
 import os
 import argparse
+import types
 
 from pathlib import Path
-from gui.pipette_gui import PipetteWidget
+from typing import overload
+
+from pymmcore_widgets import StageWidget
+from pymmcore_widgets.hcs._plate_calibration_widget import PlateCalibrationWidget
 
 from gui.pipette_gui import PipetteWidget
 # TODO delete this
-from helpers.mosaic import MosaicHandler
+from helpers.mosaic import Mosaic
 from gui.tester_gui import TesterWidget
 
 # For simulation
@@ -28,6 +32,8 @@ class nmm:
         dw, self.main_window = self.v.window.add_plugin_dock_widget("napari-micromanager")
         
         self.core = self.main_window._mmc
+        # Overwrite default function so that image is mirrored
+        self.core.getImage = types.MethodType(self.getImageMirrored, self.core)
 
         if sim:
             if FakeDemoCamera is not None:
@@ -45,10 +51,26 @@ class nmm:
             self.core.loadSystemConfiguration(str(cfg_path))
 
         # Load and push sequence
-        self.mosaic = MosaicHandler(self.v)
+        self.mosaic = Mosaic(self.v)
         self.assign_widgets(self.mosaic.get_sequence())
 
         napari.run()
+
+    # Overload copied from super class (pymmcore_plus/core/_mmcore_plus.py)
+    @overload
+    def getImageMirrored(self, *, fix: bool = True) -> np.ndarray:  # noqa: D418
+        """Return the internal image buffer."""
+
+    # Overload copied from super class (pymmcore_plus/core/_mmcore_plus.py)
+    @overload
+    def getImageMirrored(self, numChannel: int, *, fix: bool = True) -> np.ndarray:  # noqa
+        """Return the internal image buffer for a given Camera Channel."""
+
+    def getImageMirrored(
+        self, numChannel: int | None = None, *, fix: bool = True
+    ) -> np.ndarray:
+        # Mirror image
+        return np.flip(self.core.getImage(numChannel), axis=1)
 
     def assign_widgets(self, sequence):
         # MDA
@@ -68,6 +90,15 @@ class nmm:
         # Pipette
         self.pipette = PipetteWidget()
         self.v.window.add_dock_widget(self.pipette, name='pipette')
+
+        # Plate calibration
+        self.pc = PlateCalibrationWidget(mmcore=mmc)
+        self.pc.setPlate("6-well")
+        self.v.window.add_dock_widget(self.pc, name='plates')
+
+        # Stage
+        self.s = StageWidget("XY")
+        self.v.window.add_dock_widget(self.s, name='stage')
 
     def run(self):
         sequence = self.mda.value()

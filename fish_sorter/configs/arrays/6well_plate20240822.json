@@ -1,0 +1,52 @@
+{
+    "array_design": {
+        "rows": 2,
+        "columns": 3,
+        "row_spacing": 3.0,
+        "column_spacing": 5.0,
+        "slot_length": 35.0,
+        "slot_width": 35.0,
+        "well_shape": "well_plate"
+    },
+    "wells": {
+        "total_wells": 6,
+        "well_names": [
+            "A01",
+            "A02",
+            "A03",
+            "B01",
+            "B02",
+            "B03"
+        ],
+        "well_coordinates": [
+            [
+                [
+                    0.0,
+                    0.0
+                ],
+                [
+                    40.0,
+                    0.0
+                ],
+                [
+                    80.0,
+                    0.0
+                ]
+            ],
+            [
+                [
+                    0.0,
+                    38.0
+                ],
+                [
+                    40.0,
+                    38.0
+                ],
+                [
+                    80.0,
+                    38.0
+                ]
+            ]
+        ]
+    }
+}
