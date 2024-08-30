@@ -76,22 +76,26 @@ class MosaicHandler:
         overlap = sequence.grid_plan.overlap
 
         # Get position at each id
-        pos_order = np.zeros((rows * cols * channels, 2), dtype=int)
+        pos_list = [[event.x_pos, event.y_pos] for event in list(sequence)]
 
-        # Snippet below copied from useq._iter_sequence.py
-        order = _used_axes(sequence)
-        # this needs to be tuple(...) to work for mypyc
-        axis_iterators = tuple(enumerate(_iter_axis(sequence, ax)) for ax in order)
-        for i, item in enumerate(product(*axis_iterators)):
-            if not item:  # the case with no events
-                continue  # pragma: no cover
-            # get axes objects for this event
-            index, time, position, grid, channel, z_pos = _parse_axes(zip(order, item))
+        # # Snippet below copied from useq._iter_sequence.py
+        # order = _used_axes(sequence)
+        # # this needs to be tuple(...) to work for mypyc
+        # axis_iterators = tuple(enumerate(_iter_axis(sequence, ax)) for ax in order)
+        # for i, item in enumerate(product(*axis_iterators)):
+        #     if not item:  # the case with no events
+        #         continue  # pragma: no cover
+        #     # get axes objects for this event
+        #     index, time, position, grid, channel, z_pos = _parse_axes(zip(order, item))
 
-            pos_order[i] = [grid.row, grid.col]
+
+        #     print(grid)
+        #     print(index)
+        #     print(position)
+        #     pos_order[i] = [grid.row, grid.col]
 
         # Save order of positions
-        idxs = np.zeros((rows, cols), dtype=int)
+        idxs = np.zeros(np.shape(pos_list), dtype=int)
         u, u_idxs = np.unique(pos_order, axis=0, return_index=True)
         for i, pos in enumerate(u[np.argsort(u_idxs)]):
             idxs[pos[0], pos[1]] = i
