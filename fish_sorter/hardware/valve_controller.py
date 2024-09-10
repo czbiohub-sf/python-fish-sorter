@@ -13,6 +13,7 @@ The corresponding server must be started before e.g. as:
 # --------------------------------------------------------------------------- #
 # import the various client implementations
 # --------------------------------------------------------------------------- #
+import argparse
 import pymodbus.client as ModbusClient
 from pymodbus import (
     ExceptionResponse,
@@ -24,43 +25,40 @@ from pymodbus import (
 import math
 import numpy as np
 
-ADDRESS_OFFSET = 2
-TOTAL_VALVES = 3
-TOTAL_BYTES = math.ceil(TOTAL_VALVES / 8)
-TOTAL_WORDS = math.ceil(TOTAL_BYTES / 2)
-# WORD_PAD = TOTAL_WORDS * 16 - TOTAL_VALVES - 1
+ADDRESS_OFFSET = 4
+COMM = "tcp"
+HOST = "192.168.1.10"
+PORT = 502
 
-# TODO load in valve polarities
-
-def run_sync_simple_client(comm, host, port, framer=Framer.SOCKET):
+def run_sync_simple_client(func_code, framer=Framer.SOCKET):
     """Run sync client."""
     # activate debugging
     pymodbus_apply_logging_config("DEBUG")
 
     print("get client")
-    if comm == "tcp":
+    if COMM == "tcp":
         client = ModbusClient.ModbusTcpClient(
-            host,
-            port=port,
+            HOST,
+            port=PORT,
             framer=framer,
             # timeout=10,
             # retries=3,
             # retry_on_empty=False,
             # source_address=("localhost", 0),
         )
-    elif comm == "udp":
+    elif COMM == "udp":
         client = ModbusClient.ModbusUdpClient(
-            host,
-            port=port,
+            HOST,
+            port=PORT,
             framer=framer,
             # timeout=10,
             # retries=3,
             # retry_on_empty=False,
             # source_address=None,
         )
-    elif comm == "serial":
+    elif COMM == "serial":
         client = ModbusClient.ModbusSerialClient(
-            port,
+            PORT,
             framer=framer,
             # timeout=10,
             # retries=3,
@@ -72,7 +70,7 @@ def run_sync_simple_client(comm, host, port, framer=Framer.SOCKET):
             # handle_local_echo=False,
         )
     else:
-        print(f"Unknown client {comm} selected")
+        print(f"Unknown client {COMM} selected")
         return
 
     print("connect to server")
@@ -80,17 +78,11 @@ def run_sync_simple_client(comm, host, port, framer=Framer.SOCKET):
 
     print("get and verify data")
 
-    client.write_coil(0, 1)
-    # rr = client.read_coils(1, 1)
-    # print(rr.bits)
     try:
-        # rr = client.read_coils(512, TOTAL_WORDS, slave=1)
-        # rr = client.read_holding_registers(512, 1, unit=1)
-        rr = client.read_holding_registers(512, 1)
+        rr = client.read_holding_registers(12288 + ADDRESS_OFFSET, func_code)
+        print(rr)
+        print(f'{rr.registers[0]:016b}')
 
-
-        # If this gives 0, read registers instead
-        # https://github.com/czbiohub-sf/Matlab-Wago/blob/14975edaec94fdf86dc066dd9ffa62f389cca297/wagoNModbus.m#L234-L236
     except ModbusException as exc:
         print(f"Received ModbusException({exc}) from library")
         client.close()
@@ -105,19 +97,38 @@ def run_sync_simple_client(comm, host, port, framer=Framer.SOCKET):
         client.close()
         return
     
-    # words = np.zeros((1, TOTAL_WORDS)).astype(int)
-    # for i in range(0, TOTAL_WORDS):
-    #     print(client.read_coils(512+TOTAL_WORDS-i, 1, slave=1))
+    try:
+        wr = client.write_registers(12288 + ADDRESS_OFFSET, func_code)
+        print(wr)
+        rr = client.read_holding_registers(12288 + ADDRESS_OFFSET, func_code)
+        print(rr)
+        print(f'{rr.registers[0]:016b}')
 
-
-    print(rr)
-    # print(bin(rr.registers[0]).zfill(16))
-    print(f'{rr.registers[0]:016b}')
-    # print(f"TOTAL WORDS {TOTAL_WORDS}")  
+    except ModbusException as exc:
+        print(f"Received ModbusException({exc}) from library")
+        client.close()
+        return
+    if rr.isError():
+        print(f"Received Modbus library error({rr})")
+        client.close()
+        return
+    if isinstance(rr, ExceptionResponse):
+        print(f"Received Modbus library exception ({rr})")
+        # THIS IS NOT A PYTHON EXCEPTION, but a valid modbus message
+        client.close()
+        return
 
     print("close connection")
     client.close()
 
 
 if __name__ == "__main__":
-    run_sync_simple_client("tcp", "192.168.1.10", "502")
+    parser = argparse.ArgumentParser("Test a Function Code. You must specify the Function Code Value")
+    parser.add_argument(
+        "func_code",
+        type = int,
+        help ="Function Code: 8, 9, 16, 17"
+    )
+    args = parser.parse_args()
+    func_code = args.func_code
+    run_sync_simple_client(func_code)
