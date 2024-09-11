@@ -1,0 +1,24 @@
+{
+    "pneumatic_config": {
+        "connect": {
+            "comm": "tcp",
+            "host": "192.168.1.10",
+            "port": 502,
+            "description": "Connection configuration"
+        },
+        "register": {
+            "start_address": 12288,
+            "address_offset": 4,
+            "description": "Non-volatile memory registers"
+        },
+        "function_codes": {
+            "draw": 2,
+            "expel": 4,
+            "press_off": 8,
+            "press_on": 9,
+            "vac_off": 16,
+            "vac_on": 17,
+            "description": "Function codes for Wago valve controller states"
+        }
+    }
+}
