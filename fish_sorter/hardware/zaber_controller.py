@@ -1,6 +1,5 @@
 import json
 import logging
-from time import sleep
 from typing import Optional, Tuple
 from zaber_motion import Library, Units
 from zaber_motion.binary import Connection, Device, CommandCode
