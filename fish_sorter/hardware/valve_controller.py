@@ -3,11 +3,10 @@ import logging
 import pymodbus.client as ModbusClient
 from pymodbus import (
     ExceptionResponse,
-    Framer,
+    FramerType,
     ModbusException,
     pymodbus_apply_logging_config,
 )
-from time import sleep
 
 class ValveController():
     """Communicate with Wago valve controller to actuate the pressure and vacuum valves
@@ -68,11 +67,14 @@ class ValveController():
         self.valve.close()
         logging.info('Closed valve controller connection')
 
-    def read_register(self, func_code: int):
+    def read_register(self, add_offset: int, value: int):
         """Reads the state of register specified by the function code
 
-        :param func_code: state controller function code
-        :type func_code: int
+        :add_offset: register address offset from the start_address
+        :type add_offset: int
+
+        :param value: state controller function code or setting
+        :type value: int
 
         :raises ModbusException: Logs critical if the connection fails
         :raise ValueError: Logs critical if the response contains an error in the Modbus library 
@@ -80,7 +82,7 @@ class ValveController():
         """
 
         try:
-            rr = self.valve.read_holding_registers(self.config['register']['start_address'] + self.config['register']['address_offset'], func_code)
+            rr = self.valve.read_holding_registers(self.config['register']['start_address'] + add_offset, value)
             logging.info(f'Reading register {rr}')
             logging.info(f'Register state: {rr.registers[0]:016b}')
 
@@ -95,11 +97,14 @@ class ValveController():
             logging.critical(f"Received Modbus library exception ({rr})")
             raise ExceptionResponse
     
-    def write_register(self, func_code: int):
+    def write_register(self, add_offset: int, value: int):
         """Writes to the register specified by the function code
 
-        :param func_code: state controller function code
-        :type func_code: int
+        :add_offset: register address offset from the start_address
+        :type add_offset: int
+
+        :param value: state controller function code or setting
+        :type value: int
 
         :raises ModbusException: Logs critical if the connection fails
         :raise ValueError: Logs critical if the response contains an error in the Modbus library 
@@ -107,7 +112,7 @@ class ValveController():
         """
 
         try:
-            wr = self.valve.write_registers(self.config['register']['start_address'] + self.config['register']['address_offset'], func_code)
+            wr = self.valve.write_registers(self.config['register']['start_address'] + add_offset, value)
             logging.info(f'Writing register {wr}')
 
         except ModbusException as exc:
@@ -120,5 +125,3 @@ class ValveController():
             # THIS IS NOT A PYTHON EXCEPTION, but a valid modbus message
             logging.critical(f"Received Modbus library exception ({wr})")
             raise ExceptionResponse
-        
-        read_register(func_code)

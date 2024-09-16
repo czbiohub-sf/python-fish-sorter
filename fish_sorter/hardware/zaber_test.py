@@ -6,7 +6,6 @@ from typing import List, Optional
 
 from zaber_controller import ZaberController
 
-
 def main() -> bool:
     """
     Test zaber stage function
@@ -25,6 +24,14 @@ def main() -> bool:
                 p = load(f)
         zaber_config = p['zaber_config']
         zc = ZaberController(zaber_config, env='prod')
+
+        pick_cfg_dir = Path().absolute().parent / "configs/"
+        pick_cfg_file = "picker_defaults_config.json"
+        pick_cfg_path = pick_cfg_dir / pick_cfg_file
+        with open(pick_cfg_path, 'r') as f:
+            p = load(f)
+            pick_config = p['defaults']
+
         proceed = True
     except Exception as e:
         print("Could not initialize and connect hardware controller")
@@ -43,25 +50,25 @@ def main() -> bool:
 
         print('Move pipette to set locations')
         print('Swing height')
-        zc.move_arm('p', zaber_config['pipette']['swing']['p'])
+        zc.move_arm('p', zaber_config['pipette_swing']['p'])
         sleep(2)
         zc.move_arm('p', zaber_config['home']['p'])
         sleep(2)
         
         print('Pick height')
-        zc.move_arm('p', zaber_config['pipette']['pick']['p'])
+        zc.move_arm('p', pick_config['pipette']['stage']['pick']['p'])
         sleep(2)
         zc.move_arm('p', zaber_config['home']['p'])
         sleep(2)
 
         print('Clearance height')
-        zc.move_arm('p', zaber_config['pipette']['clearance']['p'])
+        zc.move_arm('p', pick_config['pipette']['stage']['clearance']['p'])
         sleep(2)
         zc.move_arm('p', zaber_config['home']['p'])
         sleep(2)
 
         print('Dispense height')
-        zc.move_arm('p', zaber_config['pipette']['dispense']['p'])
+        zc.move_arm('p', pick_config['pipette']['stage']['dispense']['p'])
         sleep(2)
         zc.move_arm('p', zaber_config['home']['p'])
         sleep(2)

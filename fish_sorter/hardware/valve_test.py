@@ -17,20 +17,17 @@ import argparse
 import pymodbus.client as ModbusClient
 from pymodbus import (
     ExceptionResponse,
-    Framer,
+    FramerType,
     ModbusException,
     pymodbus_apply_logging_config,
 )
-
-import math
-import numpy as np
 
 ADDRESS_OFFSET = 4
 COMM = "tcp"
 HOST = "192.168.1.10"
 PORT = 502
 
-def run_sync_simple_client(func_code, framer=Framer.SOCKET):
+def run_sync_simple_client(func_code, framer=FramerType.SOCKET):
     """Run sync client."""
     # activate debugging
     pymodbus_apply_logging_config("DEBUG")

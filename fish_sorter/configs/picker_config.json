@@ -1,0 +1,23 @@
+{
+    "pipette": {
+        "time": {
+            "draw": 25,
+            "expel": 125,
+            "description": "Time in ms to aspirate or dispense / keep vacuum or pressure open"
+        },
+        "stage": {
+            "pick": {
+                "p": 60,
+                "description": "The pipette height to pick"
+            },    
+            "clearance": {
+                "p": 25,
+                "description": "The pipette height to clear the destination plate"
+            },
+            "dispense": {
+                "p": 30,
+                "description": "The pipette height to dispense"
+            }
+        }
+    }
+}

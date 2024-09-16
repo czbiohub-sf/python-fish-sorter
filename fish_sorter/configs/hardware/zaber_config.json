@@ -19,23 +19,9 @@
             "p": 65364,
             "description": "The speed of the stages for all general movements in command data units"
         },
-        "pipette": {
-                "swing": {
-                    "p": 37.5,
-                    "description": "The height to move pipette in order to rotate it in/out from the microscope"
-                },
-                "pick": {
-                    "p": 60,
-                    "description": "The pipette height to pick"
-                },    
-                "clearance": {
-                    "p": 25,
-                    "description": "The pipette height to clear the destination plate"
-                },
-                "dispense": {
-                    "p": 30,
-                    "description": "The pipette height to dispense"
-                }
-            }
+        "pipette_swing": {
+            "p": 37.5,
+            "description": "The height to move pipette in order to rotate it in/out from the microscope"
+        }
     }
 }
