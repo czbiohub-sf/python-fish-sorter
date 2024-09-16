@@ -1,0 +1,113 @@
+import napari
+import numpy as np
+import os
+import argparse
+import types
+
+from pathlib import Path
+from typing import overload
+
+from gui.pipette_gui import PipetteWidget
+# TODO delete this
+from helpers.mosaic import Mosaic
+from gui.tester_gui import TesterWidget
+
+# For simulation
+try:
+    from mda_simulator.mmcore import FakeDemoCamera
+except ModuleNotFoundError:
+    FakeDemoCamera = None
+
+os.environ['MICROMANAGER_PATH'] = "C:/Program Files/Micro-Manager-2.0-20240130"
+micromanager_path = os.environ.get('MICROMANAGER_PATH')
+
+
+class nmm:
+    def __init__(self, sim=False):
+
+        self.v = napari.Viewer()
+        dw, self.main_window = self.v.window.add_plugin_dock_widget("napari-micromanager")
+        
+        self.core = self.main_window._mmc
+        # Overwrite default function so that image is mirrored
+        self.core.getImage = types.MethodType(self.getImageMirrored, self.core)
+
+        if sim:
+            if FakeDemoCamera is not None:
+                # override snap to look at more realistic images from a microscoppe
+                # with underlying random walk simulation of spheres
+                # These act as though "Cy5" is BF and other channels are fluorescent
+                fake_cam = FakeDemoCamera(timing=2)
+                # make sure we start in a valid channel group
+                self.core.setConfig("Channel", "Cy5")
+        else:
+            cfg_dir = Path().absolute().parent / "fish_sorter/configs/micromanager"
+            cfg_file = "20240718 - LeicaDMI - AndorZyla.cfg"
+            cfg_path = cfg_dir / cfg_file
+            print(cfg_path)
+            self.core.loadSystemConfiguration(str(cfg_path))
+
+        # Load and push sequence
+        self.mosaic = Mosaic(self.v)
+        self.assign_widgets(self.mosaic.get_sequence())
+
+        napari.run()
+
+    # Overload copied from super class (pymmcore_plus/core/_mmcore_plus.py)
+    @overload
+    def getImageMirrored(self, *, fix: bool = True) -> np.ndarray:  # noqa: D418
+        """Return the internal image buffer."""
+
+    # Overload copied from super class (pymmcore_plus/core/_mmcore_plus.py)
+    @overload
+    def getImageMirrored(self, numChannel: int, *, fix: bool = True) -> np.ndarray:  # noqa
+        """Return the internal image buffer for a given Camera Channel."""
+
+    def getImageMirrored(
+        self, numChannel: int | None = None, *, fix: bool = True
+    ) -> np.ndarray:
+        # Mirror image
+        return np.flip(self.core.getImage(numChannel), axis=1)
+
+    def assign_widgets(self, sequence):
+        # MDA
+        self.main_window._show_dock_widget("MDA")
+        self.mda = self.v.window._dock_widgets.get("MDA").widget()
+        self.mda.setValue(sequence)
+        self.v.window._qt_viewer.console.push(
+            {"main_window": self.main_window, "mmc": self.core, "sequence": sequence, "np": np}
+        )
+
+        # Tester
+        # TODO delete
+        self.tester = TesterWidget(sequence)
+        self.v.window.add_dock_widget(self.tester, name='tester')
+        self.tester.btn.clicked.connect(self.run)
+
+        # Pipette
+        self.pipette = PipetteWidget()
+        self.v.window.add_dock_widget(self.pipette, name='pipette')
+
+        # Plate calibration
+        self.pc = PlateCalibrationWidget(mmcore=mmc)
+        self.pc.setPlate("6-well")
+        self.v.window.add_dock_widget(self.pc, name='plates')
+
+        # Stage
+        self.s = StageWidget("XY")
+        self.v.window.add_dock_widget(self.s, name='stage')
+
+    def run(self):
+        sequence = self.mda.value()
+        img_arr = self.main_window._core_link._mda_handler._tmp_arrays
+        self.mosaic.stitch_mosaic(sequence, img_arr)
+        # self.mosaic.get_mosaic_metadata(sequence)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        prog="FishSorter"
+    )
+    parser.add_argument('-s', '--sim', action='store_true')
+    args = parser.parse_args()
+
+    nmm(sim=args.sim)
