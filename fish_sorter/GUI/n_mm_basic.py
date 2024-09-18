@@ -1,16 +1,15 @@
 import napari
+import napari_micromanager
 import numpy as np
 import os
+import pymmcore_plus
 import argparse
 import types
 
 from pathlib import Path
-from typing import overload
+from useq import MDASequence, position
 
 from gui.pipette_gui import PipetteWidget
-# TODO delete this
-from helpers.mosaic import Mosaic
-from gui.tester_gui import TesterWidget
 
 # For simulation
 try:
@@ -29,8 +28,6 @@ class nmm:
         dw, self.main_window = self.v.window.add_plugin_dock_widget("napari-micromanager")
         
         self.core = self.main_window._mmc
-        # Overwrite default function so that image is mirrored
-        self.core.getImage = types.MethodType(self.getImageMirrored, self.core)
 
         if sim:
             if FakeDemoCamera is not None:
@@ -47,61 +44,48 @@ class nmm:
             print(cfg_path)
             self.core.loadSystemConfiguration(str(cfg_path))
 
+        self.sequence = _get_seq()
+
         # Load and push sequence
-        self.mosaic = Mosaic(self.v)
-        self.assign_widgets(self.mosaic.get_sequence())
+        self.assign_widgets()
 
         napari.run()
 
-    # Overload copied from super class (pymmcore_plus/core/_mmcore_plus.py)
-    @overload
-    def getImageMirrored(self, *, fix: bool = True) -> np.ndarray:  # noqa: D418
-        """Return the internal image buffer."""
+    def _get_seq(self):
 
-    # Overload copied from super class (pymmcore_plus/core/_mmcore_plus.py)
-    @overload
-    def getImageMirrored(self, numChannel: int, *, fix: bool = True) -> np.ndarray:  # noqa
-        """Return the internal image buffer for a given Camera Channel."""
+        sequence = MDASequence(
+        channels = [
+            {"config": "GFP","exposure": 100}, 
+            {"config": "TXR", "exposure": 100}
+        ],
+        stage_positions = [
+            {"x": 110495.44, "y": 10863.76, "z": 2779.09, "name": "top_R"},
+            {"x": 17883.77, "y" : 10166.54, "z": 2779.09, "name": "top_L"},
+            {"x": 110495.44, "y": 73208.59, "z": 2776.70, "name": "bot_R"},
+            {"x": 17492.82, "y": 73208.58, "z": 2776.70, "name": "bot_L"},
+            Position(
+                x=17883.77, y=10166.54, z=2779.09, name= "array", 
+                sequence=MDASequence(
+                    grid_plan={"rows": 13, "columns": 18, "relative_to": "top_left", "overlap": 5, "mode": "row_wise_snake"})
+            ),
+        ],
+        axis_order = "pc",
+        )
 
-    def getImageMirrored(
-        self, numChannel: int | None = None, *, fix: bool = True
-    ) -> np.ndarray:
-        # Mirror image
-        return np.flip(self.core.getImage(numChannel), axis=1)
+        return sequence
 
-    def assign_widgets(self, sequence):
+    def assign_widgets(self):
         # MDA
         self.main_window._show_dock_widget("MDA")
         self.mda = self.v.window._dock_widgets.get("MDA").widget()
-        self.mda.setValue(sequence)
+        self.mda.setValue(self.sequence)
         self.v.window._qt_viewer.console.push(
-            {"main_window": self.main_window, "mmc": self.core, "sequence": sequence, "np": np}
+            {"main_window": self.main_window, "mmc": self.core, "sequence": self.sequence, "np": np}
         )
-
-        # Tester
-        # TODO delete
-        self.tester = TesterWidget(sequence)
-        self.v.window.add_dock_widget(self.tester, name='tester')
-        self.tester.btn.clicked.connect(self.run)
 
         # Pipette
         self.pipette = PipetteWidget()
         self.v.window.add_dock_widget(self.pipette, name='pipette')
-
-        # Plate calibration
-        self.pc = PlateCalibrationWidget(mmcore=mmc)
-        self.pc.setPlate("6-well")
-        self.v.window.add_dock_widget(self.pc, name='plates')
-
-        # Stage
-        self.s = StageWidget("XY")
-        self.v.window.add_dock_widget(self.s, name='stage')
-
-    def run(self):
-        sequence = self.mda.value()
-        img_arr = self.main_window._core_link._mda_handler._tmp_arrays
-        self.mosaic.stitch_mosaic(sequence, img_arr)
-        # self.mosaic.get_mosaic_metadata(sequence)
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

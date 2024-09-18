@@ -18,10 +18,6 @@
             "y": 1816431,
             "p": 65364,
             "description": "The speed of the stages for all general movements in command data units"
-        },
-        "pipette_swing": {
-            "p": 37.5,
-            "description": "The height to move pipette in order to rotate it in/out from the microscope"
         }
     }
 }

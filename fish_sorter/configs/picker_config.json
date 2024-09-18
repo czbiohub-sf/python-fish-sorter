@@ -17,6 +17,10 @@
             "dispense": {
                 "p": 30,
                 "description": "The pipette height to dispense"
+            },
+            "pipette_swing": {
+                "p": 37.5,
+                "description": "The height to move pipette in order to rotate it in/out from the microscope"
             }
         }
     }
