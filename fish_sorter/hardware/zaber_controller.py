@@ -22,10 +22,11 @@ class ZaberController():
         :param env: The environment to run the Zaber Controller.
         :type env: string, either 'prod' or 'dev'
         """
-
+        print('enter init')
         self.zaber = None
         self.stage_alias = {}
         self.config = config
+        print(self.config)
         self.env = env
         self._connect()
 
@@ -35,6 +36,7 @@ class ZaberController():
         :raises ConnectionFailedException: Logs critical if the connection fails
         """
 
+        print('trying to connect zaber')
         try:
             if self.env == 'prod':
                 logging.info('Establishing connection with Zaber devices')
@@ -74,6 +76,7 @@ class ZaberController():
         logging.info('Stage list {} '.format(self.stages))
         for stage in self.stages:
             name = stage.name
+            logging.info(stage.name)
             if name == 'T-LSQ150D':
                 self.stage_alias[stage] = 'x'
                 stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['x'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)
@@ -83,7 +86,7 @@ class ZaberController():
             elif name == 'T-LSQ075B':
                 self.stage_alias[stage] = 'p'
                 stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['p'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)       
-
+        logging.info('Done setting axis')
 
     def home_arm(self, arm: Optional[list]=None):
         """Home either all or a subset of the devices
@@ -97,7 +100,7 @@ class ZaberController():
         :type arm: list of str, optional
         :raises: Any Zaber exception requires restart and reinitialization of Zaber connection
         """
-        
+        logging.info('enter home arm')
         home = ['p','x','y'] if arm == None else arm
         for h in home:
             try:
@@ -118,15 +121,17 @@ class ZaberController():
         :raises MovementFailedException: Logs if the desired position is not reached
         :raises ConnectionFailedException: Logs if the zaber connection fails
         """
-
+        logging.info('enter move_arm')
         for key, value in self.stage_alias.items():
             if value == arm:
                 device_arm = key
+                logging.info(device_arm)
         
         
         try:
             if dist is None:
                 device_arm.home()
+                logging.info('homing')
             elif is_relative:
                 device_arm.move_relative(dist, Units.LENGTH_MILLIMETRES, timeout = 60)
             else:

@@ -1,2 +1,6 @@
 .DS_Store
 __pycache__
+build/
+
+fish_sorter.egg_info/
+fish_sorter.egg_info/*

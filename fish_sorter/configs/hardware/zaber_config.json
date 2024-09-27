@@ -16,7 +16,7 @@
         "max_speed": {
             "x": 65471,
             "y": 1816431,
-            "p": 65364,
+            "p": 32000,
             "description": "The speed of the stages for all general movements in command data units"
         }
     }

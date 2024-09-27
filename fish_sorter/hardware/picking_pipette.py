@@ -101,7 +101,7 @@ class PickingPipette():
         logging.info(f'Setting to Atmospheric Idle with function code {func_code}')
         self._valve_cmd(address_offset, func_code)
 
-    def pressure(self, state=False: bool):
+    def pressure(self, state: bool=False):
         """Toggles the pressure valve according to state
 
         :param state: On/Off state of pressure valve
@@ -119,7 +119,7 @@ class PickingPipette():
         
         self._valve_cmd(address_offset, func_code)
 
-    def vacuum(self, state=False: bool):
+    def vacuum(self, state: bool=False):
         """Toggles the vacuum valve according to state
 
         :param state: On/Off state of vacuum valve
@@ -176,7 +176,7 @@ class PickingPipette():
             if self.vc.read_register(address_offset, 1) == 0:
                 break
 
-    def _valve_cmd(self, address_offset:int, value:int, time=0: int):
+    def _valve_cmd(self, address_offset: int, value: int, time: int=0):
         """Sends write command to valve controller and reads state after call
 
         :address_offset: register address offset from the start_address

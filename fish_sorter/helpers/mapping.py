@@ -21,10 +21,9 @@ from constants import IMG_X_PX, IMG_Y_PX
 # TODO standardize coordinate format
 
 class Mapping:
-    def __init__(self, zaber, mda, mmc):
+    def __init__(self, mda, mmc):
         self.mda = mda
         self.mmc = mmc
-        self.zaber = zaber
         self.um_home = np.array([0.0, 0.0])
         self.um_calib = np.array([100.0, 0.0])
         self.transform = [[1, 0], [0, 1]]
@@ -32,14 +31,7 @@ class Mapping:
 
         # TODO save home location in experiment savefile
 
-    def set_home(self):
-        # User needs to navigate to home location (TL corner) before pressing "calibrate"
-        # TODO: Add user prompt
-
-        # self.zaber.home_arm(['x','y'])
-        self.um_home = np.array([self.zaber.get_pos('x'), self.zaber.get_pos('y')])
-
-    def get_home_pos(self):
+    def _get_home_pos(self):
         seq = self.mda.value()
 
         for pos in seq.stage_positions:
@@ -48,7 +40,7 @@ class Mapping:
 
         return np.array([0.0, 0.0])
 
-    def get_calib_pos(self):
+    def _get_calib_pos(self):
         seq = self.mda.value()
 
         for pos in seq.stage_positions:
@@ -58,7 +50,7 @@ class Mapping:
         # TODO replace this with a constant to match initialized stage_positions
         return np.array([100.0, 0.0])
 
-    def get_center_to_corner_offset_um_um(self, px2um):
+    def _get_center_to_corner_offset_um_um(self, px2um):
         return np.array(
             [
                 IMG_X_PX * px2um / 2,

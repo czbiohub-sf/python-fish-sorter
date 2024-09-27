@@ -17,7 +17,12 @@ class TesterWidget(QWidget):
         super().__init__(parent=parent)
         CMMCorePlus.instance()
 
-        self.btn = QPushButton("Test")
+        self.btn = QPushButton("Stitch mosaic")
+        self.calibrate = QPushButton("Calibrate")
+        self.pos = QPushButton("Position")
+
 
         layout = QGridLayout(self)
         layout.addWidget(self.btn, 1, 0)
+        layout.addWidget(self.calibrate, 2, 0)
+        layout.addWidget(self.pos, 3, 0)

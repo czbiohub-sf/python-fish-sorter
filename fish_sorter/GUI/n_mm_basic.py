@@ -1,4 +1,4 @@
-import napari
+  import napari
 import napari_micromanager
 import numpy as np
 import os
@@ -7,9 +7,9 @@ import argparse
 import types
 
 from pathlib import Path
-from useq import MDASequence, position
+from useq import MDASequence, Position
 
-from gui.pipette_gui import PipetteWidget
+from pipette_gui import PipetteWidget
 
 # For simulation
 try:
@@ -26,7 +26,7 @@ class nmm:
 
         self.v = napari.Viewer()
         dw, self.main_window = self.v.window.add_plugin_dock_widget("napari-micromanager")
-        
+        print('created napari window')
         self.core = self.main_window._mmc
 
         if sim:
@@ -44,7 +44,8 @@ class nmm:
             print(cfg_path)
             self.core.loadSystemConfiguration(str(cfg_path))
 
-        self.sequence = _get_seq()
+        self.sequence = self._get_seq()
+        print(self.sequence)
 
         # Load and push sequence
         self.assign_widgets()
@@ -76,6 +77,7 @@ class nmm:
 
     def assign_widgets(self):
         # MDA
+        print('in assign_widgets')
         self.main_window._show_dock_widget("MDA")
         self.mda = self.v.window._dock_widgets.get("MDA").widget()
         self.mda.setValue(self.sequence)

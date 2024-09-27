@@ -9,7 +9,7 @@ from qtpy.QtCore import QSize, Qt
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QPushButton, QSizePolicy, QWidget, QGridLayout
 
-from hardware.zaber_controller import ZaberController
+from fish_sorter.hardware.zaber_controller import ZaberController
 
 COLOR_TYPES = Union[
     QColor,
@@ -19,6 +19,8 @@ COLOR_TYPES = Union[
     "tuple[int, int, int, int]",
     "tuple[int, int, int]"
 ]
+
+# TODO Swap zaber config with picker_defaults_config for several parameters
 
 class PipetteWidget(QWidget):
 
@@ -70,6 +72,7 @@ class ZaberInitWidget(QPushButton):
             with open(cfg_path, 'r') as f:
                 p = load(f)
             zaber_config = p['zaber_config']
+            print(zaber_config)
             zc = ZaberController(zaber_config, env='prod')
         except Exception as e:
             print("Could not initialize and connect hardware controller")
