@@ -72,7 +72,6 @@ class ZaberInitWidget(QPushButton):
             with open(cfg_path, 'r') as f:
                 p = load(f)
             zaber_config = p['zaber_config']
-            print(zaber_config)
             zc = ZaberController(zaber_config, env='prod')
         except Exception as e:
             print("Could not initialize and connect hardware controller")
@@ -163,16 +162,22 @@ class ZaberTestWidget(QPushButton):
     def _zaber_test(self)->None:
 
         cfg_dir = Path().absolute().parent / "fish_sorter/configs/hardware"
-        cfg_file = "zaber_config.json"
-        cfg_path = cfg_dir / cfg_file
+        zaber_cfg_file = "zaber_config.json"
+        zaber_cfg_path = cfg_dir / zaber_cfg_file
+        picker_cfg_file = "picker_config.json"
+        picker_cfg_path = cfg_dir / picker_cfg_file
         # Initialize and connect to hardware controller
         try:
-            with open(cfg_path, 'r') as f:
-                p = load(f)
-            zaber_config = p['zaber_config']
+            with open(zaber_cfg_path, 'r') as f:
+                z = load(f)
+            zaber_config = z['zaber_config']
             zc = ZaberController(zaber_config, env='prod')
         except Exception as e:
             print("Could not initialize and connect hardware controller")
+
+        with open(picker_cfg_path, 'r') as f:
+            p = load(f)
+        picker_config = p['pipette']
     
         # Test moving the pipette, x, and y stages to max position
         stages = ['x', 'y', 'p']
@@ -186,25 +191,25 @@ class ZaberTestWidget(QPushButton):
         
         print('Move pipette to set locations')
         print('Swing height')
-        zc.move_arm('p', zaber_config['pipette']['swing']['p'])
+        zc.move_arm('p', picker_config['stage']['pipette_swing']['p'])
         sleep(2)
         zc.move_arm('p', zaber_config['home']['p'])
         sleep(2)
         
         print('Pick height')
-        zc.move_arm('p', zaber_config['pipette']['pick']['p'])
+        zc.move_arm('p', picker_config['stage']['pick']['p'])
         sleep(2)
         zc.move_arm('p', zaber_config['home']['p'])
         sleep(2)
 
         print('Clearance height')
-        zc.move_arm('p', zaber_config['pipette']['clearance']['p'])
+        zc.move_arm('p', picker_config['stage']['clearance']['p'])
         sleep(2)
         zc.move_arm('p', zaber_config['home']['p'])
         sleep(2)
 
         print('Dispense height')
-        zc.move_arm('p', zaber_config['pipette']['dispense']['p'])
+        zc.move_arm('p', picker_config['stage']['dispense']['p'])
         sleep(2)
         zc.move_arm('p', zaber_config['home']['p'])
         sleep(2)

@@ -22,11 +22,9 @@ class ZaberController():
         :param env: The environment to run the Zaber Controller.
         :type env: string, either 'prod' or 'dev'
         """
-        print('enter init')
         self.zaber = None
         self.stage_alias = {}
         self.config = config
-        print(self.config)
         self.env = env
         self._connect()
 
@@ -35,8 +33,7 @@ class ZaberController():
 
         :raises ConnectionFailedException: Logs critical if the connection fails
         """
-
-        print('trying to connect zaber')
+        
         try:
             if self.env == 'prod':
                 logging.info('Establishing connection with Zaber devices')
