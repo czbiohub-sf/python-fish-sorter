@@ -23,10 +23,6 @@ class PickingPipette():
         parent_dir = Path(parent_dir) / config / hardware
         self.hardware_data = {}
 
-         # TODO add in specific expt parameter configs that can be loaded
-         # draw and expel times, pick/disp/swing heights
-
-
         for filename in os.listdir(parent_dir):
             if filename.endswith('.json'):
                 file_path = os.path.join(parent_dir, filename)

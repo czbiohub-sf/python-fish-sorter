@@ -10,6 +10,7 @@ from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QPushButton, QSizePolicy, QWidget, QGridLayout
 
 from fish_sorter.hardware.zaber_controller import ZaberController
+from fish_sorter.hardware.picking_pipette import PickingPipette
 
 COLOR_TYPES = Union[
     QColor,
@@ -19,8 +20,6 @@ COLOR_TYPES = Union[
     "tuple[int, int, int, int]",
     "tuple[int, int, int]"
 ]
-
-# TODO Swap zaber config with picker_defaults_config for several parameters
 
 class PipetteWidget(QWidget):
 
@@ -32,12 +31,17 @@ class PipetteWidget(QWidget):
         xxx = ZaberInitWidget()
         xyz = ZaberHomeWidget()
         zzz = ZaberTestWidget()
+        ddd = PipetteDrawWidget()
+        vvv = PipetteExpelWidget()
+        ppp = PipettePressureWidget()
 
         layout = QGridLayout(self)
         layout.addWidget(xxx, 1, 0)
-        layout.addWidget(xyz, 2, 0)
-        layout.addWidget(zzz, 3, 0)
-
+        layout.addWidget(xyz, 1, 1)
+        layout.addWidget(zzz, 1, 2)
+        layout.addWidget(ddd, 2, 0)
+        layout.addWidget(vvv, 2, 1)
+        layout.addWidget(ppp, 2, 2)
 
 class ZaberInitWidget(QPushButton):
     """A push button widget to connect to the Zaber stage.
@@ -87,7 +91,6 @@ class ZaberInitWidget(QPushButton):
             sleep(2)
         
         zc.disconnect()
-
 
 class ZaberHomeWidget(QPushButton):
     """A push button widget to connect to the Zaber stage.
@@ -217,3 +220,111 @@ class ZaberTestWidget(QPushButton):
         print('Test complete')
 
         zc.disconnect()
+
+class PipetteDrawWidgetpette(QPushButton):
+    """A push button widget to connect to the valve controller to actuate the draw function
+
+    This is linked to the [hardware][picking_pipette] method
+    """
+    
+    def __init__(self, parent: QWidget | None=None):
+        
+        super().__init__(parent=parent)
+
+        self.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        )
+
+        self._mmc = CMMCorePlus.instance()
+        self._create_button()
+
+    def _create_button(self)->None:
+        
+        self.setText("Pipette Draw")
+        self.clicked.connect(self._draw)
+
+    def _draw(self)->None:
+        # Initialize and connect to hardware controller
+        cfg_dir = Path().absolute().parent
+        try:
+            pp = PickingPipette(cfg_dir)
+        except Exception as e:
+            print("Could not initialize and connect hardware controller")
+
+        print('Pipette is Drawing')
+        pp.connect(env='prod')
+        pp.draw()
+        print('Test complete')
+        pp.disconnect()
+
+class PipetteExpelWidgetpette(QPushButton):
+    """A push button widget to connect to the valve controller to actuate the expel function
+
+    This is linked to the [hardware][picking_pipette] method
+    """
+    
+    def __init__(self, parent: QWidget | None=None):
+        
+        super().__init__(parent=parent)
+
+        self.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        )
+
+        self._mmc = CMMCorePlus.instance()
+        self._create_button()
+
+    def _create_button(self)->None:
+        
+        self.setText("Pipette Expel")
+        self.clicked.connect(self._expel)
+
+    def _expel(self)->None:
+        # Initialize and connect to hardware controller
+        cfg_dir = Path().absolute().parent
+        try:
+            pp = PickingPipette(cfg_dir)
+        except Exception as e:
+            print("Could not initialize and connect hardware controller")
+
+        print('Pipette is Expelling')
+        pp.connect(env='prod')
+        pp.expel()
+        print('Test complete')
+        pp.disconnect()
+
+class PipettePressureWidgetpette(QPushButton):
+    """A push button widget to connect to the valve controller to toggle the pressure
+
+    This is linked to the [hardware][picking_pipette] method
+    """
+    
+    def __init__(self, parent: QWidget | None=None):
+        
+        super().__init__(parent=parent)
+
+        self.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        )
+
+        self._mmc = CMMCorePlus.instance()
+        self._create_button()
+
+    def _create_button(self)->None:
+        
+        self.setText("Toggle Pressure Valve")
+        self.clicked.connect(self._pressure)
+
+    def _pressure(self)->None:
+        # Initialize and connect to hardware controller
+        cfg_dir = Path().absolute().parent
+        try:
+            pp = PickingPipette(cfg_dir)
+        except Exception as e:
+            print("Could not initialize and connect hardware controller")
+
+        print('Toggle Pressure Valve')
+        pp.connect(env='prod')
+        pp.pressure()
+        print('Test complete')
+        pp.disconnect()
