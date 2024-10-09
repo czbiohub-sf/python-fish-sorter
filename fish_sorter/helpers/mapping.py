@@ -136,12 +136,12 @@ class Mapping:
             } for name, pos in zip(well_names, calib_well_positions)
         ]
 
-    def go_to_well(self, well: str):
+    def go_to_well(self, well: str, offset: Tuple[float, float]):
         if well not in self.wells:
             return
 
         _, _, z = self.get_home_pos()
-        xy = self.wells[well].abs_um
+        xy = self.wells[well].abs_um + offset
         self.mmc.run_mda(Position(x=xy[0], y=xy[1], z, name=well))
 
 # TODO make this work with dispense plate too

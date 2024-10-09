@@ -22,6 +22,7 @@ class ZaberController():
         :param env: The environment to run the Zaber Controller.
         :type env: string, either 'prod' or 'dev'
         """
+        
         self.zaber = None
         self.stage_alias = {}
         self.config = config
@@ -97,6 +98,7 @@ class ZaberController():
         :type arm: list of str, optional
         :raises: Any Zaber exception requires restart and reinitialization of Zaber connection
         """
+
         logging.info('enter home arm')
         home = ['p','x','y'] if arm == None else arm
         for h in home:
@@ -118,12 +120,12 @@ class ZaberController():
         :raises MovementFailedException: Logs if the desired position is not reached
         :raises ConnectionFailedException: Logs if the zaber connection fails
         """
+
         logging.info('enter move_arm')
         for key, value in self.stage_alias.items():
             if value == arm:
                 device_arm = key
                 logging.info(device_arm)
-        
         
         try:
             if dist is None:

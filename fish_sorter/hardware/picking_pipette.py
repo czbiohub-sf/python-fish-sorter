@@ -20,9 +20,9 @@ class PickingPipette():
         :raises FileNotFoundError: loggings critical if the hardware config file not found
         """
         
-        hardware_dir = parent_dir / 'fish_sorter/configs/hardware'
         self.hardware_data = {}
 
+        hardware_dir = parent_dir / 'fish_sorter/configs/hardware'
         for filename in os.listdir(hardware_dir):
             if filename.endswith('.json'):
                 file_path = os.path.join(hardware_dir, filename)
@@ -40,6 +40,8 @@ class PickingPipette():
 
         self.drw_t = self.hardware_data['picker_config']['pipette']['time']['draw']
         self.exp_t = self.hardware_data['picker_config']['pipette']['time']['expel']
+        self.pick_h = self.hardware_data['picker_config']['pipette']['stage']['pick']['p']
+        self.disp_h = self.hardware_data['picker_config']['pipette']['stage']['dispense']['p']
 
     def connect(self, env='prod'):
         """Connect to hardware
@@ -62,10 +64,14 @@ class PickingPipette():
         """Does all the connection shutdown 
         """
 
-        logging.info("Homing zaber arms and closing connection")
+        logging.info("Homing stage arms and turning off pressure and vacuum")
         self.zc.home_arm(['p','x','y'])
+        self.pressure()
+        self.vacuum()
         self.zc.disconnect()
+        logging.info('Closed stage connnection')
         self.vc.disconnect()
+        logging.info('Closed valve connection')
 
     def reset(self):
         """Reset hardware connection
@@ -182,7 +188,7 @@ class PickingPipette():
     def _valve_cmd(self, address_offset: int, value: int, time: int=0):
         """Sends write command to valve controller and reads state after call
 
-        :address_offset: register address offset from the start_address
+        :param address_offset: register address offset from the start_address
         :type address_offset: int
 
         :param value: state controller function code or setting
@@ -191,3 +197,58 @@ class PickingPipette():
 
         self.vc.write_register(address_offset, value)
         self._pipette_wait(address_offset, time)
+
+    def move_for_calib(self, pick: bool=True, well: Optional[List[float]]):
+        """Moves destination stage for pipette calibration
+
+        :param pick: pick or dispense location
+        :type pick: bool
+        :type well: well location
+        :type well: List[float]
+        """
+
+        if pick:
+            self.dest_home()
+        else:
+            self.zc.move_arm('p', self.hardware_data['picker_config']['pipette']['stage']['clearance']['p'])
+            self.move_to_dest(well)
+
+    def set_calib(self, pick: bool=True):
+        """Sets pipette calibration location
+        """
+        
+        if pos:
+            self.pick_h = self.zc.get_pos('p')
+            logging.info(f'Set pick height to: {self.pick_h}')
+        else:
+            self.disp_h = self.zc.get_pos('p')
+            logging.info(f'Set dispense height to: {self.pick_h}')
+
+    def move_to_dest(self, dest_loc):
+        """Moves the destination plate stages to the (x, y) location
+
+        :type dest_loc: (x,y) location
+        :type dest_loc: Tuple[float, float]
+        """
+
+        self.zc.move_arm('x', dest_loc[0])
+        self.zc.move_arm('y', dest_loc[1])
+        logging.info(f'Moved destination plate to (x, y): ({dest_loc[0]}, {dest[1]})')
+
+    def dest_home(self):
+        """Convenience function to move destination plate to home position
+        """
+
+        self.zc.move_arm('x', self.hardware_data['zaber_config']['home']['x'])
+        self.zc.move_arm('y', self.hardware_data['zaber_config']['home']['y'])
+        logging.info('Moved destination plate to home')
+
+    def move_pipette(self, pos: str):
+        """Moves pipette to swing, clearance, pick, or dispense
+
+        :param pos: location to move pipette arm
+        :type pos: str
+        """
+        
+        self.zc.move_arm('p', self.hardware_data['picker_config']['pipette']['stage'][pos]['p'])
+        logging.info(f'Moved pipette to: {pos}')

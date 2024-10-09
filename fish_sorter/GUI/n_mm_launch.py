@@ -12,7 +12,7 @@ from pymmcore_plus import DeviceType
 from pymmcore_widgets import StageWidget
 # from pymmcore_widgets.hcs._plate_calibration_widget import PlateCalibrationWidget
 
-from fish_sorter.gui.pipette_gui import PipetteWidget
+from fish_sorter.gui.picking_gui import Picking
 # TODO delete this
 from fish_sorter.helpers.mosaic import Mosaic
 from fish_sorter.gui.tester_gui import TesterWidget
@@ -95,9 +95,9 @@ class nmm:
         # self.tester.calibrate.clicked.connect(self.set_home)
         # self.tester.pos.clicked.connect()
 
-        # Pipette
-        self.pipette = PipetteWidget()
-        self.v.window.add_dock_widget(self.pipette, name='pipette')
+        # Picking
+        self.picking = Picking()
+        self.v.window.add_dock_widget(self.picking, name='Picking')
 
         # # Stage
         # stages = list(self.core.getLoadedDevicesOfType(DeviceType.XYStage))
@@ -115,6 +115,8 @@ class nmm:
         img_arr = self.main_window._core_link._mda_handler._tmp_arrays
         self.mosaic.stitch_mosaic(sequence, img_arr)
         # self.mosaic.get_mosaic_metadata(sequence)
+
+        #TODO make sure to disconnect hardware on shutdown
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
