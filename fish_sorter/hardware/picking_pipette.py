@@ -4,8 +4,8 @@ import os
 import sys
 from pathlib import Path
 from time import sleep
-from zaber_controller import ZaberController
-from valve_controller import ValveController
+from fish_sorter.hardware.zaber_controller import ZaberController
+from fish_sorter.hardware.valve_controller import ValveController
 
 class PickingPipette():
     """Coordinated control of Pipette movement, pneumatics, and dispense plate
@@ -16,24 +16,30 @@ class PickingPipette():
         """Runs pipette hardware setup and passes config parameters to each hardware
         
         :param parent_dir: parent directory for config files
-        :type parent_dir: str
+        :type parent_dir: path
         :raises FileNotFoundError: loggings critical if the hardware config file not found
         """
         
-        parent_dir = Path(parent_dir) / config / hardware
+        hardware_dir = parent_dir / 'fish_sorter/configs/hardware'
         self.hardware_data = {}
 
-        for filename in os.listdir(parent_dir):
+        for filename in os.listdir(hardware_dir):
             if filename.endswith('.json'):
-                file_path = os.path.join(parent_dir, filename)
+                file_path = os.path.join(hardware_dir, filename)
                 try:
                     with open(file_path, 'r') as file:
                         data = json.load(file)
                         var_name = os.path.splitext(filename)[0]
-                        hardware_data[var_name] = data
+                        if var_name in data and isinstance(data[var_name], dict):
+                            self.hardware_data[var_name] = data[var_name]
+                        else:    
+                            self.hardware_data[var_name] = data
                         logging.info('Loaded {} config file'.format(var_name))
                 except FileNotFoundError:
-                    logging.critical("Config file not found")       
+                    logging.critical("Config file not found")
+
+        self.drw_t = self.hardware_data['picker_config']['pipette']['time']['draw']
+        self.exp_t = self.hardware_data['picker_config']['pipette']['time']['expel']
 
     def connect(self, env='prod'):
         """Connect to hardware
@@ -45,7 +51,7 @@ class PickingPipette():
         if env == 'test':
             # Change this depending on computer
             logging.info("Loaded test environment")
-            
+
         self.zc = ZaberController(self.hardware_data['zaber_config'], env)
         self.vc = ValveController(self.hardware_data['pneumatic_config'], env)
 
@@ -76,7 +82,7 @@ class PickingPipette():
         address_offset = self.hardware_data['pneumatic_config']['register']['func_add_offset']
         func_code = self.hardware_data['pneumatic_config']['function_codes']['draw']
         logging.info(f'Sending draw command with function code {func_code}')
-        self._valve_cmd(address_offset, func_code, self.draw_time)
+        self._valve_cmd(address_offset, func_code, self.drw_t)
 
     def expel(self):
         """Sends Expel function command to valve controller
@@ -86,7 +92,7 @@ class PickingPipette():
         address_offset = self.hardware_data['pneumatic_config']['register']['func_add_offset']
         func_code = self.hardware_data['pneumatic_config']['function_codes']['expel']
         logging.info(f'Sending expel command with function code {func_code}')
-        self._valve_cmd(address_offset, func_code, self.expel_time)
+        self._valve_cmd(address_offset, func_code, self.exp_t)
 
     def idle(self):
         """Toggles to idle atmospheric pressure 
@@ -105,7 +111,7 @@ class PickingPipette():
         """
 
         address_offset = self.hardware_data['pneumatic_config']['register']['func_add_offset']
-        
+
         if state:
             func_code = self.hardware_data['pneumatic_config']['function_codes']['press_on']
             logging.info(f'Setting Pressure On with function code {func_code}')
@@ -143,7 +149,7 @@ class PickingPipette():
         address_offset = self.hardware_data['pneumatic_config']['register']['draw_time_add_offset']
         self._valve_cmd(address_offset, time)
         logging.info(f'Update draw time to {time} ms')
-        self.draw_time = time
+        self.drw_t = time
     
     def expel_time(self, time: int):
         """Updates the expel setting in the valve controller
@@ -155,19 +161,20 @@ class PickingPipette():
         address_offset = self.hardware_data['pneumatic_config']['register']['expel_time_add_offset']
         self._valve_cmd(address_offset, time)
         logging.info(f'Update expel time to {time} ms')
-        self.expel_time = time
+        self.exp_t = time
 
-    def _pipette_wait(self, time: int):
+    def _pipette_wait(self, address_offset: int, time: int):
         """Time to wait for valve controller to finish execution
 
         :param time: time in [ms]
         :type time: int
         """
-        t = double(time)/1000
+
+        t = float(time)/1000
         pause = max([0.05, t/3])
         n = max([1, round(t/pause)])
 
-        for i in n:
+        for i in range(n):
             sleep(pause)
             if self.vc.read_register(address_offset, 1) == 0:
                 break
@@ -183,4 +190,4 @@ class PickingPipette():
         """
 
         self.vc.write_register(address_offset, value)
-        self._pipette_wait(time)
+        self._pipette_wait(address_offset, time)

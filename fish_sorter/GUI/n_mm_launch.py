@@ -1,7 +1,8 @@
+import argparse
+import logging
 import napari
 import numpy as np
 import os
-import argparse
 import types
 
 from pathlib import Path
@@ -9,6 +10,7 @@ from typing import overload
 
 from pymmcore_plus import DeviceType
 from pymmcore_widgets import StageWidget
+# from pymmcore_widgets.hcs._plate_calibration_widget import PlateCalibrationWidget
 
 from fish_sorter.gui.pipette_gui import PipetteWidget
 # TODO delete this
@@ -49,7 +51,7 @@ class nmm:
             cfg_dir = Path().absolute().parent / "fish_sorter/configs/micromanager"
             cfg_file = "20240718 - LeicaDMI - AndorZyla.cfg"
             cfg_path = cfg_dir / cfg_file
-            print(cfg_path)
+            logging.info(f'Micromanager config: {cfg_path}')
             self.core.loadSystemConfiguration(str(cfg_path))
 
         # Load and push sequence

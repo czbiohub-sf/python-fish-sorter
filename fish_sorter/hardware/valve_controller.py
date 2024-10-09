@@ -48,14 +48,16 @@ class ValveController():
             # retry_on_empty=False,
             # source_address=("localhost", 0),
         )
-        
         try:
+
+#TODO fix the check on whether connected
+
             self.valve.connect()
-        
-            if not self.valve.connected():
-                raise ConnectionError('Failed to connect TCP device')
-            else:
-                logging.info(f'Connected to Wago valve controller {self.valve}')
+            
+        #     if not self.valve.connected():
+        #         raise ConnectionError('Failed to connect TCP device')
+        #     else:
+        #         logging.info(f'Connected to Wago valve controller {self.valve}')
         except ConnectionError as e:
             logging.critical('Could not make connection to Wago valve controller')
             raise

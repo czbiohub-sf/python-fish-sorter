@@ -1,3 +1,4 @@
+import logging
 import sys
 from json import load
 from pathlib import Path
@@ -9,8 +10,8 @@ from qtpy.QtCore import QSize, Qt
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QPushButton, QSizePolicy, QWidget, QGridLayout
 
-from fish_sorter.hardware.zaber_controller import ZaberController
 from fish_sorter.hardware.picking_pipette import PickingPipette
+from fish_sorter.hardware.zaber_controller import ZaberController
 
 COLOR_TYPES = Union[
     QColor,
@@ -78,12 +79,12 @@ class ZaberInitWidget(QPushButton):
             zaber_config = p['zaber_config']
             zc = ZaberController(zaber_config, env='prod')
         except Exception as e:
-            print("Could not initialize and connect hardware controller")
+            logging.critical("Could not initialize and connect hardware controller")
     
         # Test moving the pipette, x, and y stages to max position
         stages = ['x', 'y', 'p']
 
-        print('Move stages to max and back home')
+        logging.info('Move stages to max and back home')
         for stage in stages:
             zc.move_arm(stage, zaber_config['max_position'][stage])
             sleep(2)
@@ -127,12 +128,12 @@ class ZaberHomeWidget(QPushButton):
             zaber_config = p['zaber_config']
             zc = ZaberController(zaber_config, env='prod')
         except Exception as e:
-            print("Could not initialize and connect hardware controller")
+            logging.critical("Could not initialize and connect hardware controller")
     
         # Test moving the pipette, x, and y stages to max position
         stages = ['x', 'y', 'p']
 
-        print('Move stages to max and back home')
+        logging.info('Move stages to max and back home')
         for stage in stages:
             zc.move_arm(stage, zaber_config['home'][stage])
             sleep(2)
@@ -176,7 +177,7 @@ class ZaberTestWidget(QPushButton):
             zaber_config = z['zaber_config']
             zc = ZaberController(zaber_config, env='prod')
         except Exception as e:
-            print("Could not initialize and connect hardware controller")
+            logging.info("Could not initialize and connect hardware controller")
 
         with open(picker_cfg_path, 'r') as f:
             p = load(f)
@@ -185,43 +186,43 @@ class ZaberTestWidget(QPushButton):
         # Test moving the pipette, x, and y stages to max position
         stages = ['x', 'y', 'p']
 
-        print('Move stages to max and back home')
+        logging.info('Move stages to max and back home')
         for stage in stages:
             zc.move_arm(stage, zaber_config['max_position'][stage])
             sleep(2)
             zc.move_arm(stage, zaber_config['home'][stage])
             sleep(2)
         
-        print('Move pipette to set locations')
-        print('Swing height')
+        logging.info('Move pipette to set locations')
+        logging.info('Swing height')
         zc.move_arm('p', picker_config['stage']['pipette_swing']['p'])
         sleep(2)
         zc.move_arm('p', zaber_config['home']['p'])
         sleep(2)
         
-        print('Pick height')
+        logging.info('Pick height')
         zc.move_arm('p', picker_config['stage']['pick']['p'])
         sleep(2)
         zc.move_arm('p', zaber_config['home']['p'])
         sleep(2)
 
-        print('Clearance height')
+        logging.info('Clearance height')
         zc.move_arm('p', picker_config['stage']['clearance']['p'])
         sleep(2)
         zc.move_arm('p', zaber_config['home']['p'])
         sleep(2)
 
-        print('Dispense height')
+        logging.info('Dispense height')
         zc.move_arm('p', picker_config['stage']['dispense']['p'])
         sleep(2)
         zc.move_arm('p', zaber_config['home']['p'])
         sleep(2)
 
-        print('Test complete')
+        logging.info('Zaber test complete')
 
         zc.disconnect()
 
-class PipetteDrawWidgetpette(QPushButton):
+class PipetteDrawWidget(QPushButton):
     """A push button widget to connect to the valve controller to actuate the draw function
 
     This is linked to the [hardware][picking_pipette] method
@@ -249,15 +250,14 @@ class PipetteDrawWidgetpette(QPushButton):
         try:
             pp = PickingPipette(cfg_dir)
         except Exception as e:
-            print("Could not initialize and connect hardware controller")
+            logging.info("Could not initialize and connect hardware controller")
 
-        print('Pipette is Drawing')
+        logging.info('Pipette is Drawing')
         pp.connect(env='prod')
         pp.draw()
-        print('Test complete')
         pp.disconnect()
 
-class PipetteExpelWidgetpette(QPushButton):
+class PipetteExpelWidget(QPushButton):
     """A push button widget to connect to the valve controller to actuate the expel function
 
     This is linked to the [hardware][picking_pipette] method
@@ -285,15 +285,14 @@ class PipetteExpelWidgetpette(QPushButton):
         try:
             pp = PickingPipette(cfg_dir)
         except Exception as e:
-            print("Could not initialize and connect hardware controller")
+            logging.critical("Could not initialize and connect hardware controller")
 
-        print('Pipette is Expelling')
+        logging.info('Pipette is Expelling')
         pp.connect(env='prod')
         pp.expel()
-        print('Test complete')
         pp.disconnect()
 
-class PipettePressureWidgetpette(QPushButton):
+class PipettePressureWidget(QPushButton):
     """A push button widget to connect to the valve controller to toggle the pressure
 
     This is linked to the [hardware][picking_pipette] method
@@ -309,6 +308,7 @@ class PipettePressureWidgetpette(QPushButton):
 
         self._mmc = CMMCorePlus.instance()
         self._create_button()
+        self.pressure_state = False
 
     def _create_button(self)->None:
         
@@ -321,10 +321,10 @@ class PipettePressureWidgetpette(QPushButton):
         try:
             pp = PickingPipette(cfg_dir)
         except Exception as e:
-            print("Could not initialize and connect hardware controller")
+            logging.critical("Could not initialize and connect hardware controller")
 
-        print('Toggle Pressure Valve')
+        logging.info(f'Toggle Pressure Valve: {self.pressure_state}')
         pp.connect(env='prod')
-        pp.pressure()
-        print('Test complete')
+        self.pressure_state = not self.pressure_state
+        pp.pressure(self.pressure_state)
         pp.disconnect()
