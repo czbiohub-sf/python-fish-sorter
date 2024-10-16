@@ -1,7 +1,9 @@
+import csv
 import json
 import logging
 import numpy as np
 import os
+import pandas as pd
 import sys
 from datetime import datetime
 from pathlib import Path
@@ -17,15 +19,16 @@ class Pick():
     It uses the PickingPipette class and the Mapping class
     """
 
-    def __init__(self, pick_dir, dest_array, source_array):
+    def __init__(self, pick_dir, prefix, mapping):
         """Loads the files for classification and initializes PickingPipette class
         
         :param pick_dir: directory for classification and pick files
         :type pick_dir: str
-        :param dest_array: name of the array config for the destination plate
-        :param dest_array: str
-        :param source_array: name of the array config for the source plate
-        :param source_array: str
+        :param prefix: prefix name details
+        :type prefix: str
+        :param mapping: instance of mapping class
+        :type mapping: class instance
+
         :raises FileNotFoundError: loggings critical if any of the files are not found
         """
 
@@ -36,11 +39,18 @@ class Pick():
         except Exception as e:
             logging.info("Could not initialize and connect hardware controller")
         
-        logging.info('Load classification and picking files')
+        self.pick_dir = pick_dir
+        self.prefix = prefix
         self.class_file = None
         self.pick_param_file = None
-        self.picked_file = None
-        self.pick_dir = pick_dir
+        
+        #TODO handle offset and pick type in Mapping or here?
+        #TODO handle dest array and source array in Mapping or here?
+        #Make it efficient so not repeating calcs
+        self.mapping = mapping
+        
+        
+        self.matches = None
 
 
 
@@ -87,11 +97,33 @@ class Pick():
             
         self.pp.set_calib(pick)
 
+    def get_classified(self):
+        """Opens classification and pick parameter files
+        """
+
+        logging.info('Load classification and picking files')
+        for filename in os.listdir(self.pick_dir):
+            if filename.endswith('.csv'):
+                file_path = os.path.join(self.pick_dir, filename)
+                try:
+                    if 'classifications.csv' in filename:
+                        self.class_file = pd.read_csv(file_path)
+                        logging.info('Loaded {}'.format(filename))
+                    elif 'pickable.csv' in filename:
+                        self.pick_param_file = pd.read_csv(file_path)
+                        logging.info('Loaded {}'.format(filename))
+                except FileNotFoundError:
+                    logging.critical("File not found")
+
+        picked_filename = datetime.now().strftime('%Y%m%d_%H%M%S') + '_' + self.prefix + '_picked.csv'
+        self.picked_file = os.path.join(self.pick_dir, picked_filename)
+    
     def get_dest_xy(self, well: str) -> Tuple[float, float]:
         """"Uses the Mapping class to get the well x, y coordinates from the well ID
 
         :param well: well ID
         :type well: str
+
         :return: The coordinates for the specific well ID location: (x, y)
         :rtype: Tuple[float, float]
         """
@@ -110,19 +142,68 @@ class Pick():
         :type offset: Tuple[float, float]
         """
     
-        #TODO properly call / initialize self.mapping
         self.mapping.go_to_well(well, offset)
-
-
 
         #TODO use helpers.mapping load_wells and go_to_well for control of the microscope stage
 
-    def pick_me(self, src_well: str, dest_well: str, offset: Optional [float]):
-        """Performs all actions to pick from the source plate to the destination plate
 
-        :param src_well: well ID of the source plate on the microscope stage
-        :type src_well: str
-        :param dest_well: well ID of the source plate on the microscope stage
-        :type dest_well: str
 
-        
+    def pick_me(self):
+        """Performs all actions to pick from the source plate to the destination plate using
+        the match list created by match_pick
+        """
+
+        logging.info('Begin iterating through pick list')
+        self.matches.drop(columns=['lHead']).head(0).to_csv(self.picked_file, index=False)
+        self.pp.move_pipette('clearance')
+        self.pp.dest_home()        
+        for match in self.matches.index:
+            if self.matches['lHead'][match]:
+                #TODO handle this is mapping? 
+                #If not load the config
+                offset = - pick_type_config['larvae']['offset']
+            else:
+                offset = pick_type_config['larvae']['offset']
+            
+            self.move_to_pick(self.matches['slotName'][match], offset)
+            self.pp.move_pipette('pick')
+            sleep(1)
+            self.pp.draw()
+            self.pp.move_pipette('clearance')
+
+            #TODO better handle dispense well position calling mapping
+            
+            (x, y) = self.get_dest_xy(self.matches['dispenseWell'][match])
+            self.pp.move_to_dest((x,y))
+            self.pp.move_pipette('dispense')
+            self.pp.expel()
+            sleep(1)
+            self.pp.expel()
+            self.pp.move_pipette('clearance')
+            self.pp.dest_home()
+            logging.info('Picked fish in {} to {}'.format(self.matches['slotName'][match], self.matches['dispenseWell'][match]))
+            pd.DataFrame([self.matches.drop(columns=['lHead']).iloc[match].values], columns=self.matches.drop(columns=['lHead']).columns)\
+                .to_csv(self.picked_file, mode='a', header=False, index=False)
+
+
+        #TODO how to more elegantly handle lHead, rightHead, none, etc
+        #call to mapping?
+        #call mapping for the dest plate at init?      
+        #Better handle 'lHead' column in csv??? or rather abstract at some point to also include embryos   
+
+
+
+
+    def match_pick(self):
+        """Matches the desired pick parameters to the classification
+        """
+
+        class_drop = self.class_file.reset_index(drop=True)
+        pick_param_drop = self.pick_param_file.reset_index(drop=True)
+        matching = class_drop.columns.intersection(pick_param_drop.columns).difference(['slotName', 'dispenseWell'])
+        merge = pd.merge(class_drop, pick_param_drop, on=list(matching), how='inner')
+        merge_sorted = pd.merge(pick_param_file[['dispenseWell']], merged, on='dispenseWell', how='inner')
+        self.matches = pd.DataFrame({'slotName': merge_sorted['slotName'], 'dispenseWell': merge_sorted['dispenseWell'], 'lHead': merge_sorted['lHead']})
+        logging.info('Created pick list')
+
+        #TODO future feature: save time and snake through position list?

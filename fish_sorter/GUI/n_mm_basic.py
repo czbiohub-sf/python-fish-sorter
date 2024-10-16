@@ -9,7 +9,7 @@ import types
 from pathlib import Path
 from useq import MDASequence, Position
 
-from fish_sorter.gui.pipette_gui import PipetteWidget
+from fish_sorter.gui.pipette_test_gui import PipetteWidget
 
 # For simulation
 try:

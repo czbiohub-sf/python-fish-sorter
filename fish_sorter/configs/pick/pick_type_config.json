@@ -1,0 +1,10 @@
+{
+    "larvae": {
+        "offset": 700,
+        "description": "Pick offset distance from well center in um"
+    },
+    "embryo": {
+        "offset": 0,
+        "description": "Pick offset distance from well center in um"
+    }
+}
