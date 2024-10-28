@@ -8,6 +8,7 @@ import pymmcore_plus
 
 from tqdm import tqdm
 from useq import MDASequence, Position
+from abc import ABC, abstractmethod
 
 from typing import cast
 
@@ -16,13 +17,9 @@ from useq import MDASequence, Position
 from useq._iter_sequence import _sizes, _used_axes, _iter_axis, _parse_axes
 
 # TODO dynamically load pixel count
-from constants import (
+from fish_sorter.constants import (
     IMG_X_PX,
     IMG_Y_PX,
-    DISPENSE_PLATE_PREFIX,
-    IMAGING_PLATE_PREFIX,
-    TL_WELL_NAME,
-    TR_WELL_NAME,
 )
 
 # TODO standardize coordinate format
@@ -33,49 +30,42 @@ from constants import (
 # TODO add type hints
 
 class Mapping:
-    def __init__(self, mda, mmc):
-        self.mda = mda
+    def __init__(self, mmc):
         self.mmc = mmc
 
-        self.transform = np.array([[1, 0], [0, 1]])
-        self.um_home, = np.array([0, 0, 0])
+        self.um_home = np.array([0, 0, 0])
+        self.um_TR = np.array([0, 0, 0])
+
+        self.px2um = self.mmc.getPixelSizeUm()
         self.um_center_to_corner_offset = self._get_center_to_corner_offset_um()
 
+        self.transform = np.array([[1, 0], [0, 1]])
         self.wells = {}
 
         # TODO save TL/TR locations in experiment savefile
 
-    def _get_center_to_corner_offset_um(self, px2um):
+    @abstractmethod
+    def set_calib_pos(self):
+        pass
+
+    @abstractmethod
+    def go_to_well(self, well, offset):
+        pass
+
+    def _get_center_to_corner_offset_um(self):
         return np.array(
             [
-                IMG_X_PX * px2um / 2,
-                IMG_Y_PX * px2um / 2,
+                IMG_X_PX * self.px2um / 2,
+                IMG_Y_PX * self.px2um / 2,
             ]
         )
 
-    def _get_calib_pos(self, prefix):
-        seq = self.mda.value()
-
-        # TODO initialize position list with these names
-        for pos in seq.stage_positions:
-            if pos.name == prefix + TL_WELL_NAME:
-                TL = np.array([pos.x, pos.y, pos.z])
-            if pos.name == prefix + TR_WELL_NAME:
-                TR = np.array([pos.x, pos.y, pos.z])
-        
-        # TODO throw an exception if calib was not set
-        return TL, TR
-
-    def _set_home_and_transform(self, prefix):
+    def set_home_and_transform(self):
         # User needs to previously set home in TL slot and navigate to TR corner before pressing "calibrate"
         # TODO: Add user prompt
 
-        TL, TR = self._get_calib_pos(prefix)
-        vector = TR[0:2] - TL[0:2]
+        vector = self.um_TR[0:2] - self.um_home[0:2]
         theta = np.arctan(vector[1] / vector[0])
-
-        # NOTE Z position is based on TL corner only
-        self.home = np.concatenate(TL)
 
         self.transform = np.array(
             [
@@ -83,7 +73,7 @@ class Mapping:
                 [-np.sin(theta), np.cos(theta)]
             ]
         )
-    
+
     def apply_transform(self, pos):
         # Assume input is a np array, with each position as a row array [[x1; y1], [x2, y2], ...] 
 
@@ -124,22 +114,19 @@ class Mapping:
             } for name, pos in zip(well_names, calib_well_positions)
         ]
 
-    def go_to_well(self, well: str, offset=np.array([0,0])):
+    def _get_well_pos(self, well: str):
         if well not in self.wells:
             return
 
-        xyz = self.wells[well].abs_um
-        self.mmc.run_mda(Position(x=xyz[0]+offset[0], y=xyz[1]+offset[1], z=xyz[2], name=well))
+        return self.wells[well].abs_um
 
     def px_to_rel_um(self, px_pos):
         # Wellplate coords to stage coords
-        return (px_pos * px2um) - self.um_center_to_corner_offset
+        return (px_pos * self.px2um) - self.um_center_to_corner_offset
 
     def rel_um_to_px(self, rel_um_pos):
-        # Wellplate coords to image coords
-        px2um = self.mmc.getPixelSizeUm()
-        
-        return (rel_um_pos + self.um_center_to_corner_offset) / px2um
+        # Wellplate coords to image coords        
+        return (rel_um_pos + self.um_center_to_corner_offset) / self.px2um
 
     def rel_um_to_abs_um(self, rel_um_pos):
         # Wellplate coords to stage coords

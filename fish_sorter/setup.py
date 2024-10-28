@@ -12,6 +12,7 @@ setup(
         'tqdm',
         'iter-tools',
         'useq',
+        'abc',
         'argparse',
         'numpy',
         'pymodbus',
