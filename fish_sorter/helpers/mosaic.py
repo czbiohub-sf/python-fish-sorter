@@ -12,6 +12,8 @@ from useq._iter_sequence import _used_axes, _iter_axis, _parse_axes
 
 # from helpers.constants import IMG_X_PX, IMG_Y_PX
 
+# TODO is there an easier way to get the mosaic positions?
+
 try:
     from pymmcore_widgets.useq_widgets import PYMMCW_METADATA_KEY as PYMMCW_METADATA_KEY
 except ImportError:

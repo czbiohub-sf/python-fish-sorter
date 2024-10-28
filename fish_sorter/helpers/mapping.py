@@ -28,13 +28,18 @@ from constants import (
 # TODO standardize coordinate format
 # NOTE TL corner needs to have image center at corner TODO add user prompt
 
+# TODO TODO add offset for head
+
+# TODO add type hints
+
 class Mapping:
     def __init__(self, mda, mmc):
         self.mda = mda
         self.mmc = mmc
 
-        self.transform = [[1, 0], [0, 1]]
-        self.center_to_corner_offset = self._get_center_to_corner_offset_um()
+        self.transform = np.array([[1, 0], [0, 1]])
+        self.um_home, = np.array([0, 0, 0])
+        self.um_center_to_corner_offset = self._get_center_to_corner_offset_um()
 
         self.wells = {}
 
@@ -54,14 +59,14 @@ class Mapping:
         # TODO initialize position list with these names
         for pos in seq.stage_positions:
             if pos.name == prefix + TL_WELL_NAME:
-                TL = np.array([pos.x, pos.y])
+                TL = np.array([pos.x, pos.y, pos.z])
             if pos.name == prefix + TR_WELL_NAME:
-                TR = np.array([pos.x, pos.y])
+                TR = np.array([pos.x, pos.y, pos.z])
         
         # TODO throw an exception if calib was not set
         return TL, TR
 
-    def _set_transform(self, prefix):
+    def _set_home_and_transform(self, prefix):
         # User needs to previously set home in TL slot and navigate to TR corner before pressing "calibrate"
         # TODO: Add user prompt
 
@@ -69,10 +74,15 @@ class Mapping:
         vector = TR[0:2] - TL[0:2]
         theta = np.arctan(vector[1] / vector[0])
 
-        self.transform = np.array([
-            [np.cos(theta), np.sin(theta)],
-            [-np.sin(theta), np.cos(theta)]
-        ])
+        # NOTE Z position is based on TL corner only
+        self.home = np.concatenate(TL)
+
+        self.transform = np.array(
+            [
+                [np.cos(theta), np.sin(theta)],
+                [-np.sin(theta), np.cos(theta)]
+            ]
+        )
     
     def apply_transform(self, pos):
         # Assume input is a np array, with each position as a row array [[x1; y1], [x2, y2], ...] 
@@ -114,32 +124,30 @@ class Mapping:
             } for name, pos in zip(well_names, calib_well_positions)
         ]
 
-    def go_to_well(self, well: str):
+    def go_to_well(self, well: str, offset=np.array([0,0])):
         if well not in self.wells:
             return
 
-        _, _, z = self.get_home_pos()
-        xy = self.wells[well].abs_um
-        self.mmc.run_mda(Position(x=xy[0], y=xy[1], z, name=well))
+        xyz = self.wells[well].abs_um
+        self.mmc.run_mda(Position(x=xyz[0]+offset[0], y=xyz[1]+offset[1], z=xyz[2], name=well))
 
     def px_to_rel_um(self, px_pos):
         # Wellplate coords to stage coords
-        return (px_pos * px2um) - um_offset
+        return (px_pos * px2um) - self.um_center_to_corner_offset
 
     def rel_um_to_px(self, rel_um_pos):
         # Wellplate coords to image coords
         px2um = self.mmc.getPixelSizeUm()
-        um_offset = self._get_center_to_corner_offset_um()
         
-        return (rel_um_pos + um_offset) / px2um
+        return (rel_um_pos + self.um_center_to_corner_offset) / px2um
 
     def rel_um_to_abs_um(self, rel_um_pos):
         # Wellplate coords to stage coords
-        return rel_um_pos += self.um_home + um_offset
+        return rel_um_pos += self.um_home + self.um_center_to_corner_offset
 
     def abs_to_rel(self, abs_um_pos):
         # Stage coords to wellplate coords
-        return abs_um_pos -= self.um_home + um_offset
+        return abs_um_pos -= self.um_home + self.um_center_to_corner_offset
 
     def px_to_abs_um(self, px_pos):
         # Image coords to stage coords
