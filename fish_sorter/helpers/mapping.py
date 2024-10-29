@@ -33,8 +33,9 @@ class Mapping:
     def __init__(self, mmc):
         self.mmc = mmc
 
-        self.um_home = np.array([0, 0, 0])
-        self.um_TR = np.array([0, 0, 0])
+        # NOTE Does mda return z values?
+        self.um_home = None
+        self.um_TR = None
 
         self.px2um = self.mmc.getPixelSizeUm()
         self.um_center_to_corner_offset = self._get_center_to_corner_offset_um()
@@ -114,11 +115,15 @@ class Mapping:
             } for name, pos in zip(well_names, calib_well_positions)
         ]
 
-    def _get_well_pos(self, well: str):
+    def _get_well_pos(self, well: str, offset):
         if well not in self.wells:
             return
 
-        return self.wells[well].abs_um
+        pos = self.wells[well].abs_um
+        x = pos[0] + offset[0]
+        y = pos[1] + offset[1]
+
+        return x, y
 
     def px_to_rel_um(self, px_pos):
         # Wellplate coords to stage coords

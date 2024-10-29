@@ -26,5 +26,6 @@ class ImagingPlate(Mapping):
         # TODO throw an exception if calib was not set
 
     def go_to_well(self, well: str, offset=np.array([0,0])):
-        xyz = self._get_well_pos(well)
-        self.mmc.run_mda(Position(x=xyz[0]+offset[0], y=xyz[1]+offset[1], z=xyz[2], name=well))
+        x, y = self._get_well_pos(well, offset)
+        # Move z pos too?
+        self.mmc.run_mda(Position(x=x, y=y, name=well))
