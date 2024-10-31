@@ -9,4 +9,3 @@ Test setup.py
 Add savefile for all experiment parameters
 Add logging
 Move all instrument specific params into configs so it is generalizable for outsourcing
-Do we want a fish feature config file?

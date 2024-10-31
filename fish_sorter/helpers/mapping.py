@@ -9,21 +9,24 @@ import pymmcore_plus
 from tqdm import tqdm
 from useq import MDASequence, Position
 
-from typing import cast
+from typing import cast, Optional, Tuple
 
 from pathlib import Path
 from useq import MDASequence, Position
 from useq._iter_sequence import _sizes, _used_axes, _iter_axis, _parse_axes
 
 # TODO dynamically load pixel count
-from constants import IMG_X_PX, IMG_Y_PX
+from fish_sorter.helpers.constants import IMG_X_PX, IMG_Y_PX
 
 # TODO standardize coordinate format
 
 class Mapping:
-    def __init__(self, mda, mmc):
+    def __init__(self, mda: Optional=None, mmc=None):
         self.mda = mda
-        self.mmc = mmc
+        if mmc is None:
+            self.mmc = CMMCorePlus.instance()
+        else:
+            self.mmc = mmc
         self.um_home = np.array([0.0, 0.0])
         self.um_calib = np.array([100.0, 0.0])
         self.transform = [[1, 0], [0, 1]]
@@ -60,29 +63,40 @@ class Mapping:
 
     def px_to_rel_um(self, px_pos):
         # Wellplate coords to stage coords
-        return (px_pos * px2um) - um_offset
+
+        return (px_pos * px2um) - self.um_offset
 
     def rel_um_to_px(self, rel_um_pos):
         # Wellplate coords to image coords
+
         px2um = self.mmc.getPixelSizeUm()
-        um_offset = self.get_center_to_corner_offset_um()
+        self.um_offset = self.get_center_to_corner_offset_um()
         
-        return (rel_um_pos + um_offset) / px2um
+        return (rel_um_pos + self.um_offset) / px2um
 
     def rel_um_to_abs_um(self, rel_um_pos):
         # Wellplate coords to stage coords
-        return rel_um_pos += self.um_home + um_offset
+        
+        rel_to_abs = rel_um_pos + self.um_home + self.um_offset
+
+        return rel_to_abs
 
     def abs_to_rel(self, abs_um_pos):
         # Stage coords to wellplate coords
-        return abs_um_pos -= self.um_home + um_offset
+
+        abs_to_rel = abs_um_pos - self.um_home + self.um_offset
+        #TODO does this need both self.um_hom and self.um_offset subtracted or onyl self.um_home
+        
+        return abs_to_rel
 
     def px_to_abs_um(self, px_pos):
         # Image coords to stage coords
+
         return self.rel_um_to_abs_um(self.px_to_rel_um(px_pos))
 
     def abs_um_to_px(self, abs_um_pos):
         # Stage coords to image coords
+        
         return self.rel_um_to_px(self.abs_um_to_rel_um(px_pos))
 
     def set_transform(self, pos):
@@ -137,11 +151,20 @@ class Mapping:
         ]
 
     def go_to_well(self, well: str, offset: Tuple[float, float]):
+        """Moves the stage controlled by pymmcore-plus (CMMCorePlus)
+        to a specific location defined by the well ID
+
+        :param well: well ID
+        :type well: str
+        :param offset: offset from the well center coordinates to the pick location
+        :type offset: Tuple[float, float]
+        """
+
         if well not in self.wells:
             return
 
         _, _, z = self.get_home_pos()
         xy = self.wells[well].abs_um + offset
-        self.mmc.run_mda(Position(x=xy[0], y=xy[1], z, name=well))
+        self.mmc.run_mda(Position(x=xy[0], y=xy[1], z=z, name=well))
 
 # TODO make this work with dispense plate too

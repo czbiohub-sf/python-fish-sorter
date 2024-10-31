@@ -1,10 +1,97 @@
 {
     "larvae": {
-        "offset": 700,
-        "description": "Pick offset distance from well center in um"
+        "picker": {
+            "offset": 700,
+            "description": "Pick offset distance from well center in um"
+        },
+        "well_class": {
+            "empty": {
+                "key": "e",
+                "preset": true,
+                "description": "Indicates whether there is a fish in the well"
+            },
+            "deformed": {
+                "key": "d",
+                "preset": false,
+                "description": "Indicates if the fish is deformed"
+             },
+            "wrong_o": {
+                "key": "w",
+                "preset": false,
+                "description": "Indicates if fish oriented in a way to not detect features"
+            },
+            "unknown": {
+                "key": "u",
+                "preset": false,
+                "description": "Indicates fish where classification is not possible but not because of deformity or orientation"
+            },
+            "multiple": {
+                "key": "m",
+                "preset": false,
+                "description": "Indicates multiple fish in a well"
+            },
+            "singlet": {
+                "key": "f",
+                "preset": false,
+                "description": "Indicates a single fish. This will be used to select those for feature classification"
+            },
+            "deselect": {
+                "empty": ["deformed", "wrong_o", "unknown", "multiple", "singlet"],
+                "deformed": ["empty", "wrong_o", "unknown", "multiple", "singlet"],
+                "wrong_o": ["empty", "deformed", "unknown", "multiple", "singlet"],
+                "unknown": ["empty", "deformed", "wrong_o", "multiple", "singlet"],
+                "multiple": ["empty", "deformed", "wrong_o", "unknown","singlet"],
+                "singlet": ["empty", "deformed", "wrong_o", "unknown", "multiple"],
+                "description": "Rules to deselect options if one of the others is selected"
+            }
+        },
+        "feature_class": {
+            "gEye": {
+                "key": "g",
+                "preset": false,
+                "description": "Fish with green eye feature"
+            },
+            "gHeart": {
+                "key": "6",
+                "preset": false,
+                "description": "Fish with green heart feature"
+            },
+            "gBody": {
+                "key": "7",
+                "preset": false,
+                "description": "Fish with green body feature"
+            },
+            "gSpeckles": {
+                "key": "8",
+                "preset": false,
+                "description": "Fish with green speckle feature"
+            },
+            "rEye": {
+                "key": "r",
+                "preset": false,
+                "description": "Fish with red eye feature"
+            },
+            "rHeart": {
+                "key": "9",
+                "preset": false,
+                "description": "Fish with red heart feature"
+            },
+            "rSpeckles": {
+                "key": "0",
+                "preset": false,
+                "description": "Fish with red speckle feature"
+            },
+            "lHead": {
+                "key": "l",
+                "preset": true,
+                "description": "Orientation of fish head to left or right side of well"
+            }
+        }
     },
     "embryo": {
-        "offset": 0,
-        "description": "Pick offset distance from well center in um"
+        "picker": {
+            "offset": 0,
+            "description": "Pick offset distance from well center in um"
+        }
     }
 }

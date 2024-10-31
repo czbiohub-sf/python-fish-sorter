@@ -8,7 +8,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 from time import sleep
-from typing import List, Optional
+from typing import List, Optional, Tuple
 
 from fish_sorter.hardware.picking_pipette import PickingPipette
 from fish_sorter.helpers.mapping import Mapping
@@ -47,7 +47,7 @@ class Pick():
         #TODO handle offset and pick type in Mapping or here?
         #TODO handle dest array and source array in Mapping or here?
         #Make it efficient so not repeating calcs
-        self.mapping = mapping
+        self.mapping = Mapping()
         
         
         self.matches = None
@@ -128,6 +128,7 @@ class Pick():
         :rtype: Tuple[float, float]
         """
 
+
         #TODO use helpers.mapping to go between well ID and x, y coords
         return (0.0, 0.0)
 
@@ -161,9 +162,9 @@ class Pick():
             if self.matches['lHead'][match]:
                 #TODO handle this is mapping? 
                 #If not load the config
-                offset = - pick_type_config['larvae']['offset']
+                offset = - pick_type_config['larvae']['picker']['offset']
             else:
-                offset = pick_type_config['larvae']['offset']
+                offset = pick_type_config['larvae']['picker']['offset']
             
             self.move_to_pick(self.matches['slotName'][match], offset)
             self.pp.move_pipette('pick')
@@ -189,7 +190,8 @@ class Pick():
         #TODO how to more elegantly handle lHead, rightHead, none, etc
         #call to mapping?
         #call mapping for the dest plate at init?      
-        #Better handle 'lHead' column in csv??? or rather abstract at some point to also include embryos   
+        #Better handle 'lHead' column in csv??? or rather abstract at some point to also include embryos
+        #Use better pick_type_config.json to determine what columns are needed
 
 
 
