@@ -12,12 +12,18 @@ from pymmcore_plus import CMMCorePlus
 from qtpy.QtCore import QSize, Qt
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QLabel, QPushButton, QSizePolicy, QWidget, QGridLayout
-from skimage import data
+from skimage import data, draw
 from tifffile import imread
 from typing import List, Optional, Tuple
 
 
+
+
+#TODO check which class to import
 from  fish_sorter.helpers.mapping import Mapping
+
+
+
 
 class NapariPts():
     """Add points layer of the well locations to the image mosaic in napari.
@@ -77,6 +83,8 @@ class NapariPts():
                     logging.critical("Config file not found")
         self._feat()
 
+        self.mask = {}
+
         
         #Temporary for testing
         #TODO decide how to handle preloading mosaics
@@ -86,20 +94,12 @@ class NapariPts():
         if viewer is None:
             self.viewer = napari.Viewer()
             img_layer = self.viewer.add_image(mosaic, name='FITC')
+
+            #TODO add in mapping / imaging_plate class to go between image and real coordinates, not hard code these
+            img_layer.translate = [-2600,-2600]
+            img_layer.scale = [2.6, 2.6]
         else:
             self.viewer = viewer
-        
-
-
-
-        # if mapping is None:
-        #     self.mapping = Mapping()
-        # else:
-        #     self.mapping = mapping
-
-
-
-
             
         pts = self._points()
         self.points_layer = self.load_points(pts)
@@ -109,6 +109,8 @@ class NapariPts():
         for key, feature in self.key_feature_map.items():
             self.viewer.bind_key(key)(self._toggle_feature(feature))
         self.display_key_bindings()
+
+        self.extract_fish()
 
         self.save_data()
 
@@ -152,7 +154,7 @@ class NapariPts():
                 key = feature_data['key']
                 self.key_feature_map[key] = feature
 
-    def _points(self):
+    def _points(self) -> List[Tuple[float, float]]:
         """Open array with well coordinates and transform to napari viewer coordinates
         and scale to the image
 
@@ -172,7 +174,7 @@ class NapariPts():
 
         return points_coords
 
-    def _toggle_feature(self, feature_name):
+    def _toggle_feature(self, feature_name)-> Callable[[napari.utils.events.Event], None]:
         """Creates a callback toggle for a specific feature defined by feature_name
 
         :param feature_name: feature name loaded from the feature data in the config file
@@ -245,6 +247,7 @@ class NapariPts():
             file_path = '/Users/diane.wiener/Documents/fish-sorter-data/2024-02-15-cldnb-mScarlet_she-GFP/'
             
             #TODO load in the prefix name and file path
+            #Do we want timestamp, or simply overwrite?
 
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             file_name = f"{timestamp}_{prefix}_classifications.csv"
@@ -261,7 +264,7 @@ class NapariPts():
             
         self.class_btn.clicked.connect(_save_it)
     
-    def load_points(self, points_coords):
+    def load_points(self, points_coords) -> napari.points.Layer:
         """Load the points layer into the napari viewer
 
         :param points_coords: x, y coordinates for points defining the well locations
@@ -289,6 +292,42 @@ class NapariPts():
 
         self.points_layer.data = self._points()
         self.points_layer.refresh_colors(update_color_mapping=False)
+
+    def extract_fish(self):
+        """Finds the locations of positive wells
+        """
+
+        self._well_mask()
+        self._extract_well
+
+        
+    
+
+    def _well_mask(self):
+        """Create a mask of the well shape
+        """
+
+        length = self.array_data[self.var_name]['array_design']['slot_length']
+        width = self.array_data[self.var_name]['array_design']['slot_width']
+
+        self.mask = np.zeros((length, width), dtype=bool)
+        
+        if self.array_data[self.var_name]['array_design']['well_shape'] == "rectangular_array":
+            rr, cc = draw.rectangle(start=(0,0), end=(length, width))
+        else:
+            rr, cc = draw.disk((0,0), length)
+
+        self.mask[rr, cc] = True
+    
+    def _extract_well(self, points):
+        """Cuts a well centered around the points in the points layer of the image
+        of the size defined in the array and displays the image layer
+
+        :param points: x, y coordinates for selected points defining the well locations
+        :type points: numpy points
+        """
+
+        self.array_data[self.var_name]['wells']['well_coordinates']
 
 if __name__ == '__main__':
     NapariPts('/Users/diane.wiener/Documents/GitHub/python-fish-sorter/fish_sorter', 595)
