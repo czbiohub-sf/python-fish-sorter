@@ -14,7 +14,7 @@ from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QLabel, QPushButton, QSizePolicy, QWidget, QGridLayout
 from skimage import data, draw
 from tifffile import imread
-from typing import List, Optional, Tuple
+from typing import List, Optional, Tuple, Callable
 
 
 
@@ -82,27 +82,29 @@ class NapariPts():
                 except FileNotFoundError:
                     logging.critical("Config file not found")
         self._feat()
-
         self.mask = {}
-
-        
-        #Temporary for testing
-        #TODO decide how to handle preloading mosaics
-        im_path = '/Users/diane.wiener/Documents/fish-sorter-data/2024-02-15-cldnb-mScarlet_she-GFP/51hpf-pick1_FITC_2.5x_mosaic.tif'
-        mosaic = np.array(imread(im_path))
 
         if viewer is None:
             self.viewer = napari.Viewer()
-            img_layer = self.viewer.add_image(mosaic, name='FITC')
-
-            #TODO add in mapping / imaging_plate class to go between image and real coordinates, not hard code these
-            img_layer.translate = [-2600,-2600]
-            img_layer.scale = [2.6, 2.6]
         else:
             self.viewer = viewer
+
+
+        #Temporary for testing
+        #TODO decide how to handle preloading mosaics
+        FITC_path = '/Users/diane.wiener/Documents/fish-sorter-data/2024-02-15-cldnb-mScarlet_she-GFP/51hpf-pick1_FITC_2.5x_mosaic.tif'
+        FITC_mosaic = np.array(imread(FITC_path))
+        TXR_path = '/Users/diane.wiener/Documents/fish-sorter-data/2024-02-15-cldnb-mScarlet_she-GFP/51hpf-pick1_TXR_2.5x_mosaic.tif'
+        TXR_mosaic = np.array(imread(TXR_path))
+
+        #TODO add in mapping / imaging_plate class to go between image and real coordinates, not hard code these
+
+        self.img_layer = self.viewer.add_image(FITC_mosaic, colormap='green', contrast_limits = (FITC_mosaic.min(), FITC_mosaic.max()), opacity=0.5, name='FITC')
+        self.img_layer = self.viewer.add_image(TXR_mosaic, colormap='red', contrast_limits = (TXR_mosaic.min(), TXR_mosaic.max()), opacity=0.5, name='TXR')
+        
             
         pts = self._points()
-        self.points_layer = self.load_points(pts)
+        self.points_layer, points = self.load_points(pts)
         self.points_layer.mode = 'select'
         
         self._key_binding()
@@ -110,13 +112,17 @@ class NapariPts():
             self.viewer.bind_key(key)(self._toggle_feature(feature))
         self.display_key_bindings()
 
-        self.extract_fish()
+        self.extract_fish(points)
 
-        self.save_data()
 
 
         #TODO handle preselecting fish
         #TODO add in zoom in of fish classified as singlets for classification
+
+      
+        
+
+        self.save_data()
 
         #TODO will need to add in loading previous classifications
             
@@ -264,7 +270,7 @@ class NapariPts():
             
         self.class_btn.clicked.connect(_save_it)
     
-    def load_points(self, points_coords) -> napari.points.Layer:
+    def load_points(self, points_coords) -> napari.layers.Points:
         """Load the points layer into the napari viewer
 
         :param points_coords: x, y coordinates for points defining the well locations
@@ -276,15 +282,33 @@ class NapariPts():
 
         face_color_cycle = ['white', 'red']
 
+        #TODO when mapping function is working remove these, and load in that and calibration
+        scale_factor = 1 / 2.6
+        translation_offset = (1120, 1000)
+        rotation_angle = 0.5
+
         self.points_layer = self.viewer.add_points(
             points_coords,
+            name = 'Well Locations',
             features = self.features,
             size = 100,
+            scale = (scale_factor, scale_factor),
+            translate = translation_offset,
+            rotate = rotation_angle,
             face_color = 'empty',
             face_color_cycle = face_color_cycle
         )
 
-        return self.points_layer
+        rotation_matrix = np.array([
+            [np.cos(np.deg2rad(rotation_angle)), -np.sin(np.deg2rad(rotation_angle))],
+            [np.sin(np.deg2rad(rotation_angle)), np.cos(np.deg2rad(rotation_angle))]
+        ])
+
+        scaled_pts = points_coords * scale_factor
+        rot_pts = scaled_pts @ rotation_matrix.T
+        points = rot_pts + translation_offset
+
+        return self.points_layer, points
 
     def refresh(self):
         """Refresh the points layer after event
@@ -293,41 +317,99 @@ class NapariPts():
         self.points_layer.data = self._points()
         self.points_layer.refresh_colors(update_color_mapping=False)
 
-    def extract_fish(self):
+    def extract_fish(self, points):
         """Finds the locations of positive wells
-        """
 
-        self._well_mask()
-        self._extract_well
-
-        
-    
-
-    def _well_mask(self):
-        """Create a mask of the well shape
-        """
-
-        length = self.array_data[self.var_name]['array_design']['slot_length']
-        width = self.array_data[self.var_name]['array_design']['slot_width']
-
-        self.mask = np.zeros((length, width), dtype=bool)
-        
-        if self.array_data[self.var_name]['array_design']['well_shape'] == "rectangular_array":
-            rr, cc = draw.rectangle(start=(0,0), end=(length, width))
-        else:
-            rr, cc = draw.disk((0,0), length)
-
-        self.mask[rr, cc] = True
-    
-    def _extract_well(self, points):
-        """Cuts a well centered around the points in the points layer of the image
-        of the size defined in the array and displays the image layer
-
-        :param points: x, y coordinates for selected points defining the well locations
+        :param points: x, y coords for center location defining the well locations in the points layer
         :type points: numpy points
         """
 
-        self.array_data[self.var_name]['wells']['well_coordinates']
+        #TODO make sure padding makes sense for fish detection / viewing for classification
+        self._well_mask()
+        self.well_extract = self._extract_wells(points)
+
+
+
+    def _well_mask(self, padding: int=100):
+        """Create a mask of the well shape
+
+        :param padding: extra pixels from the edge around the well shape to include in the mask
+        :type padding: int
+        """
+
+        #TODO make sure it is correct with real to image conversion with mapping
+        #Do not want a hard coded scale factor
+        scale_factor = 1 / 2.6
+        width = int(round(self.array_data[self.var_name]['array_design']['slot_length'] * scale_factor))
+        height = int(round(self.array_data[self.var_name]['array_design']['slot_width'] * scale_factor))
+
+        padded_height = height + 2 * padding
+        padded_width = width + 2 * padding
+
+        #TODO will this need scaling by the image conversion? probably
+
+        self.mask = np.zeros((padded_height, padded_width), dtype=bool)
+        
+        if self.array_data[self.var_name]['array_design']['well_shape'] == "rectangular_array":
+            start_row, start_col = padding, padding
+            rr, cc = draw.rectangle(start=(start_row, start_col), extent=(height, width))
+        else:
+            center = (padded_height // 2, padded_width // 2)
+            radius = min(height, width) // 2  
+            rr, cc = draw.disk(center, radius)
+
+        self.mask[rr, cc] = True
+    
+    def _extract_wells(self, points):
+        """Cuts a well centered around the points in the points layer of the image
+        of the size defined in the array and displays the image layer
+
+        :param points: x, y coordinates for center location points defining the well locations
+        :type points: numpy points
+        """
+
+        mask_height, mask_width = self.mask.shape
+        half_mask_height, half_mask_width = mask_height // 2, mask_width // 2
+
+        #TODO make sure this is handled properly in implementation
+        img_data = self.img_layer.data
+        extracted_regions = []
+
+        for i, point in enumerate(points):
+            width_center, height_center  = int(point[1]), int(point[0])
+
+            width_min = max(width_center - half_mask_width, 0)
+            width_max = min(width_center + half_mask_width, img_data.shape[1])
+            height_min = max(height_center - half_mask_height, 0)
+            height_max = min(height_center + half_mask_height, img_data.shape[0])
+            region = img_data[height_min : height_max, width_min : width_max]
+
+            mask_height_min = max(0, height_min - (height_center - half_mask_height))
+            mask_height_max = mask_height_min + region.shape[0]
+            mask_width_min = max(0, width_min - (width_center - half_mask_width))
+            mask_width_max = mask_width_min + region.shape[1]
+
+            mask_width_max = min(mask_width, mask_width_max)
+            mask_height_max = min(mask_height, mask_height_max)
+            
+            overlap_width = mask_width_max - mask_width_min
+            overlap_height = mask_height_max - mask_height_min
+            
+            if overlap_width > 0 and overlap_height > 0:
+                masked_region = np.zeros_like(region)
+                masked_region[:overlap_height, :overlap_width] = (
+                    region[:overlap_height, :overlap_width] * self.mask[mask_height_min:mask_height_max, mask_width_min:mask_width_max]
+                )
+                self.viewer.add_image(
+                    masked_region,
+                    name=f'Well {i}',
+                    translate=(height_center - region.shape[0] // 2, width_center - region.shape[1] // 2)
+                )
+                extracted_regions.append(masked_region)
+            else:
+                logging.info(f'Skipping point at ({point[0]}, {point[1]}) due to zero overlap dimensions')
+            
+        return extracted_regions
 
 if __name__ == '__main__':
     NapariPts('/Users/diane.wiener/Documents/GitHub/python-fish-sorter/fish_sorter', 595)
