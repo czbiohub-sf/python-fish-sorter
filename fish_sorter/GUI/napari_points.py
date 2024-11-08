@@ -7,11 +7,24 @@ import os
 import pandas as pd
 import sys
 from datetime import datetime
+from napari.components.viewer_model import ViewerModel
+from napari.qt import QtViewer
 from pathlib import Path
 from pymmcore_plus import CMMCorePlus
 from qtpy.QtCore import QSize, Qt
 from qtpy.QtGui import QColor
-from qtpy.QtWidgets import QLabel, QPushButton, QSizePolicy, QWidget, QGridLayout
+from qtpy.QtWidgets import (
+    QCheckBox,
+    QDoubleSpinBox,
+    QGridLayout,
+    QLabel, 
+    QPushButton, 
+    QSizePolicy, 
+    QSplitter,
+    QTabWidget,
+    QVBoxLayout,
+    QWidget,
+)
 from skimage import data, draw
 from tifffile import imread
 from typing import List, Optional, Tuple, Callable
@@ -115,7 +128,16 @@ class NapariPts():
         self.extract_fish(points)
 
 
+        self.multiview = MultiViewerWidget(self.viewer)
+        self.viewer.window.add_dock_widget(self.multiview, name='For Classification')
+        
+       
+        dock_widget = self.viewer.window._dock_widgets['For Classification']
+        dock_widget.setFloating(False)
 
+        self.multiview._display_well(self.points_layer.features['Well'][2],  self.well_extract[2])
+        
+        
         #TODO handle preselecting fish
         #TODO add in zoom in of fish classified as singlets for classification
 
@@ -400,16 +422,84 @@ class NapariPts():
                 masked_region[:overlap_height, :overlap_width] = (
                     region[:overlap_height, :overlap_width] * self.mask[mask_height_min:mask_height_max, mask_width_min:mask_width_max]
                 )
-                self.viewer.add_image(
-                    masked_region,
-                    name=f'Well {i}',
-                    translate=(height_center - region.shape[0] // 2, width_center - region.shape[1] // 2)
-                )
+                # self.viewer.add_image(
+                #     masked_region,
+                #     name=f'Well {i}',
+                #     translate=(height_center - region.shape[0] // 2, width_center - region.shape[1] // 2)
+                # )
                 extracted_regions.append(masked_region)
             else:
                 logging.info(f'Skipping point at ({point[0]}, {point[1]}) due to zero overlap dimensions')
             
         return extracted_regions
+
+
+class MultiViewerWidget(QSplitter):
+    """Widget to add several sub napari viewer windows in a napari main window
+    """
+
+    def __init__(self, viewer: napari.Viewer) -> None:
+
+        super().__init__()
+        self.viewer = viewer
+        self.viewer_mos1 = ViewerModel(title='Mos1')
+        self.viewer_mos2 = ViewerModel(title='Mos2')
+        self._block = False
+        self.qt_viewer1 = QtViewerWrap(viewer, self.viewer_mos1)
+        self.qt_viewer2 = QtViewerWrap(viewer, self.viewer_mos2)
+        self.tab_widget = QTabWidget()
+        p1 = PanelWidget()
+        p2 = PanelWidget()
+        self.tab_widget.addTab(p1, 'Layer 1')
+        self.tab_widget.addTab(p2, 'Layer 2')
+        viewer_splitter = QSplitter()
+        viewer_splitter.addWidget(self.qt_viewer1)
+        viewer_splitter.addWidget(self.qt_viewer2)
+        viewer_splitter.setContentsMargins(0, 0, 0, 0)
+         
+        self.addWidget(viewer_splitter)
+        self.addWidget(self.tab_widget)
+
+    def _display_well(self, well, extracted_region):
+
+        self.viewer_mos1.add_image(extracted_region, name=f'Well {well}')
+        self.viewer_mos2.add_image(extracted_region, name=f'Well {well}')
+
+
+class QtViewerWrap(QtViewer):
+    def __init__(self, main_viewer, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+        self.main_viewer = main_viewer
+
+    def _qt_open(
+        self,
+        filenames: list,
+        stack: bool,
+        plugin: Optional[str] = None,
+        layer_type: Optional[str] = None,
+        **kwargs,
+    ):
+        """for drag and drop open files"""
+        self.main_viewer.window._qt_viewer._qt_open(
+            filenames, stack, plugin, layer_type, **kwargs
+        )
+
+
+class PanelWidget(QWidget):
+    """
+    Widget to additional widgets to the right of additional napari viewers.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.btn = QPushButton('Perform action')
+        self.spin = QDoubleSpinBox()
+        layout = QVBoxLayout()
+        layout.addWidget(self.spin)
+        layout.addWidget(self.btn)
+        layout.addStretch(1)
+        self.setLayout(layout)
+
 
 if __name__ == '__main__':
     NapariPts('/Users/diane.wiener/Documents/GitHub/python-fish-sorter/fish_sorter', 595)
