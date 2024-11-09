@@ -112,8 +112,8 @@ class NapariPts():
 
         #TODO add in mapping / imaging_plate class to go between image and real coordinates, not hard code these
 
-        self.img_layer = self.viewer.add_image(FITC_mosaic, colormap='green', contrast_limits = (FITC_mosaic.min(), FITC_mosaic.max()), opacity=0.5, name='FITC')
-        self.img_layer = self.viewer.add_image(TXR_mosaic, colormap='red', contrast_limits = (TXR_mosaic.min(), TXR_mosaic.max()), opacity=0.5, name='TXR')
+        self.viewer.add_image(FITC_mosaic, colormap='green', contrast_limits = (FITC_mosaic.min(), FITC_mosaic.max()), opacity=0.5, name='FITC')
+        self.viewer.add_image(TXR_mosaic, colormap='red', contrast_limits = (TXR_mosaic.min(), TXR_mosaic.max()), opacity=0.5, name='TXR')
         
             
         pts = self._points()
@@ -135,7 +135,8 @@ class NapariPts():
         dock_widget = self.viewer.window._dock_widgets['For Classification']
         dock_widget.setFloating(False)
 
-        self.multiview._display_well(self.points_layer.features['Well'][2],  self.well_extract[2])
+
+        self.multiview._display_well(2, self.well_extract)
         
         
         #TODO handle preselecting fish
@@ -245,7 +246,7 @@ class NapariPts():
 
         label = QLabel()
         label.setText("Key Bindings:\n" + "\n".join(f"{key}: {self.key_feature_map[key]}" for key in self.key_feature_map))
-        self.viewer.window.add_dock_widget(label, area='right')
+        self.viewer.window.add_dock_widget(label, area='right', name='Key Binding')
 
     def save_data(self):
         """Saves the classification once the user pushes the button
@@ -382,55 +383,61 @@ class NapariPts():
 
         self.mask[rr, cc] = True
     
-    def _extract_wells(self, points):
+    def _extract_wells(self, points) -> dict:
         """Cuts a well centered around the points in the points layer of the image
         of the size defined in the array and displays the image layer
 
         :param points: x, y coordinates for center location points defining the well locations
         :type points: numpy points
+
+        :return: layer name, extracted region for each layer for each point
+        :rtype: dict 
         """
 
         mask_height, mask_width = self.mask.shape
         half_mask_height, half_mask_width = mask_height // 2, mask_width // 2
 
-        #TODO make sure this is handled properly in implementation
-        img_data = self.img_layer.data
+        image_layers = [layer for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)]
         extracted_regions = []
 
         for i, point in enumerate(points):
             width_center, height_center  = int(point[1]), int(point[0])
+            region_by_layer = {}
 
-            width_min = max(width_center - half_mask_width, 0)
-            width_max = min(width_center + half_mask_width, img_data.shape[1])
-            height_min = max(height_center - half_mask_height, 0)
-            height_max = min(height_center + half_mask_height, img_data.shape[0])
-            region = img_data[height_min : height_max, width_min : width_max]
+            for layer in image_layers:
+                img_data = layer.data
+                width_min = max(width_center - half_mask_width, 0)
+                width_max = min(width_center + half_mask_width, img_data.shape[1])
+                height_min = max(height_center - half_mask_height, 0)
+                height_max = min(height_center + half_mask_height, img_data.shape[0])
+                region = img_data[height_min : height_max, width_min : width_max]
 
-            mask_height_min = max(0, height_min - (height_center - half_mask_height))
-            mask_height_max = mask_height_min + region.shape[0]
-            mask_width_min = max(0, width_min - (width_center - half_mask_width))
-            mask_width_max = mask_width_min + region.shape[1]
+                mask_height_min = max(0, height_min - (height_center - half_mask_height))
+                mask_height_max = mask_height_min + region.shape[0]
+                mask_width_min = max(0, width_min - (width_center - half_mask_width))
+                mask_width_max = mask_width_min + region.shape[1]
 
-            mask_width_max = min(mask_width, mask_width_max)
-            mask_height_max = min(mask_height, mask_height_max)
+                mask_width_max = min(mask_width, mask_width_max)
+                mask_height_max = min(mask_height, mask_height_max)
             
-            overlap_width = mask_width_max - mask_width_min
-            overlap_height = mask_height_max - mask_height_min
+                overlap_width = mask_width_max - mask_width_min
+                overlap_height = mask_height_max - mask_height_min
             
-            if overlap_width > 0 and overlap_height > 0:
-                masked_region = np.zeros_like(region)
-                masked_region[:overlap_height, :overlap_width] = (
-                    region[:overlap_height, :overlap_width] * self.mask[mask_height_min:mask_height_max, mask_width_min:mask_width_max]
-                )
-                # self.viewer.add_image(
-                #     masked_region,
-                #     name=f'Well {i}',
-                #     translate=(height_center - region.shape[0] // 2, width_center - region.shape[1] // 2)
-                # )
-                extracted_regions.append(masked_region)
-            else:
-                logging.info(f'Skipping point at ({point[0]}, {point[1]}) due to zero overlap dimensions')
-            
+                if overlap_width > 0 and overlap_height > 0:
+                    masked_region = np.zeros_like(region)
+                    masked_region[:overlap_height, :overlap_width] = (
+                        region[:overlap_height, :overlap_width] * self.mask[mask_height_min:mask_height_max, mask_width_min:mask_width_max]
+                    )
+                    region_by_layer[layer.name] = masked_region
+                    # self.viewer.add_image(
+                    #     masked_region,
+                    #     name=f'Well {i} -- {layer.name}',
+                    #     translate=(height_center - region.shape[0] // 2, width_center - region.shape[1] // 2)
+                    # )
+                else:
+                    logging.info(f'Skipping point at ({point[0]}, {point[1]}) due to zero overlap dimensions')
+            extracted_regions.append(region_by_layer)
+   
         return extracted_regions
 
 
@@ -442,30 +449,45 @@ class MultiViewerWidget(QSplitter):
 
         super().__init__()
         self.viewer = viewer
-        self.viewer_mos1 = ViewerModel(title='Mos1')
-        self.viewer_mos2 = ViewerModel(title='Mos2')
         self._block = False
-        self.qt_viewer1 = QtViewerWrap(viewer, self.viewer_mos1)
-        self.qt_viewer2 = QtViewerWrap(viewer, self.viewer_mos2)
-        self.tab_widget = QTabWidget()
-        p1 = PanelWidget()
-        p2 = PanelWidget()
-        self.tab_widget.addTab(p1, 'Layer 1')
-        self.tab_widget.addTab(p2, 'Layer 2')
+        image_layers = [layer for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)]
+        self.viewer_models = []
+        self.qt_viewers = []
         viewer_splitter = QSplitter()
-        viewer_splitter.addWidget(self.qt_viewer1)
-        viewer_splitter.addWidget(self.qt_viewer2)
+        self.tab_widget = QTabWidget()
+        
+        for idx, layer in enumerate(image_layers):
+            viewer_model = ViewerModel(title=layer.name)
+            self.viewer_models.append(viewer_model)
+            qt_viewer = QtViewerWrap(self.viewer, viewer_model)
+            self.qt_viewers.append(qt_viewer)
+            viewer_splitter.addWidget(qt_viewer)
+            panel = PanelWidget()
+            self.tab_widget.addTab(panel, f'Layer {idx + 1}')
+
         viewer_splitter.setContentsMargins(0, 0, 0, 0)
-         
         self.addWidget(viewer_splitter)
         self.addWidget(self.tab_widget)
 
-    def _display_well(self, well, extracted_region):
+    def _display_well(self, well: int, extracted_regions):
+        """Displays each layer in a different subimage viewer for a specific well
 
-        self.viewer_mos1.add_image(extracted_region, name=f'Well {well}')
-        self.viewer_mos2.add_image(extracted_region, name=f'Well {well}')
+        :param well: the well id, currently 0 indexed
+        :type well: int
+        :param extracted_regions: extracted regions by point and layer 
+        :type extracted_regions: dict
+        """
 
+        point_region = extracted_regions[well]
 
+        for viewer_model, (layer_name, masked_region) in zip(self.viewer_models, point_region.items()):
+            if masked_region is not None:
+                logging.info(f'Processing extracted region from {layer_name} for well {well}')
+                viewer_model.add_image(masked_region, contrast_limits = (masked_region.min(), masked_region.max()), name=f'Well {well} -- {layer_name}')
+            else:
+                logging.info(f'No data for {layer_name} at point {well}')
+        
+        
 class QtViewerWrap(QtViewer):
     def __init__(self, main_viewer, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
