@@ -137,11 +137,6 @@ class NapariPts():
         self.current_well = 0
         
         self.classify_widget = self._create_classify()
-        # self.classify_widget = QWidget()
-        # layout = QVBoxLayout()
-        # layout.addWidget(self._create_well_display(2, self.well_extract))
-        # layout.addWidget(self._display_key_bindings())
-        # self.classify_widget.setLayout(layout)
         self.viewer.window.add_dock_widget(self.classify_widget, name= 'Classification')
          
         self.viewer.bind_key("Right", self._next_well)
@@ -268,6 +263,9 @@ class NapariPts():
             if 'Well' in class_df.columns:
                 class_df.rename(columns={'Well': 'slotName'}, inplace=True)
 
+            boolean_columns = class_df.select_dtypes(include='bool').columns
+            class_df[boolean_columns] = class_df[boolean_columns].astype(int)
+
             prefix = "fish_test"
             file_path = '/Users/diane.wiener/Documents/fish-sorter-data/2024-02-15-cldnb-mScarlet_she-GFP/'
             
@@ -335,6 +333,8 @@ class NapariPts():
 
         self.points_layer.data = self._points()
         self.points_layer.refresh_colors(update_color_mapping=False)
+        if self.feature_widget is not None:
+            self._update_feature_display(self.current_well)
 
     def extract_fish(self, points):
         """Finds the locations of positive wells
@@ -448,35 +448,51 @@ class NapariPts():
 
         self.well_disp = self._create_well_display(self.current_well, self.well_extract)
         layout.addWidget(self.well_disp)
-        key_binding = self._display_key_bindings()
-        layout.addWidget(key_binding)
-        widget.setLayout(layout)
         
+        widget.setLayout(layout)
         return widget
     
-    def _display_key_bindings(self, columns: int=3):
-        """Show the custom key bindings for classification
+    def _display_feature_key_widget(self, well: int, columns: int=3):
+        """Shows the features and key bindings for the specific well 
+        in the side planel for classification
+
+        :param well: the well id, currently 0 indexed
+        :type well: int
 
         :param columns: number of columns to list key bindings
         :type columns: int
 
-        :return: A QWidget with key binding map
+        :return: A QWidget with the multiviewers
         :rtype: QWidget
         """
 
         widget = QWidget()
         layout = QGridLayout()
-        layout.addWidget(QLabel('Key Bindings:'), 0, 0, 1, columns)
+        layout.addWidget(QLabel('Feature:'), 0, 0)
+        layout.addWidget(QLabel('Value:'), 0, 1)
+        layout.addWidget(QLabel('Key Binding:'), 0, 2)
         
-        row, col = 1, 0
-        for key, feature in self.key_feature_map.items():
-            layout.addWidget(QLabel(f'{key}: {feature}'), row, col)
-            col += 1
-            if col >= columns:
-                col = 0
-                row +=1
-        widget.setLayout(layout)
+        row = 1
+        features = self.points_layer.features
+        key_map = {feature: key for key, feature in self.key_feature_map.items()}
+        
+        if features is not None:
+            for feature_name, values in features.items():
+                feature_value = values[well]
+                key_binding = key_map.get(feature_name, " ")
+                value_label = QLabel(str(feature_value))
+                if isinstance(feature_value, (bool, np.bool_)):
+                    color = "green" if feature_value else "red"
+                else:
+                    color = "white"
+                value_label.setStyleSheet(f"color: {color}; font-weight: bold;")
+                layout.addWidget(QLabel(feature_name), row, 0)
+                layout.addWidget(value_label, row, 1)
+                layout.addWidget(QLabel(key_binding), row, 2)
 
+                row += 1
+
+        widget.setLayout(layout)
         return widget
 
     def _create_well_display(self, well: int, extracted_regions):
@@ -517,8 +533,11 @@ class NapariPts():
             else:
                 logging.info(f'No data for {layer_name} at well {well}')
         layout.addWidget(splitter)
-        widget.setLayout(layout)
 
+        self.feature_widget = self._display_feature_key_widget(well)
+        layout.addWidget(self.feature_widget)
+
+        widget.setLayout(layout)
         return widget
 
     def _next_well(self, event=None):
@@ -528,6 +547,8 @@ class NapariPts():
         :type event: Event of Napari Qt Event loop
         """
 
+        #TODO updat so that it cycles through non empty wells once prefrish selection is added
+
         if self.current_well < self.total_wells - 1:
             self.current_well += 1
         else:
@@ -535,6 +556,7 @@ class NapariPts():
         self._update_well_display()
         self._refocus_viewer()
         self._select_current_point()
+        self._update_feature_display(self.current_well)
     
     def _previous_well(self, event=None):
         """Updates the viewer window with the previous well when the left arrow key is pressed
@@ -543,14 +565,17 @@ class NapariPts():
         :type event: Event of Napari Qt Event loop
         """
 
+        #TODO updat so that it cycles through non empty wells once prefrish selection is added
+
         if self.current_well > 0:
             self.current_well -= 1
         else:
             self.current_well = self.total_wells - 1    
         self._update_well_display()
-        self._select_current_point()
         self._refocus_viewer()
-
+        self._select_current_point()
+        self._update_feature_display(self.current_well)
+        
     def _update_well_display(self):
         """Updates the side Classify viewer with a new well
         """
@@ -559,6 +584,46 @@ class NapariPts():
         self.well_disp.deleteLater()
         self.well_disp = self._create_well_display(self.current_well, self.well_extract)
         self.classify_widget.layout().insertWidget(0, self.well_disp)
+
+    def _update_feature_display(self, well: int, columns: int=3):
+        """Updates the feature classifications with key press actions
+
+        :param well: the well id, currently 0 indexed
+        :type well: int
+
+        :param columns: number of columns to list key bindings
+        :type columns: int
+        """
+
+        layout = self.feature_widget.layout()
+        for i in reversed(range(1, layout.rowCount())):
+            for j in range(layout.columnCount()):
+                item = layout.itemAtPosition(i, j)
+                if item is not None:
+                    widget = item.widget()
+                    if widget is not None:
+                        widget.deleteLater()
+
+        row = 1
+        features = self.points_layer.features
+        key_map = {feature: key for key, feature in self.key_feature_map.items()}
+        
+        if features is not None:
+            for feature_name, values in features.items():
+                feature_value = values[well]
+                key_binding = key_map.get(feature_name, " ")
+                value_label = QLabel(str(feature_value))
+                if isinstance(feature_value, (bool, np.bool_)):
+                    color = "green" if feature_value else "red"
+                else:
+                    color = "white"
+                value_label.setStyleSheet(f"color: {color}; font-weight: bold;")
+                layout.addWidget(QLabel(feature_name), row, 0)
+                layout.addWidget(value_label, row, 1)
+                layout.addWidget(QLabel(key_binding), row, 2)
+
+
+                row += 1
 
     def _select_current_point(self):
         """Select the point for the well currently in view for classification
