@@ -17,6 +17,7 @@ from qtpy.QtWidgets import (
     QCheckBox,
     QDoubleSpinBox,
     QGridLayout,
+    QHBoxLayout,
     QLabel, 
     QPushButton, 
     QSizePolicy, 
@@ -101,6 +102,7 @@ class NapariPts():
             self.viewer = napari.Viewer()
         else:
             self.viewer = viewer
+        self.viewer.window._qt_window.setFocusPolicy(Qt.StrongFocus)
 
 
         #Temporary for testing
@@ -123,24 +125,27 @@ class NapariPts():
         self._key_binding()
         for key, feature in self.key_feature_map.items():
             self.viewer.bind_key(key)(self._toggle_feature(feature))
-        self.display_key_bindings()
-
-        self.extract_fish(points)
-
-
-        self.multiview = MultiViewerWidget(self.viewer)
-        self.viewer.window.add_dock_widget(self.multiview, name='For Classification')
         
-       
-        dock_widget = self.viewer.window._dock_widgets['For Classification']
-        dock_widget.setFloating(False)
-
-
-        self.multiview._display_well(2, self.well_extract)
+        self.extract_fish(points)
         
         
         #TODO handle preselecting fish
         #TODO add in zoom in of fish classified as singlets for classification
+
+
+        #TODO pre select and then cycle though preselected fish but for now index at 0
+        self.current_well = 0
+        
+        self.classify_widget = self._create_classify()
+        # self.classify_widget = QWidget()
+        # layout = QVBoxLayout()
+        # layout.addWidget(self._create_well_display(2, self.well_extract))
+        # layout.addWidget(self._display_key_bindings())
+        # self.classify_widget.setLayout(layout)
+        self.viewer.window.add_dock_widget(self.classify_widget, name= 'Classification')
+         
+        self.viewer.bind_key("Right", self._next_well)
+        self.viewer.bind_key("Left", self._previous_well)
 
       
         
@@ -239,14 +244,6 @@ class NapariPts():
             self.points_layer.mode = 'select'
 
         return _toggle_annotation
-    
-    def display_key_bindings(self):
-        """Show the custom key bindings for classification
-        """
-
-        label = QLabel()
-        label.setText("Key Bindings:\n" + "\n".join(f"{key}: {self.key_feature_map[key]}" for key in self.key_feature_map))
-        self.viewer.window.add_dock_widget(label, area='right', name='Key Binding')
 
     def save_data(self):
         """Saves the classification once the user pushes the button
@@ -261,10 +258,9 @@ class NapariPts():
         self.viewer.window.add_dock_widget(container_widget, area='right')
 
         def _save_it():
-            """Saves the data
+            """Saves the classification data from the points layer to csv on button press
 
-            :param event: key press of hotkey binding from key binding function
-            :type event: Event of Napari Qt Event loop
+            Saves the classification and a template for pickable features as csv files
             """
 
             class_df = pd.DataFrame(self.points_layer.features)
@@ -440,54 +436,145 @@ class NapariPts():
    
         return extracted_regions
 
+    def _create_classify(self):
+        """Classification side widget with key bindings and well viewer windows
 
-class MultiViewerWidget(QSplitter):
-    """Widget to add several sub napari viewer windows in a napari main window
-    """
+        :return: A QWidget with key binding map
+        :rtype: QWidget
+        """
 
-    def __init__(self, viewer: napari.Viewer) -> None:
+        widget = QWidget()
+        layout = QVBoxLayout()
 
-        super().__init__()
-        self.viewer = viewer
-        self._block = False
-        image_layers = [layer for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)]
-        self.viewer_models = []
-        self.qt_viewers = []
-        viewer_splitter = QSplitter()
-        self.tab_widget = QTabWidget()
+        self.well_disp = self._create_well_display(self.current_well, self.well_extract)
+        layout.addWidget(self.well_disp)
+        key_binding = self._display_key_bindings()
+        layout.addWidget(key_binding)
+        widget.setLayout(layout)
         
-        for idx, layer in enumerate(image_layers):
-            viewer_model = ViewerModel(title=layer.name)
-            self.viewer_models.append(viewer_model)
-            qt_viewer = QtViewerWrap(self.viewer, viewer_model)
-            self.qt_viewers.append(qt_viewer)
-            viewer_splitter.addWidget(qt_viewer)
-            panel = PanelWidget()
-            self.tab_widget.addTab(panel, f'Layer {idx + 1}')
+        return widget
+    
+    def _display_key_bindings(self, columns: int=3):
+        """Show the custom key bindings for classification
 
-        viewer_splitter.setContentsMargins(0, 0, 0, 0)
-        self.addWidget(viewer_splitter)
-        self.addWidget(self.tab_widget)
+        :param columns: number of columns to list key bindings
+        :type columns: int
 
-    def _display_well(self, well: int, extracted_regions):
-        """Displays each layer in a different subimage viewer for a specific well
+        :return: A QWidget with key binding map
+        :rtype: QWidget
+        """
+
+        widget = QWidget()
+        layout = QGridLayout()
+        layout.addWidget(QLabel('Key Bindings:'), 0, 0, 1, columns)
+        
+        row, col = 1, 0
+        for key, feature in self.key_feature_map.items():
+            layout.addWidget(QLabel(f'{key}: {feature}'), row, col)
+            col += 1
+            if col >= columns:
+                col = 0
+                row +=1
+        widget.setLayout(layout)
+
+        return widget
+
+    def _create_well_display(self, well: int, extracted_regions):
+        """Show the custom key bindings for classification
+
+        Displays each layer in a different subimage viewer for a specific well
 
         :param well: the well id, currently 0 indexed
         :type well: int
         :param extracted_regions: extracted regions by point and layer 
         :type extracted_regions: dict
+
+        :return: A QWidget with the multiviewers
+        :rtype: QWidget
         """
 
+        widget = QWidget()
+        layout = QVBoxLayout()
+        layout.addWidget(QLabel(f'Well {well}'))
+        splitter = QSplitter()
+        splitter.setOrientation(Qt.Vertical)
         point_region = extracted_regions[well]
 
-        for viewer_model, (layer_name, masked_region) in zip(self.viewer_models, point_region.items()):
+        for layer_name, masked_region in point_region.items():
             if masked_region is not None:
                 logging.info(f'Processing extracted region from {layer_name} for well {well}')
-                viewer_model.add_image(masked_region, contrast_limits = (masked_region.min(), masked_region.max()), name=f'Well {well} -- {layer_name}')
+                container = QWidget()
+                container_layout = QVBoxLayout()
+                container_layout.addWidget(QLabel(layer_name))
+                viewer_model = ViewerModel(title=layer_name)
+                qt_viewer = QtViewerWrap(self.viewer, viewer_model)
+
+                #TODO make sure that contrast limits are set according to overall contrast limits
+                viewer_model.add_image(masked_region, contrast_limits=(masked_region.min(), masked_region.max()), name=f'{layer_name}')
+                container_layout.addWidget(qt_viewer)
+                container.setLayout(container_layout)
+                splitter.addWidget(container)
             else:
-                logging.info(f'No data for {layer_name} at point {well}')
-        
-        
+                logging.info(f'No data for {layer_name} at well {well}')
+        layout.addWidget(splitter)
+        widget.setLayout(layout)
+
+        return widget
+
+    def _next_well(self, event=None):
+        """Updates the viewer window with the next well when the right arrow key is pressed
+
+        :param event: key press of right arrow key
+        :type event: Event of Napari Qt Event loop
+        """
+
+        if self.current_well < self.total_wells - 1:
+            self.current_well += 1
+        else:
+            self.current_well = 0    
+        self._update_well_display()
+        self._refocus_viewer()
+        self._select_current_point()
+    
+    def _previous_well(self, event=None):
+        """Updates the viewer window with the previous well when the left arrow key is pressed
+
+        :param event: key press of left arrow key
+        :type event: Event of Napari Qt Event loop
+        """
+
+        if self.current_well > 0:
+            self.current_well -= 1
+        else:
+            self.current_well = self.total_wells - 1    
+        self._update_well_display()
+        self._select_current_point()
+        self._refocus_viewer()
+
+    def _update_well_display(self):
+        """Updates the side Classify viewer with a new well
+        """
+
+        self.classify_widget.layout().removeWidget(self.well_disp)
+        self.well_disp.deleteLater()
+        self.well_disp = self._create_well_display(self.current_well, self.well_extract)
+        self.classify_widget.layout().insertWidget(0, self.well_disp)
+
+    def _select_current_point(self):
+        """Select the point for the well currently in view for classification
+        """
+
+        if self.points_layer is not None:
+            self.points_layer.selected_data = {self.current_well}
+            self.points_layer.refresh()
+
+    def _refocus_viewer(self):
+        """Needed so that classification can be done in the main window
+        """
+
+        self.viewer.layers.selection.active = self.points_layer
+        self.viewer.window._qt_window.setFocus()
+       
 class QtViewerWrap(QtViewer):
     def __init__(self, main_viewer, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
@@ -505,23 +592,6 @@ class QtViewerWrap(QtViewer):
         self.main_viewer.window._qt_viewer._qt_open(
             filenames, stack, plugin, layer_type, **kwargs
         )
-
-
-class PanelWidget(QWidget):
-    """
-    Widget to additional widgets to the right of additional napari viewers.
-    """
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.btn = QPushButton('Perform action')
-        self.spin = QDoubleSpinBox()
-        layout = QVBoxLayout()
-        layout.addWidget(self.spin)
-        layout.addWidget(self.btn)
-        layout.addStretch(1)
-        self.setLayout(layout)
-
 
 if __name__ == '__main__':
     NapariPts('/Users/diane.wiener/Documents/GitHub/python-fish-sorter/fish_sorter', 595)
