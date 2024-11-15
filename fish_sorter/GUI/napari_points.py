@@ -120,6 +120,7 @@ class NapariPts():
         self.viewer.add_image(FITC_mosaic, colormap='green', opacity=0.5, name='FITC')
         self.viewer.add_image(TXR_mosaic, colormap='red', opacity=0.5, name='TXR')
 
+        self.contrast_callbacks = {}
         self.contrast_widget = ContrastWidget(self.viewer)
         self.viewer.window.add_dock_widget(self.contrast_widget, name= 'Contrast', area='left')
 
@@ -557,6 +558,7 @@ class NapariPts():
         splitter.setOrientation(Qt.Vertical)
         point_region = extracted_regions[well]
         image_layers = {layer.name: layer for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)}
+        self.well_display_layers = {}
 
         for layer_name, masked_region in point_region.items():
             if masked_region is not None:
@@ -571,6 +573,8 @@ class NapariPts():
                     color = 'green'
                 elif layer_name == 'TXR':
                     color = 'red'
+                else:
+                    color = 'grey'
 
                 #TODO make sure that contrast limits are set according to overall contrast limits
                 main_layer = image_layers.get(layer_name)
@@ -578,7 +582,7 @@ class NapariPts():
                     contrast_limits = main_layer.contrast_limits
                 else:
                     contrast_limits = (masked_region.min(), masked_region.max())
-                viewer_model.add_image(
+                well_layer = viewer_model.add_image(
                     masked_region,
                     colormap=color,
                     contrast_limits=contrast_limits,
@@ -587,6 +591,16 @@ class NapariPts():
                 container_layout.addWidget(qt_viewer)
                 container.setLayout(container_layout)
                 splitter.addWidget(container)
+                self.well_display_layers[layer_name] = well_layer
+
+                if main_layer is not None:
+                    def mini_contrast_callback(main_layer, well_layer):
+                        def update_contrast(event):
+                            well_layer.contrast_limits = main_layer.contrast_limits
+                        return update_contrast
+                    mini_contrast = mini_contrast_callback(main_layer, well_layer)
+                    main_layer.events.contrast_limits.connect(mini_contrast)
+                self.contrast_callbacks[layer_name] = mini_contrast_callback
             else:
                 logging.info(f'No data for {layer_name} at well {well}')
         layout.addWidget(splitter)
@@ -639,6 +653,8 @@ class NapariPts():
 
         self.classify_widget.layout().removeWidget(self.well_disp)
         self.well_disp.deleteLater()
+        self.well_display_layers.clear()
+        self.contrast_callbacks.clear()
         self.well_disp = self._create_well_display(self.current_well, self.well_extract)
         self.classify_widget.layout().insertWidget(0, self.well_disp)
 
