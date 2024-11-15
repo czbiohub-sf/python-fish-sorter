@@ -8,6 +8,7 @@ import pandas as pd
 import sys
 from datetime import datetime
 from napari.components.viewer_model import ViewerModel
+from napari.layers import Image
 from napari.qt import QtViewer
 from pathlib import Path
 from pymmcore_plus import CMMCorePlus
@@ -21,6 +22,7 @@ from qtpy.QtWidgets import (
     QLabel, 
     QPushButton, 
     QSizePolicy, 
+    QSlider,
     QSplitter,
     QTabWidget,
     QVBoxLayout,
@@ -97,6 +99,7 @@ class NapariPts():
                     logging.critical("Config file not found")
         self._feat()
         self.mask = {}
+        self.fish = []
 
         if viewer is None:
             self.viewer = napari.Viewer()
@@ -114,9 +117,12 @@ class NapariPts():
 
         #TODO add in mapping / imaging_plate class to go between image and real coordinates, not hard code these
 
-        self.viewer.add_image(FITC_mosaic, colormap='green', contrast_limits = (FITC_mosaic.min(), FITC_mosaic.max()), opacity=0.5, name='FITC')
-        self.viewer.add_image(TXR_mosaic, colormap='red', contrast_limits = (TXR_mosaic.min(), TXR_mosaic.max()), opacity=0.5, name='TXR')
-        
+        self.viewer.add_image(FITC_mosaic, colormap='green', opacity=0.5, name='FITC')
+        self.viewer.add_image(TXR_mosaic, colormap='red', opacity=0.5, name='TXR')
+
+        self.contrast_widget = ContrastWidget(self.viewer)
+        self.viewer.window.add_dock_widget(self.contrast_widget, name= 'Contrast', area='left')
+
             
         pts = self._points()
         self.points_layer, points = self.load_points(pts)
@@ -127,11 +133,12 @@ class NapariPts():
             self.viewer.bind_key(key)(self._toggle_feature(feature))
         
         self.extract_fish(points)
+
+        #TODO need helpers to automatically adjust contrast settings / update each small
+        #viewer. Can those be updated?
         
         
         #TODO handle preselecting fish
-        #TODO add in zoom in of fish classified as singlets for classification
-
 
         #TODO pre select and then cycle though preselected fish but for now index at 0
         self.current_well = 0
@@ -346,6 +353,8 @@ class NapariPts():
         #TODO make sure padding makes sense for fish detection / viewing for classification
         self._well_mask()
         self.well_extract = self._extract_wells(points)
+        # self.find_fish()
+
 
 
 
@@ -436,6 +445,38 @@ class NapariPts():
    
         return extracted_regions
 
+    # def find_fish(self):
+    #     """Automatically detects fish and fish orientation
+    #     """
+
+        
+
+    #     wells = []
+
+    #     self.well_extract
+
+
+    #     self._update_found_fish(wells, orientation)
+
+    def _update_found_fish(wells: List[Tuple[bool]], orientation: List[Tuple[bool]]):
+        """Updates the feature classification for the found fish and orientation
+
+        :param wells: well locations with fish
+        :type wells: List[Tuple[bool]]
+        :param orientation: fish orientation
+        :type orientation: List[Tuple[bool]]
+        """
+
+        self.points_layer.features['lHead'] = orientation
+        self.points_layer.features['singlet'] = wells
+
+        single = self.point_layer.features['singlet'].index
+        for feat in self.deselect_rules['singlet']:
+            self.points_layer.features.loc[single, feat] = False
+                                            
+        self.refresh()
+        self.points_layer.mode = 'select'
+
     def _create_classify(self):
         """Classification side widget with key bindings and well viewer windows
 
@@ -515,6 +556,7 @@ class NapariPts():
         splitter = QSplitter()
         splitter.setOrientation(Qt.Vertical)
         point_region = extracted_regions[well]
+        image_layers = {layer.name: layer for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)}
 
         for layer_name, masked_region in point_region.items():
             if masked_region is not None:
@@ -525,8 +567,23 @@ class NapariPts():
                 viewer_model = ViewerModel(title=layer_name)
                 qt_viewer = QtViewerWrap(self.viewer, viewer_model)
 
+                if layer_name == 'FITC':
+                    color = 'green'
+                elif layer_name == 'TXR':
+                    color = 'red'
+
                 #TODO make sure that contrast limits are set according to overall contrast limits
-                viewer_model.add_image(masked_region, contrast_limits=(masked_region.min(), masked_region.max()), name=f'{layer_name}')
+                main_layer = image_layers.get(layer_name)
+                if main_layer is not None:
+                    contrast_limits = main_layer.contrast_limits
+                else:
+                    contrast_limits = (masked_region.min(), masked_region.max())
+                viewer_model.add_image(
+                    masked_region,
+                    colormap=color,
+                    contrast_limits=contrast_limits,
+                    name=f'{layer_name}'
+                )
                 container_layout.addWidget(qt_viewer)
                 container.setLayout(container_layout)
                 splitter.addWidget(container)
@@ -547,7 +604,7 @@ class NapariPts():
         :type event: Event of Napari Qt Event loop
         """
 
-        #TODO updat so that it cycles through non empty wells once prefrish selection is added
+        #TODO update so that it cycles through non empty wells once prefrish selection is added
 
         if self.current_well < self.total_wells - 1:
             self.current_well += 1
@@ -565,7 +622,7 @@ class NapariPts():
         :type event: Event of Napari Qt Event loop
         """
 
-        #TODO updat so that it cycles through non empty wells once prefrish selection is added
+        #TODO update so that it cycles through non empty wells once prefrish selection is added
 
         if self.current_well > 0:
             self.current_well -= 1
@@ -622,7 +679,6 @@ class NapariPts():
                 layout.addWidget(value_label, row, 1)
                 layout.addWidget(QLabel(key_binding), row, 2)
 
-
                 row += 1
 
     def _select_current_point(self):
@@ -657,6 +713,89 @@ class QtViewerWrap(QtViewer):
         self.main_viewer.window._qt_viewer._qt_open(
             filenames, stack, plugin, layer_type, **kwargs
         )
+
+class ContrastWidget(QWidget):
+    
+    def __init__(self, viewer):
+        super().__init__()
+        self.viewer = viewer
+        self.layer_controls = {}
+        self.contrast_settings = {}
+        self.init_ui()
+        self.viewer.layers.events.inserted.connect(self.on_layer_inserted)
+        self.viewer.layers.events.removed.connect(self.on_layer_removed)
+
+    def init_ui(self):
+        self.layout = QVBoxLayout()
+        self.setLayout(self.layout)
+        for layer in self.viewer.layers:
+            if isinstance(layer, napari.layers.Image):
+                self.add_layer_control(layer)
+
+    def add_layer_control(self, layer):
+        layer_layout = QHBoxLayout()
+        label = QLabel(f'{layer.name} sigma:')
+        slider = QSlider(Qt.Horizontal)
+        slider.setMinimum(int(0.01*100))
+        slider.setMaximum(int(50*100))
+        slider.setSingleStep(1)
+        slider.setTickPosition(QSlider.TicksBelow)
+        slider.setTickInterval(int(10*100))
+
+        n_sigma = self.contrast_settings.get(layer.name, 30.0)
+        slider.setValue(int(n_sigma * 100))
+        value_label = QLabel(f'{n_sigma:.1f}')
+
+        slider.valueChanged.connect(lambda value, l=layer, vl=value_label: self.on_slider_change(l, value, vl))
+
+        layer_layout.addWidget(label)
+        layer_layout.addWidget(slider)
+        layer_layout.addWidget(value_label)
+        self.layout.addLayout(layer_layout)
+        self.layer_controls[layer] = (slider, value_label)
+        self.update_contrast(layer, slider.value())
+
+    def remove_layer_control(self, layer):
+        if layer in self.layer_controls:
+            slider, value_label = self.layer_controls.pop(layer)
+            for i in reversed(range(self.layout.count())):
+                item = self.layout.itemAt(i)
+                if item.layout():
+                    layout = item.layout()
+                    widget = layout.itemAt(0).widget()
+                    if widget and widget.text().startswith(layer.name):
+                        while layout.count():
+                            child = layout.takeAt(0)
+                            if child.widget():
+                                child.widget().deleteLater()
+                        self.layout.removeItem(item)
+                        break
+            self.contrast_settings.pop(layer.name, None)
+    
+    def on_slider_change(self, layer, value, value_label):
+        n_sigma = value / 100.0
+        value_label.setText(f'{n_sigma:.1f}')
+        self.update_contrast(layer, value)
+
+    def update_contrast(self, layer, slider_value):
+        n_sigma = slider_value / 100.0
+        data = layer.data
+        mean = np.mean(data)
+        std = np.std(data)
+        lower = mean - n_sigma * std
+        upper = mean + n_sigma * std
+        layer.contrast_limits = (lower, upper)
+        self.contrast_settings[layer.name] = n_sigma    
+
+    def on_layer_inserted(self, event):
+        layer = event.value
+        if isinstance(layer, napari.layers.Image):
+            self.add_layer_control(layer)
+
+    def on_layer_removed(self, event):
+        layer = event.value
+        self.remove_layer_control(layer)
+
 
 if __name__ == '__main__':
     NapariPts('/Users/diane.wiener/Documents/GitHub/python-fish-sorter/fish_sorter', 595)
