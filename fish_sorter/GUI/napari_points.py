@@ -83,18 +83,18 @@ class NapariPts():
         self.features = {}
         self.well_feat = {}
         self.fish_feat = {}
+
+        #TODO change to handle whether larvae / embryos / something else
+        self.picking = 'larvae'
+
         for filename in os.listdir(feat_dir):
             if filename.endswith('.json'):
                 file_path = os.path.join(feat_dir, filename)
                 try:
                     with open(file_path, 'r') as file:
                        data = json.load(file)
-                       self.feat_data = data['larvae']
+                       self.feat_data = data[self.picking]
                        logging.info('Loaded {} config file'.format(filename))
-
-
-                       #TODO change to handle whether larvae / embryos / something else
-                             
                 except FileNotFoundError:
                     logging.critical("Config file not found")
         self._feat()
@@ -133,13 +133,13 @@ class NapariPts():
         for key, feature in self.key_feature_map.items():
             self.viewer.bind_key(key)(self._toggle_feature(feature))
         
+        self.feature_widget = None
         self.extract_fish(points)
+        if self.picking == 'larvae':
+            self.find_orientation()
+        
+        
 
-        #TODO need helpers to automatically adjust contrast settings / update each small
-        #viewer. Can those be updated?
-        
-        
-        #TODO handle preselecting fish
 
         #TODO pre select and then cycle though preselected fish but for now index at 0
         self.current_well = 0
@@ -354,10 +354,7 @@ class NapariPts():
         #TODO make sure padding makes sense for fish detection / viewing for classification
         self._well_mask()
         self.well_extract = self._extract_wells(points)
-        # self.find_fish()
-
-
-
+        self.find_fish(points)
 
     def _well_mask(self, padding: int=100):
         """Create a mask of the well shape
@@ -389,12 +386,22 @@ class NapariPts():
 
         self.mask[rr, cc] = True
     
-    def _extract_wells(self, points) -> dict:
+    def _extract_wells(self, points, img_flag: bool=True, mask_layer: str=None, sigma: float=0.25) -> dict:
         """Cuts a well centered around the points in the points layer of the image
         of the size defined in the array and displays the image layer
 
         :param points: x, y coordinates for center location points defining the well locations
         :type points: numpy points
+
+        :param img_flag: option whether to use the image layers or to create the binary image mask 
+        automatic fish detection, True to use the image layers, False to use the binary mask
+        :type img_flag: bool 
+
+        :param mask_layer: layer to use to find fish, default None will use all layers
+        :type layer_name: str
+
+        :param sigma: number of standard deviations from mean for thresholding the mask
+        :type sigma: float
 
         :return: layer name, extracted region for each layer for each point
         :rtype: dict 
@@ -403,7 +410,25 @@ class NapariPts():
         mask_height, mask_width = self.mask.shape
         half_mask_height, half_mask_width = mask_height // 2, mask_width // 2
 
-        image_layers = [layer for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)]
+        if img_flag:
+            image_layers = [{'data': layer.data, 'name': layer.name} for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)]
+        else:
+            if mask_layer:
+                raw_layers = [layer for layer in self.viewer.layers if layer.name == mask_layer]
+                raw_data = raw_layers[0].data
+                layer_name = raw_layers[0].name
+            else:
+                raw_layers = [layer for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)]
+                raw_data = np.zeros_like(raw_layers[0].data, dtype=np.float32)
+                for layer in raw_layers:
+                    raw_data += layer.data
+                layer_name = 'sum'
+            mask_mean = raw_data.mean()
+            mask_std = raw_data.std()
+            thresh = mask_mean + sigma * mask_std
+            binary_mask = raw_data > thresh
+            image_layers = [{'data': binary_mask.astype(np.uint8), 'name': layer_name}]
+
         extracted_regions = []
 
         for i, point in enumerate(points):
@@ -411,7 +436,8 @@ class NapariPts():
             region_by_layer = {}
 
             for layer in image_layers:
-                img_data = layer.data
+                img_data = layer['data']
+                layer_name = layer['name']
                 width_min = max(width_center - half_mask_width, 0)
                 width_max = min(width_center + half_mask_width, img_data.shape[1])
                 height_min = max(height_center - half_mask_height, 0)
@@ -434,7 +460,7 @@ class NapariPts():
                     masked_region[:overlap_height, :overlap_width] = (
                         region[:overlap_height, :overlap_width] * self.mask[mask_height_min:mask_height_max, mask_width_min:mask_width_max]
                     )
-                    region_by_layer[layer.name] = masked_region
+                    region_by_layer[layer['name']] = masked_region
                     # self.viewer.add_image(
                     #     masked_region,
                     #     name=f'Well {i} -- {layer.name}',
@@ -445,36 +471,79 @@ class NapariPts():
             extracted_regions.append(region_by_layer)
    
         return extracted_regions
+    
+    def find_fish(self, points, layer_name=None):
+        """Automatically detects fish and fish orientation
 
-    # def find_fish(self):
-    #     """Automatically detects fish and fish orientation
-    #     """
+        :param points: x, y coordinates for center location points defining the well locations
+        :type points: numpy points
 
+        :param layer_name: layer to use to find fish, default None will use all layers
+        :type layer_name: str
+        """
+
+        img_data = self._extract_wells(points, False, layer_name)
         
+        wells_data = [list(region.values())[0].mean() for region in img_data]
+        well_mean = np.mean(wells_data)
 
-    #     wells = []
+        well_class = [region_mean > well_mean for region_mean in wells_data]
 
-    #     self.well_extract
+        #TODO drop the 4 corners should be able to extract from the array data {0,0}, {0, rows-1}, {rows-1, 0}, {rows-1, columns-1}
+        # or something like that self.array_data
 
+        self._update_found_fish(well_class)
 
-    #     self._update_found_fish(wells, orientation)
-
-    def _update_found_fish(wells: List[Tuple[bool]], orientation: List[Tuple[bool]]):
+    def _update_found_fish(self, wells: List[int]):
         """Updates the feature classification for the found fish and orientation
 
         :param wells: well locations with fish
-        :type wells: List[Tuple[bool]]
-        :param orientation: fish orientation
-        :type orientation: List[Tuple[bool]]
+        :type wells: List[int]
         """
 
-        self.points_layer.features['lHead'] = orientation
-        self.points_layer.features['singlet'] = wells
-
-        single = self.point_layer.features['singlet'].index
+        singlet_values = self.points_layer.features['singlet']
+        singlet_values[wells] = True
+        self.points_layer.features['singlet'] = singlet_values
         for feat in self.deselect_rules['singlet']:
-            self.points_layer.features.loc[single, feat] = False
-                                            
+            self.points_layer.features.loc[singlet_values, feat] = False                                 
+        self.refresh()
+        self.points_layer.mode = 'select'
+
+    def find_orientation(self):
+        """Determines orientation to select side of well for picking
+        """
+
+        single = [i for i, val in enumerate(self.points_layer.features['singlet']) if val]
+        orientation = {}
+
+        for fish in single:
+
+            if fish >= len(self.well_extract):
+                continue
+            well_data = self.well_extract[fish]
+            channels = list(well_data.values())
+            well_total = np.zeros_like(channels[0], dtype=np.float64)
+            for channel in channels:
+                well_total += channel
+            well_total /= len(channels)
+
+            height, width = well_total.shape
+            half_width = width // 2
+            left = well_total[:height, :half_width]
+            right = well_total[:height, half_width:width]
+            orientation[fish] = np.sum(left) >= np.sum(right)    
+
+        self._update_orientation(orientation)
+    
+    def _update_orientation(self, orientation=List[int]):
+        """Updates the feature classification for the found fish and orientation
+
+        :param orientation: well location where fish orientation is True
+        :type orientation: List[int]
+        """
+
+        for idx, orient in orientation.items():
+            self.points_layer.features['lHead'][idx] = orient
         self.refresh()
         self.points_layer.mode = 'select'
 
@@ -576,7 +645,6 @@ class NapariPts():
                 else:
                     color = 'grey'
 
-                #TODO make sure that contrast limits are set according to overall contrast limits
                 main_layer = image_layers.get(layer_name)
                 if main_layer is not None:
                     contrast_limits = main_layer.contrast_limits
@@ -748,28 +816,28 @@ class ContrastWidget(QWidget):
             if isinstance(layer, napari.layers.Image):
                 self.add_layer_control(layer)
 
-    def add_layer_control(self, layer):
+    def add_layer_control(self, layer, setpoint=30.0, scale=100.0):
         layer_layout = QHBoxLayout()
         label = QLabel(f'{layer.name} sigma:')
         slider = QSlider(Qt.Horizontal)
-        slider.setMinimum(int(0.01*100))
-        slider.setMaximum(int(50*100))
+        slider.setMinimum(int(0.01*scale))
+        slider.setMaximum(int(50*scale))
         slider.setSingleStep(1)
         slider.setTickPosition(QSlider.TicksBelow)
-        slider.setTickInterval(int(10*100))
+        slider.setTickInterval(int(10*scale))
 
-        n_sigma = self.contrast_settings.get(layer.name, 30.0)
-        slider.setValue(int(n_sigma * 100))
+        n_sigma = self.contrast_settings.get(layer.name, setpoint)
+        slider.setValue(int(n_sigma * scale))
         value_label = QLabel(f'{n_sigma:.1f}')
 
-        slider.valueChanged.connect(lambda value, l=layer, vl=value_label: self.on_slider_change(l, value, vl))
+        slider.valueChanged.connect(lambda value, l=layer, vl=value_label: self.on_slider_change(l, value, vl, scale))
 
         layer_layout.addWidget(label)
         layer_layout.addWidget(slider)
         layer_layout.addWidget(value_label)
         self.layout.addLayout(layer_layout)
         self.layer_controls[layer] = (slider, value_label)
-        self.update_contrast(layer, slider.value())
+        self.update_contrast(layer, slider.value(), scale)
 
     def remove_layer_control(self, layer):
         if layer in self.layer_controls:
@@ -788,13 +856,13 @@ class ContrastWidget(QWidget):
                         break
             self.contrast_settings.pop(layer.name, None)
     
-    def on_slider_change(self, layer, value, value_label):
-        n_sigma = value / 100.0
+    def on_slider_change(self, layer, value, value_label, scale):
+        n_sigma = value / scale
         value_label.setText(f'{n_sigma:.1f}')
-        self.update_contrast(layer, value)
+        self.update_contrast(layer, value, scale)
 
-    def update_contrast(self, layer, slider_value):
-        n_sigma = slider_value / 100.0
+    def update_contrast(self, layer, slider_value, scale):
+        n_sigma = slider_value / scale
         data = layer.data
         mean = np.mean(data)
         std = np.std(data)
