@@ -16,6 +16,7 @@ from qtpy.QtCore import QSize, Qt
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QCheckBox,
+    QComboBox,
     QDoubleSpinBox,
     QGridLayout,
     QHBoxLayout,
@@ -135,6 +136,8 @@ class NapariPts():
         
         self.feature_widget = None
         self.extract_fish(points)
+        self._find_fish_widget(points)
+
         if self.picking == 'larvae':
             self.find_orientation()
         
@@ -305,7 +308,7 @@ class NapariPts():
         :rtype: napari.points.Layer
         """
 
-        face_color_cycle = ['white', 'red']
+        face_color_cycle = ['black', 'white']
 
         #TODO when mapping function is working remove these, and load in that and calibration
         scale_factor = 1 / 2.6
@@ -354,7 +357,6 @@ class NapariPts():
         #TODO make sure padding makes sense for fish detection / viewing for classification
         self._well_mask()
         self.well_extract = self._extract_wells(points)
-        self.find_fish(points)
 
     def _well_mask(self, padding: int=100):
         """Create a mask of the well shape
@@ -472,21 +474,31 @@ class NapariPts():
    
         return extracted_regions
     
-    def find_fish(self, points, layer_name=None):
-        """Automatically detects fish and fish orientation
+    def find_fish(self, points, layer_name=None, sigma=0.25, reset=True):
+        """Automatically detects fish and fish orientation.
 
         :param points: x, y coordinates for center location points defining the well locations
         :type points: numpy points
 
         :param layer_name: layer to use to find fish, default None will use all layers
         :type layer_name: str
+
+        :param sigma: threshold value to compare well intensities to background
+        :type simga: float
+
+        :param reset: whether to reset the detected fish prior to the fish detection
+        :type reset: bool
         """
 
-        img_data = self._extract_wells(points, False, layer_name)
-        
+        if reset:
+            empty = self.points_layer.features['empty']
+            empty[:] = True
+            self.points_layer.features['empty'] = empty
+            for feat in self.deselect_rules['empty']:
+                self.points_layer.features.loc[empty, feat] = False
+        img_data = self._extract_wells(points, False, layer_name, sigma)
         wells_data = [list(region.values())[0].mean() for region in img_data]
         well_mean = np.mean(wells_data)
-
         well_class = [region_mean > well_mean for region_mean in wells_data]
 
         #TODO drop the 4 corners should be able to extract from the array data {0,0}, {0, rows-1}, {rows-1, 0}, {rows-1, columns-1}
@@ -547,6 +559,18 @@ class NapariPts():
         self.refresh()
         self.points_layer.mode = 'select'
 
+    def _find_fish_widget(self, points):
+        """Call back widget to use to detect wells with fish
+
+        :param points: x, y coordinates for center location points defining the well locations
+        :type points: numpy points
+        """
+
+        def find_fish_callback(layer_name: str, sigma: float):
+            self.find_fish(points, layer_name, sigma)
+        fish_widget = FishFinderWidget(self.viewer, find_fish_callback)
+        self.viewer.window.add_dock_widget(fish_widget, name= 'Finding Nemo', area='left')
+    
     def _create_classify(self):
         """Classification side widget with key bindings and well viewer windows
 
@@ -797,6 +821,55 @@ class QtViewerWrap(QtViewer):
         self.main_viewer.window._qt_viewer._qt_open(
             filenames, stack, plugin, layer_type, **kwargs
         )
+
+class FishFinderWidget(QWidget):
+    """Widget to setup the fish finding algorithm and run it to determine
+    the well locations with fish
+    """
+
+    def __init__(self, viewer, find_fish_callback):
+        super().__init__()
+        self.viewer = viewer
+        self.find_fish_callback = find_fish_callback
+        
+        layout = QVBoxLayout()
+        self.setLayout(layout)
+        self.layer_label = QLabel('Layer for fish detection')
+        self.layer_combo = QComboBox()
+        layout.addWidget(self.layer_label)
+        layout.addWidget(self.layer_combo)
+        self.sigma_label = QLabel('Sigma')
+        self.sigma_spin = QDoubleSpinBox()
+        self.sigma_spin.setMinimum(0.1)
+        self.sigma_spin.setMaximum(10)
+        self.sigma_spin.setSingleStep(0.1)
+        self.sigma_spin.setValue(0.25)
+        layout.addWidget(self.sigma_label)
+        layout.addWidget(self.sigma_spin)
+        self.run_button = QPushButton('Find Fish')
+        self.run_button.clicked.connect(self.run_find_fish)
+        layout.addWidget(self.run_button)
+        self.update_layers()
+
+    def update_layers(self):
+        """Create list of layers for the dropdown from the napari
+        list of layers and include the sum of the layers
+        """
+
+        layer_names = [layer.name for layer in self.viewer.layers if isinstance(layer, Image)]
+        layer_names.append('sum')
+        self.layer_combo.addItems(layer_names)
+
+    def run_find_fish(self):
+        """Callback for the fish finding widget
+        """
+
+        layer_name = self.layer_combo.currentText()
+        if layer_name == "sum":
+            layer_name = None
+        sigma = self.sigma_spin.value()
+        self.find_fish_callback(layer_name, sigma)
+
 
 class ContrastWidget(QWidget):
     
