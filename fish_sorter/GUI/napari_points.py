@@ -129,6 +129,7 @@ class NapariPts():
         pts = self._points()
         self.points_layer, points = self.load_points(pts)
         self.points_layer.mode = 'select'
+        self.points_layer.events.highlight.connect(self._selected_pt)
         
         self._key_binding()
         for key, feature in self.key_feature_map.items():
@@ -140,23 +141,15 @@ class NapariPts():
 
         if self.picking == 'larvae':
             self.find_orientation()
-        
-        
-
-
-        #TODO pre select and then cycle though preselected fish but for now index at 0
+    
         self.current_well = 0
-        
         self.classify_widget = self._create_classify()
         self.viewer.window.add_dock_widget(self.classify_widget, name= 'Classification')
-         
         self.viewer.bind_key("Right", self._next_well)
         self.viewer.bind_key("Left", self._previous_well)
 
-      
-        
-
         self.save_data()
+
 
         #TODO will need to add in loading previous classifications
             
@@ -214,6 +207,26 @@ class NapariPts():
 
         return points_coords
 
+    def _selected_pt(self, event):
+        """Callback when a point is selected
+        """
+
+        selected_data = self.points_layer.selected_data
+        if selected_data:
+            selected_idxs = list(selected_data)
+            selected_idx = selected_idxs[0]
+            self.current_well = selected_idx
+            self._update_well_display()
+            self._update_feature_display(self.current_well)
+
+    def _selected_current_pt(self):
+        """Select the point for the current well in the points layer
+        """
+        
+        if self.points_layer is not None:
+            self.points_layer.selected_data = {self.current_well}
+            self.points_layer.refresh()
+    
     def _toggle_feature(self, feature_name)-> Callable[[napari.utils.events.Event], None]:
         """Creates a callback toggle for a specific feature defined by feature_name
 
@@ -474,7 +487,7 @@ class NapariPts():
    
         return extracted_regions
     
-    def find_fish(self, points, layer_name=None, sigma=0.25, reset=True):
+    def find_fish(self, points, layer_name=None, sigma=0.25, reset=True, drop=True):
         """Automatically detects fish and fish orientation.
 
         :param points: x, y coordinates for center location points defining the well locations
@@ -488,6 +501,9 @@ class NapariPts():
 
         :param reset: whether to reset the detected fish prior to the fish detection
         :type reset: bool
+
+        :param drop: whether to drop the four corners from the detected fish list
+        :type drop: bool
         """
 
         if reset:
@@ -501,8 +517,15 @@ class NapariPts():
         well_mean = np.mean(wells_data)
         well_class = [region_mean > well_mean for region_mean in wells_data]
 
-        #TODO drop the 4 corners should be able to extract from the array data {0,0}, {0, rows-1}, {rows-1, 0}, {rows-1, columns-1}
-        # or something like that self.array_data
+        if drop:
+            corners = []
+            tl = 0
+            tr = self.array_data[self.var_name]['array_design']['columns'] - 1
+            bl = self.total_wells - self.array_data[self.var_name]['array_design']['columns']
+            br = self.total_wells - 1
+            corners = [tl, tr, bl, br]
+            for idx in corners:
+                well_class[idx] = False
 
         self._update_found_fish(well_class)
 
@@ -513,13 +536,15 @@ class NapariPts():
         :type wells: List[int]
         """
 
-        singlet_values = self.points_layer.features['singlet']
-        singlet_values[wells] = True
-        self.points_layer.features['singlet'] = singlet_values
+        singlets = self.points_layer.features['singlet']
+        singlets[wells] = True
+        singlets_idxs = np.where(singlets)[0]
+        self.points_layer.features['singlet'] = singlets
         for feat in self.deselect_rules['singlet']:
-            self.points_layer.features.loc[singlet_values, feat] = False                                 
+            self.points_layer.features.loc[singlets, feat] = False                                 
         self.refresh()
         self.points_layer.mode = 'select'
+        self.current_wells = singlets_idxs[0]
 
     def find_orientation(self):
         """Determines orientation to select side of well for picking
@@ -567,7 +592,7 @@ class NapariPts():
         """
 
         def find_fish_callback(layer_name: str, sigma: float):
-            self.find_fish(points, layer_name, sigma)
+            self.find_fish(points, layer_name, sigma, drop=False)
         fish_widget = FishFinderWidget(self.viewer, find_fish_callback)
         self.viewer.window.add_dock_widget(fish_widget, name= 'Finding Nemo', area='left')
     
@@ -710,16 +735,28 @@ class NapariPts():
         :type event: Event of Napari Qt Event loop
         """
 
-        #TODO update so that it cycles through non empty wells once prefrish selection is added
+        singlets = self.points_layer.features['singlet']
+        singlet_idxs = np.where(singlets)[0]
 
-        if self.current_well < self.total_wells - 1:
-            self.current_well += 1
-        else:
-            self.current_well = 0    
+        if len(singlets) == 0:
+            logging.warning('There are no singlets.')
+            return
+        try:
+            current_well = np.where(singlex_idxs == self.current_well)[0][0]
+            next_idx = (current_well + 1) % len(singlet_idxs)
+        except:
+            next_idxs = singlet_idxs[singlet_idxs > self.current_well]
+            if len(next_idxs) == 0:
+                next_idx = 0
+            else:
+                next_idx = np.where(singlet_idxs == next_idxs[0])[0][0]
+        
+        self.current_well = singlet_idxs[next_idx]
         self._update_well_display()
         self._refocus_viewer()
         self._select_current_point()
         self._update_feature_display(self.current_well)
+        self._selected_current_pt()
     
     def _previous_well(self, event=None):
         """Updates the viewer window with the previous well when the left arrow key is pressed
@@ -728,16 +765,27 @@ class NapariPts():
         :type event: Event of Napari Qt Event loop
         """
 
-        #TODO update so that it cycles through non empty wells once prefrish selection is added
+        singlets = self.points_layer.features['singlet']
+        singlet_idxs = np.where(singlets)[0]
 
-        if self.current_well > 0:
-            self.current_well -= 1
-        else:
-            self.current_well = self.total_wells - 1    
+        if len(singlets) == 0:
+            logging.warning('There are no singlets.')
+            return
+        try:
+            current_well = np.where(singlex_idxs == self.current_well)[0][0]
+            prev_idx = (current_well - 1) % len(singlet_idxs)
+        except:
+            prev_idxs = singlet_idxs[singlet_idxs < self.current_well]
+            if len(prev_idxs) == 0:
+                prev_idx = len(singlet_idxs) - 1
+            else:
+                prev_idx = np.where(singlet_idxs == prev_idxs[-1])[0][0]
+        self.current_well = singlet_idxs[prev_idx]
         self._update_well_display()
         self._refocus_viewer()
         self._select_current_point()
         self._update_feature_display(self.current_well)
+        self._selected_current_pt()
         
     def _update_well_display(self):
         """Updates the side Classify viewer with a new well
