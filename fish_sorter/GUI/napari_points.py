@@ -218,6 +218,7 @@ class NapariPts():
             self.current_well = selected_idx
             self._update_well_display()
             self._update_feature_display(self.current_well)
+            self.refresh()
 
     def _selected_current_pt(self):
         """Select the point for the current well in the points layer
@@ -225,7 +226,7 @@ class NapariPts():
         
         if self.points_layer is not None:
             self.points_layer.selected_data = {self.current_well}
-            self.points_layer.refresh()
+            self.refresh()
     
     def _toggle_feature(self, feature_name)-> Callable[[napari.utils.events.Event], None]:
         """Creates a callback toggle for a specific feature defined by feature_name
@@ -357,6 +358,7 @@ class NapariPts():
 
         self.points_layer.data = self._points()
         self.points_layer.refresh_colors(update_color_mapping=False)
+        
         if self.feature_widget is not None:
             self._update_feature_display(self.current_well)
 
@@ -809,15 +811,21 @@ class NapariPts():
         """
 
         layout = self.feature_widget.layout()
-        for i in reversed(range(1, layout.rowCount())):
-            for j in range(layout.columnCount()):
-                item = layout.itemAtPosition(i, j)
-                if item is not None:
-                    widget = item.widget()
-                    if widget is not None:
-                        widget.deleteLater()
 
-        row = 1
+        while layout.count():
+            item = layout.takeAt(0)
+            widget = item.widget()
+            if widget is not None:
+                widget.setParent(None)
+                widget.deleteLater()
+            else:
+                del item
+        row =  0
+        layout.addWidget(QLabel('Feature'), row, 0)
+        layout.addWidget(QLabel('Value'), row, 1)
+        layout.addWidget(QLabel('Key Binding'), row, 2)
+
+        row += 1
         features = self.points_layer.features
         key_map = {feature: key for key, feature in self.key_feature_map.items()}
         
@@ -836,6 +844,8 @@ class NapariPts():
                 layout.addWidget(QLabel(key_binding), row, 2)
 
                 row += 1
+        self.feature_widget.update()
+        self.feature_widget.repaint()
 
     def _select_current_point(self):
         """Select the point for the well currently in view for classification
@@ -843,7 +853,7 @@ class NapariPts():
 
         if self.points_layer is not None:
             self.points_layer.selected_data = {self.current_well}
-            self.points_layer.refresh()
+            self.refresh()
 
     def _refocus_viewer(self):
         """Needed so that classification can be done in the main window
