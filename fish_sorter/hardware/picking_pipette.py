@@ -224,6 +224,7 @@ class PickingPipette():
             self.disp_h = self.zc.get_pos('p')
             logging.info(f'Set dispense height to: {self.pick_h}')
 
+    # MK TODO potentially redundance with DispensePlate goToWell?
     def move_to_dest(self, dest_loc):
         """Moves the destination plate stages to the (x, y) location
 
