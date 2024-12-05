@@ -11,12 +11,8 @@ setup(
         'zaber_motion',
         'tqdm',
         'iter-tools',
-<<<<<<< HEAD:fish_sorter/setup.py
         'useq',
         'abc',
-=======
-        'useq-schema',
->>>>>>> classification:setup.py
         'argparse',
         'numpy',
         'pymodbus',
