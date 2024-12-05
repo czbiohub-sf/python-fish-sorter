@@ -8,6 +8,9 @@ from pathlib import Path
 from skimage import data
 from typing import List, Optional
 
+from helpers.imaging_plate import ImagingPlate
+
+
 class NapariPts():
     """Add points layer of the well locations to the image mosaic in napari.
     """
@@ -28,6 +31,9 @@ class NapariPts():
         self.array_data = {}
         self.total_wells = total_wells
         num_wells = str(self.total_wells)
+
+        # TODO Need to import mmc and mda
+        # self.iplate = ImagingPlate(mmc, mda)
 
         for filename in os.listdir(parent_dir):
             if filename.endswith('.json'):
@@ -87,14 +93,16 @@ class NapariPts():
         well_coords = self.array_data[self.var_name]['wells']['well_coordinates']
         points_coords = np.array(well_coords).reshape(-1,2)
 
-        #TODO convert real coordinates to image coordinates
-        #points = STAGE_2_IMG(points_coords)
+        # TODO define path_to_wells_file
+        # self.iplate.load_wells(path_to_wells_file)
+        # points = self.iplate.calib_px
 
         face_color_cycle = ['white', 'red']
 
         #TODO change points_coords to points once conversion in place
         points_layer = viewer.add_points(
             points_coords,
+            # points,
             features = self.features,
             size = 100,
             face_color = 'fish',

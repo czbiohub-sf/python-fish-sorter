@@ -109,16 +109,13 @@ class Mapping:
         px_well_pos = self.rel_um_to_px(transformed_well_pos)
 
         # Load sequence
-        self.wells = [
-            {
-                name : {
-                "raw_rel_um":  well_pos,
-                "calib_rel_um": transformed_well_pos,
-                "calib_abs_um": abs_well_pos,
-                "calib_px": px_well_pos,
-                }
-            } for name, pos in zip(well_names, calib_well_positions)
-        ]
+        self.wells = {
+            'names' : well_names,
+            'raw_rel_um' : well_pos,
+            "calib_rel_um": transformed_well_pos,
+            "calib_abs_um": abs_well_pos,
+            "calib_px": px_well_pos, # NOTE px is unused for dispense plate
+        }
 
     def _get_well_pos(self, well: str, offset):
         if well not in self.wells:
