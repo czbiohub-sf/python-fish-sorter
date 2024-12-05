@@ -46,8 +46,8 @@ class Pick():
         self.pick_param_file = None
         
         #TODO handle dest array and source array in Mapping or here?
-        self.iPlate = ImagingPlate(mmc, mda)
-        self.dPlate = DispensePlate(mmc, zc)
+        self.iplate = ImagingPlate(mmc, mda)
+        self.dplate = DispensePlate(mmc, zc)
         
         self.matches = None
 
@@ -126,7 +126,7 @@ class Pick():
         """
 
         # MK TODO ensure array formats are compatible
-        return self.dPlate.get_abs_um_from_well_name(well)
+        return self.dplate.get_abs_um_from_well_name(well)
 
     def pick_me(self):
         """Performs all actions to pick from the source plate to the destination plate using
@@ -143,13 +143,13 @@ class Pick():
             else:
                 offset = pick_type_config['larvae']['picker']['offset']
             
-            self.iPlate.go_to_well(self.matches['slotName'][match], offset)
+            self.iplate.go_to_well(self.matches['slotName'][match], offset)
             self.pp.move_pipette('pick')
             sleep(1)
             self.pp.draw()
             self.pp.move_pipette('clearance')
             
-            self.dPlate.go_to_well(self.matches['dispenseWell'][match])
+            self.dplate.go_to_well(self.matches['dispenseWell'][match])
             self.pp.move_pipette('dispense')
             self.pp.expel()
             sleep(1)
