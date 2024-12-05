@@ -20,7 +20,7 @@ class DispensePlate(Mapping):
         self.zc = zc
         super().__init__(mmc)
 
-    def set_calib_pos(self):
+    def set_calib_pts(self):
         # TODO prompt home
         x = self.get_pos('x') * MM_TO_UM
         y = self.get_pos('y') * MM_TO_UM

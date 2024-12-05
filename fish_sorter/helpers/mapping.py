@@ -22,11 +22,8 @@ from fish_sorter.constants import (
     IMG_Y_PX,
 )
 
-# TODO standardize coordinate format
-# NOTE TL corner needs to have image center at corner TODO add user prompt
-
-# TODO TODO add offset for head
-
+# NOTE TL corner needs to have image center at corner,
+#      unless manually overriden by set_center_to_corner_offset_um
 # TODO add type hints
 
 class Mapping:
@@ -37,16 +34,17 @@ class Mapping:
         self.um_home = None
         self.um_TR = None
 
-        self.px2um = self.mmc.getPixelSizeUm()
+        self.px2um = self.mmc.getPixelSizeUm() # Scaling factor
         self.um_center_to_corner_offset = self._get_center_to_corner_offset_um()
 
+        self.theta = 0.0
         self.transform = np.array([[1, 0], [0, 1]])
         self.wells = {}
 
         # TODO save TL/TR locations in experiment savefile
 
     @abstractmethod
-    def set_calib_pos(self):
+    def set_calib_pts(self):
         pass
 
     @abstractmethod
@@ -54,6 +52,7 @@ class Mapping:
         pass
 
     def _get_center_to_corner_offset_um(self):
+        # Compute home in px units assuming TR mosaic tile is centered on home
         return np.array(
             [
                 IMG_X_PX * self.px2um / 2,
@@ -61,19 +60,25 @@ class Mapping:
             ]
         )
 
+    def set_center_to_corner_offset_um(self, px_home ):
+        # Manually set home in px units
+        self.um_center_to_corner_offset = np.multiply(px_home, self.px2um)
+
     def set_home_and_transform(self):
         # User needs to previously set home in TL slot and navigate to TR corner before pressing "calibrate"
-        # TODO: Add user prompt
-
         vector = self.um_TR[0:2] - self.um_home[0:2]
-        theta = np.arctan(vector[1] / vector[0])
+        self.theta = np.arctan(vector[1] / vector[0])
 
         self.transform = np.array(
             [
-                [np.cos(theta), np.sin(theta)],
-                [-np.sin(theta), np.cos(theta)]
+                [np.cos(self.theta), np.sin(self.theta)],
+                [-np.sin(self.theta), np.cos(self.theta)]
             ]
         )
+
+    def get_transform(self):
+        # Get transformation matrix and corresponding angle
+        return self.transform, self.theta
 
     def apply_transform(self, pos):
         # Assume input is a np array, with each position as a row array [[x1; y1], [x2, y2], ...] 
@@ -109,8 +114,8 @@ class Mapping:
                 name : {
                 "raw_rel_um":  well_pos,
                 "calib_rel_um": transformed_well_pos,
-                "abs_um": abs_well_pos,
-                "px": px_well_pos,
+                "calib_abs_um": abs_well_pos,
+                "calib_px": px_well_pos,
                 }
             } for name, pos in zip(well_names, calib_well_positions)
         ]

@@ -13,7 +13,7 @@ class ImagingPlate(Mapping):
         self.mda = mda
         super().__init__(mmc)
 
-    def set_calib_pos(self):
+    def set_calib_pts(self):
         seq = self.mda.value()
 
         # TODO initialize position list with these names
