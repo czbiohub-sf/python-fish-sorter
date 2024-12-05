@@ -1,0 +1,30 @@
+{
+    "defaults": {
+        "pipette": {
+            "time": {
+                "draw": 25,
+                "expel": 125,
+                "description": "Time in ms to aspirate or dispense / keep vacuum or pressure open"
+            },
+            "stage": {
+                "pick": {
+                    "p": 60,
+                    "description": "The pipette height to pick"
+                },    
+                "clearance": {
+                    "p": 25,
+                    "description": "The pipette height to clear the destination plate"
+                },
+                "dispense": {
+                    "p": 30,
+                    "description": "The pipette height to dispense"
+                },
+                "pipette_swing": {
+                    "p": 37.5,
+                    "description": "The height to move pipette in order to rotate it in/out from the microscope"
+                }
+            }  
+        },
+        "description": "Default settings to use for reset and archive"
+    }
+}

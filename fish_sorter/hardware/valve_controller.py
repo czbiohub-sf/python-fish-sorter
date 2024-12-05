@@ -1,123 +1,129 @@
-#!/usr/bin/env python3
-"""Pymodbus synchronous client example.
-
-An example of a single threaded synchronous client.
-
-usage: simple_sync_client.py
-
-All options must be adapted in the code
-The corresponding server must be started before e.g. as:
-    python3 server_sync.py
-"""
-
-# --------------------------------------------------------------------------- #
-# import the various client implementations
-# --------------------------------------------------------------------------- #
+import json
+import logging
 import pymodbus.client as ModbusClient
 from pymodbus import (
     ExceptionResponse,
-    Framer,
+    FramerType,
     ModbusException,
     pymodbus_apply_logging_config,
 )
 
-import math
-import numpy as np
+class ValveController():
+    """Communicate with Wago valve controller to actuate the pressure and vacuum valves
+    Note that the Wago controller was programmed with CoDeSys to receive specific function codes
+    to perform actions
+    """
 
-ADDRESS_OFFSET = 2
-TOTAL_VALVES = 3
-TOTAL_BYTES = math.ceil(TOTAL_VALVES / 8)
-TOTAL_WORDS = math.ceil(TOTAL_BYTES / 2)
-# WORD_PAD = TOTAL_WORDS * 16 - TOTAL_VALVES - 1
+    def __init__(self, config: dict, env='prod'):
+        """Open config file and setup the TCP connection with the Wago controller
 
-# TODO load in valve polarities
+        :param config: The pneumatics box specific parameters defined in the 
+                    pneumatic_config.json file
+        :type config: dict {'connect': <TCP connection parameters>,
+                    'registers': <starting address, address offset>, ...} 
+        :param env: The environment to run the Valve Controller.
+        :type env: string, either 'prod' or 'dev'
+        """
 
-def run_sync_simple_client(comm, host, port, framer=Framer.SOCKET):
-    """Run sync client."""
-    # activate debugging
-    pymodbus_apply_logging_config("DEBUG")
+        self.valve = None
+        self.config = config
+        self.env = env
+        self._connect()
 
-    print("get client")
-    if comm == "tcp":
-        client = ModbusClient.ModbusTcpClient(
-            host,
-            port=port,
+    def _connect(self):
+        """Create TCP communication with the Wago controller
+
+        :raises ConnectionError: Logs critical if the connection fails
+        """
+        
+        framer = FramerType.SOCKET
+        pymodbus_apply_logging_config("DEBUG")
+
+        self.valve = ModbusClient.ModbusTcpClient(
+            host=self.config['connect']['host'],
+            port=self.config['connect']['port'],
             framer=framer,
             # timeout=10,
             # retries=3,
             # retry_on_empty=False,
             # source_address=("localhost", 0),
         )
-    elif comm == "udp":
-        client = ModbusClient.ModbusUdpClient(
-            host,
-            port=port,
-            framer=framer,
-            # timeout=10,
-            # retries=3,
-            # retry_on_empty=False,
-            # source_address=None,
-        )
-    elif comm == "serial":
-        client = ModbusClient.ModbusSerialClient(
-            port,
-            framer=framer,
-            # timeout=10,
-            # retries=3,
-            # retry_on_empty=False,
-            baudrate=9600,
-            bytesize=8,
-            parity="N",
-            stopbits=1,
-            # handle_local_echo=False,
-        )
-    else:
-        print(f"Unknown client {comm} selected")
-        return
+        try:
 
-    print("connect to server")
-    client.connect()
+#TODO fix the check on whether connected
 
-    print("get and verify data")
+            self.valve.connect()
+            
+        #     if not self.valve.connected():
+        #         raise ConnectionError('Failed to connect TCP device')
+        #     else:
+        #         logging.info(f'Connected to Wago valve controller {self.valve}')
+        except ConnectionError as e:
+            logging.critical('Could not make connection to Wago valve controller')
+            raise
 
-    client.write_coil(0, 1)
-    # rr = client.read_coils(1, 1)
-    # print(rr.bits)
-    try:
-        # rr = client.read_coils(512, TOTAL_WORDS, slave=1)
-        # rr = client.read_holding_registers(512, 1, unit=1)
-        rr = client.read_holding_registers(512, 1)
+    def disconnect(self):
+        """Closes the TCP Connection
+        """
 
+        self.valve.close()
+        logging.info('Closed valve controller connection')
 
-        # If this gives 0, read registers instead
-        # https://github.com/czbiohub-sf/Matlab-Wago/blob/14975edaec94fdf86dc066dd9ffa62f389cca297/wagoNModbus.m#L234-L236
-    except ModbusException as exc:
-        print(f"Received ModbusException({exc}) from library")
-        client.close()
-        return
-    if rr.isError():
-        print(f"Received Modbus library error({rr})")
-        client.close()
-        return
-    if isinstance(rr, ExceptionResponse):
-        print(f"Received Modbus library exception ({rr})")
-        # THIS IS NOT A PYTHON EXCEPTION, but a valid modbus message
-        client.close()
-        return
+    def read_register(self, add_offset: int, value: int):
+        """Reads the state of register specified by the function code
+
+        :add_offset: register address offset from the start_address
+        :type add_offset: int
+
+        :param value: state controller function code or setting
+        :type value: int
+
+        :raises ModbusException: Logs critical if the connection fails
+        :raise ValueError: Logs critical if the response contains an error in the Modbus library 
+        :raises ExceptionResponse: Logs critical if Modbus protocol exception response
+        """
+
+        try:
+            rr = self.valve.read_holding_registers(self.config['register']['start_address'] + add_offset, value)
+            logging.info(f'Reading register {rr}')
+            logging.info(f'Register state: {rr.registers[0]:016b}')
+
+        except ModbusException as exc:
+            logging.critical(f"Received ModbusException({exc}) from library")  
+            raise ModbusException(f"Received ModbusException({exc}) from library")
+        if rr.isError():
+            logging.critical(f"Received Modbus library error({rr})") 
+            raise ValueError(f"Received Modbus library error({rr})")
+        if isinstance(rr, ExceptionResponse):
+            # THIS IS NOT A PYTHON EXCEPTION, but a valid modbus message
+            logging.critical(f"Received Modbus library exception ({rr})")
+            raise ExceptionResponse
     
-    # words = np.zeros((1, TOTAL_WORDS)).astype(int)
-    # for i in range(0, TOTAL_WORDS):
-    #     print(client.read_coils(512+TOTAL_WORDS-i, 1, slave=1))
+    def write_register(self, add_offset: int, value: int):
+        """Writes to the register specified by the function code
 
+        :add_offset: register address offset from the start_address
+        :type add_offset: int
 
-    print(rr)
-    # print(bin(rr.registers[0]).zfill(16))
-    print(f'{rr.registers[0]:016b}')
-    # print(f"TOTAL WORDS {TOTAL_WORDS}")  
+        :param value: state controller function code or setting
+        :type value: int
 
-    print("close connection")
-    client.close()
+        :raises ModbusException: Logs critical if the connection fails
+        :raise ValueError: Logs critical if the response contains an error in the Modbus library 
+        :raises ExceptionResponse: Logs critical if Modbus protocol exception response
+        """
 
+        try:
+            wr = self.valve.write_registers(self.config['register']['start_address'] + add_offset, value)
+            logging.info(f'Writing register {wr}')
 
-if __name__ == "__main__":
-    run_sync_simple_client("tcp", "192.168.1.10", "502")
+        except ModbusException as exc:
+            logging.critical(f"Received ModbusException({exc}) from library")
+            raise ModbusException(f"Received ModbusException({exc}) from library")
+        if wr.isError():
+            logging.critical(f"Received Modbus library error({wr})")
+            raise ValueError(f"Received Modbus library error({wr})")
+        if isinstance(wr, ExceptionResponse):
+            # THIS IS NOT A PYTHON EXCEPTION, but a valid modbus message
+            logging.critical(f"Received Modbus library exception ({wr})")
+            raise ExceptionResponse

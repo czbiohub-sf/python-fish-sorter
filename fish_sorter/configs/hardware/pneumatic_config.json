@@ -1,0 +1,30 @@
+{
+    "pneumatic_config": {
+        "connect": {
+            "comm": "tcp",
+            "host": "192.168.1.10",
+            "port": 502,
+            "description": "Connection configuration"
+        },
+        "register": {
+            "start_address": 12288,
+            "draw_time_add_offset": 0,
+            "expel_time_add_offset": 2,
+            "func_add_offset": 4,
+            "func_echo_add_offset": 6,
+            "func_idle_type": 14,
+            "description": "Non-volatile memory registers"
+        },
+        "function_codes": {
+            "idle_atm": 0,
+            "draw": 2,
+            "expel": 4,
+            "press_off": 8,
+            "press_on": 9,
+            "vac_off": 16,
+            "vac_on": 17,
+            "func_idle": 128,
+            "description": "Function codes for Wago valve controller states"
+        }
+    }
+}

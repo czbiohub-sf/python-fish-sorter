@@ -1,19 +1,23 @@
+import argparse
+import logging
 import napari
 import numpy as np
 import os
-import argparse
 import types
 
 from pathlib import Path
 from typing import overload
 
+from pymmcore_plus import DeviceType
 from pymmcore_widgets import StageWidget
-from pymmcore_widgets.hcs._plate_calibration_widget import PlateCalibrationWidget
+# from pymmcore_widgets.hcs._plate_calibration_widget import PlateCalibrationWidget
 
-from gui.pipette_gui import PipetteWidget
+from fish_sorter.gui.picking_gui import Picking
 # TODO delete this
-from helpers.mosaic import Mosaic
-from gui.tester_gui import TesterWidget
+from fish_sorter.helpers.mosaic import Mosaic
+from fish_sorter.gui.tester_gui import TesterWidget
+
+from PyQt5.QtWidgets import QGroupBox, QHBoxLayout
 
 # For simulation
 try:
@@ -47,7 +51,7 @@ class nmm:
             cfg_dir = Path().absolute().parent / "fish_sorter/configs/micromanager"
             cfg_file = "20240718 - LeicaDMI - AndorZyla.cfg"
             cfg_path = cfg_dir / cfg_file
-            print(cfg_path)
+            logging.info(f'Micromanager config: {cfg_path}')
             self.core.loadSystemConfiguration(str(cfg_path))
 
         # Load and push sequence
@@ -56,20 +60,22 @@ class nmm:
 
         napari.run()
 
-    # Overload copied from super class (pymmcore_plus/core/_mmcore_plus.py)
-    @overload
-    def getImageMirrored(self, *, fix: bool = True) -> np.ndarray:  # noqa: D418
-        """Return the internal image buffer."""
+    # # Overload copied from super class (pymmcore_plus/core/_mmcore_plus.py)
+    # @overload
+    # def getImageMirrored(self, *, fix: bool = True) -> np.ndarray:  # noqa: D418
+    #     """Return the internal image buffer."""
 
-    # Overload copied from super class (pymmcore_plus/core/_mmcore_plus.py)
-    @overload
-    def getImageMirrored(self, numChannel: int, *, fix: bool = True) -> np.ndarray:  # noqa
-        """Return the internal image buffer for a given Camera Channel."""
+    # # Overload copied from super class (pymmcore_plus/core/_mmcore_plus.py)
+    # @overload
+    # def getImageMirrored(self, numChannel: int, *, fix: bool = True) -> np.ndarray:  # noqa
+    #     """Return the internal image buffer for a given Camera Channel."""
 
+    @overload
     def getImageMirrored(
         self, numChannel: int | None = None, *, fix: bool = True
     ) -> np.ndarray:
         # Mirror image
+        print('flip')
         return np.flip(self.core.getImage(numChannel), axis=1)
 
     def assign_widgets(self, sequence):
@@ -86,25 +92,31 @@ class nmm:
         self.tester = TesterWidget(sequence)
         self.v.window.add_dock_widget(self.tester, name='tester')
         self.tester.btn.clicked.connect(self.run)
+        # self.tester.calibrate.clicked.connect(self.set_home)
+        # self.tester.pos.clicked.connect()
 
-        # Pipette
-        self.pipette = PipetteWidget()
-        self.v.window.add_dock_widget(self.pipette, name='pipette')
+        # Picking
+        self.picking = Picking()
+        self.v.window.add_dock_widget(self.picking, name='Picking')
 
-        # Plate calibration
-        self.pc = PlateCalibrationWidget(mmcore=mmc)
-        self.pc.setPlate("6-well")
-        self.v.window.add_dock_widget(self.pc, name='plates')
-
-        # Stage
-        self.s = StageWidget("XY")
-        self.v.window.add_dock_widget(self.s, name='stage')
+        # # Stage
+        # stages = list(self.core.getLoadedDevicesOfType(DeviceType.XYStage))
+        # stages.extend(self.core.getLoadedDevicesOfType(DeviceType.Stage))
+        # for stage in stages:
+        #     lbl = "Z" if self.core.getDeviceType(stage) == DeviceType.Stage else "XY"
+        #     bx = QGroupBox(f"{lbl} Control")
+        #     bx_layout = QHBoxLayout(bx)
+        #     bx_layout.setContentsMargins(0, 0, 0, 0)
+        #     bx_layout.addWidget(StageWidget(device=stage))
+        #     self.v.window.add_dock_widget(bx)
 
     def run(self):
         sequence = self.mda.value()
         img_arr = self.main_window._core_link._mda_handler._tmp_arrays
         self.mosaic.stitch_mosaic(sequence, img_arr)
         # self.mosaic.get_mosaic_metadata(sequence)
+
+        #TODO make sure to disconnect hardware on shutdown
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
