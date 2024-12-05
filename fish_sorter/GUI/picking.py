@@ -11,7 +11,8 @@ from time import sleep
 from typing import List, Optional, Tuple
 
 from fish_sorter.hardware.picking_pipette import PickingPipette
-from fish_sorter.helpers.mapping import Mapping
+from fish_sorter.helpers.imaging_plate import ImagingPlate
+from fish_sorter.helpers.dispense_plate import DispensePlate
 
 class Pick():
     """Loads files of classifications and pick parameters, iterates through pick parameters,
@@ -19,7 +20,7 @@ class Pick():
     It uses the PickingPipette class and the Mapping class
     """
 
-    def __init__(self, pick_dir, prefix, mapping):
+    def __init__(self, pick_dir, prefix, mapping, mmc, mda, zc):
         """Loads the files for classification and initializes PickingPipette class
         
         :param pick_dir: directory for classification and pick files
@@ -44,15 +45,11 @@ class Pick():
         self.class_file = None
         self.pick_param_file = None
         
-        #TODO handle offset and pick type in Mapping or here?
         #TODO handle dest array and source array in Mapping or here?
-        #Make it efficient so not repeating calcs
-        self.mapping = Mapping()
-        
+        self.iPlate = ImagingPlate(mmc, mda)
+        self.dPlate = DispensePlate(mmc, zc)
         
         self.matches = None
-
-
 
     def connect_hardware(self):
         """Connects to hardware
@@ -128,26 +125,8 @@ class Pick():
         :rtype: Tuple[float, float]
         """
 
-
-        #TODO use helpers.mapping to go between well ID and x, y coords
-        return (0.0, 0.0)
-
-    def move_to_pick(self, well: str, offset: Tuple[float, float]=(0.0, 0.0))
-        """Moves the microscope stage to the source well for picking
-        The offset is for any needed offset from the well center coordinates
-        to the pick location
-        
-        :param well: well ID
-        :type well: str
-        :param offset: offset from the well center coordinates to the pick location
-        :type offset: Tuple[float, float]
-        """
-    
-        self.mapping.go_to_well(well, offset)
-
-        #TODO use helpers.mapping load_wells and go_to_well for control of the microscope stage
-
-
+        # MK TODO ensure array formats are compatible
+        return self.dPlate.get_abs_um_from_well_name(well)
 
     def pick_me(self):
         """Performs all actions to pick from the source plate to the destination plate using
@@ -160,22 +139,17 @@ class Pick():
         self.pp.dest_home()        
         for match in self.matches.index:
             if self.matches['lHead'][match]:
-                #TODO handle this is mapping? 
-                #If not load the config
                 offset = - pick_type_config['larvae']['picker']['offset']
             else:
                 offset = pick_type_config['larvae']['picker']['offset']
             
-            self.move_to_pick(self.matches['slotName'][match], offset)
+            self.iPlate.go_to_well(self.matches['slotName'][match], offset)
             self.pp.move_pipette('pick')
             sleep(1)
             self.pp.draw()
             self.pp.move_pipette('clearance')
-
-            #TODO better handle dispense well position calling mapping
             
-            (x, y) = self.get_dest_xy(self.matches['dispenseWell'][match])
-            self.pp.move_to_dest((x,y))
+            self.dPlate.go_to_well(self.matches['dispenseWell'][match])
             self.pp.move_pipette('dispense')
             self.pp.expel()
             sleep(1)
