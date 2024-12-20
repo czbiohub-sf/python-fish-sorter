@@ -20,18 +20,18 @@ class Pick():
     It uses the PickingPipette class and the Mapping class
     """
 
-    def __init__(self, pick_dir, prefix, mapping, mmc, mda, zc):
+    def __init__(self, pick_dir, prefix, mmc, mda, zc):
         """Loads the files for classification and initializes PickingPipette class
         
         :param pick_dir: directory for classification and pick files
         :type pick_dir: str
         :param prefix: prefix name details
         :type prefix: str
-        :param mapping: instance of mapping class
-        :type mapping: class instance
 
         :raises FileNotFoundError: loggings critical if any of the files are not found
         """
+
+        #TODO update input argument descriptions (throughout)
 
         logging.info('Initializing Picking Pipette hardware controller')
         cfg_dir = Path().absolute().parent
@@ -45,7 +45,6 @@ class Pick():
         self.class_file = None
         self.pick_param_file = None
         
-        #TODO handle dest array and source array in Mapping or here?
         self.iplate = ImagingPlate(mmc, mda)
         self.dplate = DispensePlate(mmc, zc)
         
@@ -63,7 +62,7 @@ class Pick():
 
         self.pp.disconnect()
 
-    def check_calib(self, calibrated: bool=False, pick: bool=True, well: Optional [str]):
+    def check_calib(self, calibrated: bool=False, pick: bool=True, well: Optional[str]=None):
         """Checks for calibration of pipette tip height
 
         :param calibrated: check if pipette tip is calibrated

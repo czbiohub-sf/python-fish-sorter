@@ -6,13 +6,14 @@ from pathlib import Path
 from time import sleep
 from fish_sorter.hardware.zaber_controller import ZaberController
 from fish_sorter.hardware.valve_controller import ValveController
+from fish_sorter.helpers.dispense_plate import DispensePlate
 
 class PickingPipette():
     """Coordinated control of Pipette movement, pneumatics, and dispense plate
         It uses the ZaberController and ValveController classes
     """
 
-    def __init__(self, parent_dir):
+    def __init__(self, parent_dir, mmc, zc):
         """Runs pipette hardware setup and passes config parameters to each hardware
         
         :param parent_dir: parent directory for config files
@@ -42,6 +43,8 @@ class PickingPipette():
         self.exp_t = self.hardware_data['picker_config']['pipette']['time']['expel']
         self.pick_h = self.hardware_data['picker_config']['pipette']['stage']['pick']['p']
         self.disp_h = self.hardware_data['picker_config']['pipette']['stage']['dispense']['p']
+
+        self.dplate = DispensePlate(mmc, zc)
 
     def connect(self, env='prod'):
         """Connect to hardware
@@ -198,20 +201,20 @@ class PickingPipette():
         self.vc.write_register(address_offset, value)
         self._pipette_wait(address_offset, time)
 
-    def move_for_calib(self, pick: bool=True, well: Optional[List[float]]):
+    def move_for_calib(self, pick: bool=True, well: Optional[str]=None):
         """Moves destination stage for pipette calibration
 
         :param pick: pick or dispense location
         :type pick: bool
         :type well: well location
-        :type well: List[float]
+        :type well: str
         """
 
         if pick:
             self.dest_home()
         else:
             self.zc.move_arm('p', self.hardware_data['picker_config']['pipette']['stage']['clearance']['p'])
-            self.move_to_dest(well)
+            self.dplate.go_to_well(well)
 
     def set_calib(self, pick: bool=True):
         """Sets pipette calibration location
@@ -223,18 +226,6 @@ class PickingPipette():
         else:
             self.disp_h = self.zc.get_pos('p')
             logging.info(f'Set dispense height to: {self.pick_h}')
-
-    # MK TODO potentially redundance with DispensePlate goToWell?
-    def move_to_dest(self, dest_loc):
-        """Moves the destination plate stages to the (x, y) location
-
-        :type dest_loc: (x,y) location
-        :type dest_loc: Tuple[float, float]
-        """
-
-        self.zc.move_arm('x', dest_loc[0])
-        self.zc.move_arm('y', dest_loc[1])
-        logging.info(f'Moved destination plate to (x, y): ({dest_loc[0]}, {dest[1]})')
 
     def dest_home(self):
         """Convenience function to move destination plate to home position
