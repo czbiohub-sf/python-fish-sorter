@@ -3,6 +3,8 @@
 
 from fish_sorter.helpers.mapping import Mapping
 
+from typing import Optional
+
 
 TL_WELL_NAME = 'TL_well'
 TR_WELL_NAME = 'TR_well'
@@ -35,7 +37,8 @@ class DispensePlate(Mapping):
         # For temporary testing only
         print(f'HOME={self.um_home}\nTR={self.um_TR}')
 
-    def go_to_well(self, well: str, offset=np.array([0,0])):
-        x, y = self._get_well_pos(well, offset)
-        self.move_arm('x', x / MM_TO_UM, is_relative=False)
-        self.move_arm('y', y / MM_TO_UM, is_relative=False)
+    def go_to_well(self, well: Optional[str], offset=np.array([0,0])):
+        if well is not None:
+            x, y = self._get_well_pos(well, offset)
+            self.move_arm('x', x / MM_TO_UM, is_relative=False)
+            self.move_arm('y', y / MM_TO_UM, is_relative=False)

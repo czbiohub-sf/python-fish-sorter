@@ -3,6 +3,8 @@
 
 from fish_sorter.helpers.mapping import Mapping
 
+from typing import Optional
+
 
 TL_WELL_NAME = 'TL_well'
 TR_WELL_NAME = 'TR_well'
@@ -25,7 +27,8 @@ class ImagingPlate(Mapping):
         
         # TODO throw an exception if calib was not set
 
-    def go_to_well(self, well: str, offset=np.array([0,0])):
-        x, y = self._get_well_pos(well, offset)
-        # Move z pos too?
-        self.mmc.run_mda(Position(x=x, y=y, name=well))
+    def go_to_well(self, well: Optional[str], offset=np.array([0,0])):
+        if well is not None:
+            x, y = self._get_well_pos(well, offset)
+            # Move z pos too?
+            self.mmc.run_mda(Position(x=x, y=y, name=well))

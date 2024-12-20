@@ -52,7 +52,7 @@ class Mapping:
         pass
 
     def _get_center_to_corner_offset_um(self):
-        # Compute home in px units assuming TR mosaic tile is centered on home
+        # Compute home in px units assuming TL mosaic tile is centered on home
         return np.array(
             [
                 IMG_X_PX * self.px2um / 2,
