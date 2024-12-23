@@ -27,7 +27,13 @@ class Pick():
         :type pick_dir: str
         :param prefix: prefix name details
         :type prefix: str
-
+        :param mmc: pymmcore-plus core
+        :type mmc: pymmcore-plus  core instance
+        :param mda: pymmcore-plus multidimensial acquisition engine
+        :type mda: pymmcore-plus mda instance
+        :param zc: zaber controller class 
+        :type zc: zaber controller instance
+        
         :raises FileNotFoundError: loggings critical if any of the files are not found
         """
 
