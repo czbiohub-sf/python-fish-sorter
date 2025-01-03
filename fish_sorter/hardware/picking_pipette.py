@@ -18,6 +18,10 @@ class PickingPipette():
         
         :param parent_dir: parent directory for config files
         :type parent_dir: path
+        :param mmc: pymmcore-plus core 
+        :type mmc: pymmcore-plus core instance
+        :param zc: zaber controller class 
+        :type zc: zaber controller instance
         :raises FileNotFoundError: loggings critical if the hardware config file not found
         """
         
@@ -175,6 +179,8 @@ class PickingPipette():
     def _pipette_wait(self, address_offset: int, time: int):
         """Time to wait for valve controller to finish execution
 
+        :param address_offset: register address offset from the start_address
+        :type address_offset: int
         :param time: time in [ms]
         :type time: int
         """
@@ -193,9 +199,10 @@ class PickingPipette():
 
         :param address_offset: register address offset from the start_address
         :type address_offset: int
-
         :param value: state controller function code or setting
         :type value: int
+        :param time: time in [ms]
+        :type time: int        
         """
 
         self.vc.write_register(address_offset, value)
@@ -218,6 +225,9 @@ class PickingPipette():
 
     def set_calib(self, pick: bool=True):
         """Sets pipette calibration location
+
+        :param pick: pick or dispense location
+        :type pick: bool
         """
         
         if pos:
