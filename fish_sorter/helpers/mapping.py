@@ -110,8 +110,7 @@ class Mapping:
 
         # Load sequence
         self.wells = {
-            'well_shape' : plate_data['array_design']['well_shape'],
-            'array_dims': [plate_data['array_design']['rows'], plate_data['array_design']['columns']] 
+            'array_design' : plate_data['array_design'],
             'names': well_names,
             'raw_rel_um' : well_pos,
             "calib_rel_um": transformed_well_pos,
