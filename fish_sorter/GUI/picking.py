@@ -11,8 +11,8 @@ from time import sleep
 from typing import List, Optional, Tuple
 
 from fish_sorter.hardware.picking_pipette import PickingPipette
-from fish_sorter.helpers.imaging_plate import ImagingPlate
-from fish_sorter.helpers.dispense_plate import DispensePlate
+from fish_sorter.hardware.imaging_plate import ImagingPlate
+from fish_sorter.hardware.dispense_plate import DispensePlate
 
 class Pick():
     """Loads files of classifications and pick parameters, iterates through pick parameters,

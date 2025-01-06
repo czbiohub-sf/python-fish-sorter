@@ -4,9 +4,10 @@ import os
 import sys
 from pathlib import Path
 from time import sleep
+
 from fish_sorter.hardware.zaber_controller import ZaberController
 from fish_sorter.hardware.valve_controller import ValveController
-from fish_sorter.helpers.dispense_plate import DispensePlate
+from fish_sorter.hardware.dispense_plate import DispensePlate
 
 class PickingPipette():
     """Coordinated control of Pipette movement, pneumatics, and dispense plate

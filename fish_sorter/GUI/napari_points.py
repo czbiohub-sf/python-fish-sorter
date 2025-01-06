@@ -33,38 +33,30 @@ from skimage import data, draw
 from tifffile import imread
 from typing import List, Optional, Tuple, Callable
 
-
-
-
-#TODO check which class to import
-from  fish_sorter.helpers.mapping import Mapping
-
-
+from fish_sorter.hardware.imaging_plate import ImagingPlate
 
 
 class NapariPts():
     """Add points layer of the well locations to the image mosaic in napari.
     """
     
-    def __init__(self, parent_dir, total_wells, viewer=None, mapping=None):
-        """Load well array file of well location points and load fish features. 
+    def __init__(self, parent_dir, mmc, mda, viewer=None):
+        """Load pymmcore-plus core, acquisition engine and napari viewer, and load classification features
         
         :param parent_dir: parent directory for array config files
         :type parent_dir: str
-        :param total_wells: descriptor for the agarose array
-        :type total_wells: int
+        :param mmc: pymmcore-plus core
+        :type mmc: pymmcore-plus  core instance
+        :param mda: pymmcore-plus multidimensial acquisition engine
+        :type mda: pymmcore-plus mda instance
         :param viewer: Optional napari viewer to use, otherwise a new one is created
         :type viewer: napari.Viewer, optional
-        :param mapping: instance of mapping class
-        :type mapping: class instance
 
         :raises FileNotFoundError: loggings critical if the array config file not found
         """
 
-        array_dir = Path(parent_dir) / "configs/arrays"
-        self.array_data = {}
-        self.total_wells = total_wells
-        num_wells = str(self.total_wells)
+        logging.info('Initialize for fish classification')
+        #TODO this should no longer be needed once the filename is figured out
         for filename in os.listdir(array_dir):
             if filename.endswith('.json'):
                 file_path = os.path.join(array_dir, filename)
@@ -73,17 +65,20 @@ class NapariPts():
                         data = json.load(file)
                         var_name = os.path.splitext(filename)[0]
                         if num_wells in var_name:
-                            self.var_name = var_name
                             self.array_data[var_name] = data
-                            logging.info('Loaded {} config file'.format(var_name))
-                except FileNotFoundError:
-                    logging.critical("Config file not found")
 
+        self.iplate = ImagingPlate(mmc, mda)
+        #TODO need to make sure that filename is handled properly at different level, possibly adjust mapping helper
+        self.iplate.load_wells(filename)
+        self.total_wells = self.iplate.wells["array_design"]["rows"] * self.iplate.wells["array_design"]["columns"]
+        
         feat_dir = Path(parent_dir) / "configs/pick"
         self.feat_data = {}
         self.features = {}
         self.well_feat = {}
         self.fish_feat = {}
+
+
 
         #TODO change to handle whether larvae / embryos / something else
         self.picking = 'larvae'
@@ -111,12 +106,13 @@ class NapariPts():
 
         #Temporary for testing
         #TODO decide how to handle preloading mosaics
+        #stich_mosaic class returns the mosaic as a numpy array
+        #probs level higher than this stich mosaic call and then call napari points
+        #use the self.viewer to load those layers
         FITC_path = '/Users/diane.wiener/Documents/fish-sorter-data/2024-02-15-cldnb-mScarlet_she-GFP/51hpf-pick1_FITC_2.5x_mosaic.tif'
         FITC_mosaic = np.array(imread(FITC_path))
         TXR_path = '/Users/diane.wiener/Documents/fish-sorter-data/2024-02-15-cldnb-mScarlet_she-GFP/51hpf-pick1_TXR_2.5x_mosaic.tif'
         TXR_mosaic = np.array(imread(TXR_path))
-
-        #TODO add in mapping / imaging_plate class to go between image and real coordinates, not hard code these
 
         self.viewer.add_image(FITC_mosaic, colormap='green', opacity=0.5, name='FITC')
         self.viewer.add_image(TXR_mosaic, colormap='red', opacity=0.5, name='TXR')
@@ -124,10 +120,9 @@ class NapariPts():
         self.contrast_callbacks = {}
         self.contrast_widget = ContrastWidget(self.viewer)
         self.viewer.window.add_dock_widget(self.contrast_widget, name= 'Contrast', area='left')
-
-            
+    
         pts = self._points()
-        self.points_layer, points = self.load_points(pts)
+        self.points_layer = self.load_points(pts)
         self.points_layer.mode = 'select'
         self.points_layer.events.highlight.connect(self._selected_pt)
         
@@ -136,8 +131,8 @@ class NapariPts():
             self.viewer.bind_key(key)(self._toggle_feature(feature))
         
         self.feature_widget = None
-        self.extract_fish(points)
-        self._find_fish_widget(points)
+        self.extract_fish(pts)
+        self._find_fish_widget(pts)
 
         if self.picking == 'larvae':
             self.find_orientation()
@@ -159,8 +154,7 @@ class NapariPts():
         """Loads the feature list
         """
 
-        self.features['Well'] = np.array(self.array_data[self.var_name]['wells']['well_names'])
-
+        self.features['Well'] = np.array(self.iplate.wells["names"])
         self.well_feat = self.feat_data['well_class']
         self.deselect_rules = self.feat_data['well_class']['deselect']
         self.fish_feat = self.feat_data['feature_class']
@@ -195,15 +189,9 @@ class NapariPts():
         :rtype: numpy array
         """
 
-        well_coords = self.array_data[self.var_name]['wells']['well_coordinates']
+        well_coords = self.iplate.wells["calib_px"]
         points_coords = np.array(well_coords).reshape(-1,2)
-        # img_points = self.mapping.
         points_coords = points_coords[:, ::-1]
-
-
-        #TODO convert real coordinates to image coordinates
-        #points = STAGE_2_IMG(points_coords)
-
 
         return points_coords
 
@@ -324,33 +312,16 @@ class NapariPts():
 
         face_color_cycle = ['black', 'white']
 
-        #TODO when mapping function is working remove these, and load in that and calibration
-        scale_factor = 1 / 2.6
-        translation_offset = (1120, 1000)
-        rotation_angle = 0.5
-
         self.points_layer = self.viewer.add_points(
             points_coords,
             name = 'Well Locations',
             features = self.features,
             size = 100,
-            scale = (scale_factor, scale_factor),
-            translate = translation_offset,
-            rotate = rotation_angle,
             face_color = 'empty',
             face_color_cycle = face_color_cycle
         )
 
-        rotation_matrix = np.array([
-            [np.cos(np.deg2rad(rotation_angle)), -np.sin(np.deg2rad(rotation_angle))],
-            [np.sin(np.deg2rad(rotation_angle)), np.cos(np.deg2rad(rotation_angle))]
-        ])
-
-        scaled_pts = points_coords * scale_factor
-        rot_pts = scaled_pts @ rotation_matrix.T
-        points = rot_pts + translation_offset
-
-        return self.points_layer, points
+        return self.points_layer
 
     def refresh(self):
         """Refresh the points layer after event
@@ -380,20 +351,14 @@ class NapariPts():
         :type padding: int
         """
 
-        #TODO make sure it is correct with real to image conversion with mapping
-        #Do not want a hard coded scale factor
-        scale_factor = 1 / 2.6
-        width = int(round(self.array_data[self.var_name]['array_design']['slot_length'] * scale_factor))
-        height = int(round(self.array_data[self.var_name]['array_design']['slot_width'] * scale_factor))
+        width = int(round(self.iplate.wells["array_design"]["slot_length"] / self.iplate.px2um))
+        height = int(round(self.iplate.wells["array_design"]["slot_width"] / self.iplate.px2um))
 
         padded_height = height + 2 * padding
         padded_width = width + 2 * padding
-
-        #TODO will this need scaling by the image conversion? probably
-
         self.mask = np.zeros((padded_height, padded_width), dtype=bool)
         
-        if self.array_data[self.var_name]['array_design']['well_shape'] == "rectangular_array":
+        if self.iplate.wells["array_design"]["well_shape"] == "rectangular_array":
             start_row, start_col = padding, padding
             rr, cc = draw.rectangle(start=(start_row, start_col), extent=(height, width))
         else:
@@ -478,11 +443,6 @@ class NapariPts():
                         region[:overlap_height, :overlap_width] * self.mask[mask_height_min:mask_height_max, mask_width_min:mask_width_max]
                     )
                     region_by_layer[layer['name']] = masked_region
-                    # self.viewer.add_image(
-                    #     masked_region,
-                    #     name=f'Well {i} -- {layer.name}',
-                    #     translate=(height_center - region.shape[0] // 2, width_center - region.shape[1] // 2)
-                    # )
                 else:
                     logging.info(f'Skipping point at ({point[0]}, {point[1]}) due to zero overlap dimensions')
             extracted_regions.append(region_by_layer)
@@ -522,8 +482,8 @@ class NapariPts():
         if drop:
             corners = []
             tl = 0
-            tr = self.array_data[self.var_name]['array_design']['columns'] - 1
-            bl = self.total_wells - self.array_data[self.var_name]['array_design']['columns']
+            tr = self.iplate.wells["array_design"]["columns"] - 1
+            bl = self.total_wells - self.iplate.wells["array_design"]["columns"]
             br = self.total_wells - 1
             corners = [tl, tr, bl, br]
             for idx in corners:
@@ -863,6 +823,7 @@ class NapariPts():
         self.viewer.window._qt_window.setFocus()
        
 class QtViewerWrap(QtViewer):
+    
     def __init__(self, main_viewer, *args, **kwargs) -> None:
         super().__init__(*args, **kwargs)
         self.main_viewer = main_viewer
@@ -1013,4 +974,4 @@ class ContrastWidget(QWidget):
 
 
 if __name__ == '__main__':
-    NapariPts('/Users/diane.wiener/Documents/GitHub/python-fish-sorter/fish_sorter', 595)
+    NapariPts('/Users/diane.wiener/Documents/GitHub/python-fish-sorter/fish_sorter')
