@@ -10,9 +10,9 @@ from typing import overload
 
 from pymmcore_plus import DeviceType
 from pymmcore_widgets import StageWidget
-# from pymmcore_widgets.hcs._plate_calibration_widget import PlateCalibrationWidget
 
 from fish_sorter.gui.picking_gui import Picking
+from fish_sorter.gui.setup_gui import SetupWidget
 # TODO delete this
 from fish_sorter.helpers.mosaic import Mosaic
 from fish_sorter.gui.tester_gui import TesterWidget
@@ -86,6 +86,11 @@ class nmm:
         self.v.window._qt_viewer.console.push(
             {"main_window": self.main_window, "mmc": self.core, "sequence": sequence, "np": np}
         )
+
+        #Setup
+        #TODO add in larger level of loading in configs etc here
+        self.setup = SetupWidget(pick_type_cfg_path)
+        self.v.window.add_dock_widget(self.setup, name = 'Setup', area='right')
 
         # Tester
         # TODO delete

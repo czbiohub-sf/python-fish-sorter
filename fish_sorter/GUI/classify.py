@@ -36,7 +36,7 @@ from typing import List, Optional, Tuple, Callable
 from fish_sorter.hardware.imaging_plate import ImagingPlate
 
 
-class NapariPts():
+class Classify():
     """Add points layer of the well locations to the image mosaic in napari.
     """
     

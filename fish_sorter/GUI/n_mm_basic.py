@@ -1,4 +1,4 @@
-  import napari
+import napari
 import napari_micromanager
 import numpy as np
 import os

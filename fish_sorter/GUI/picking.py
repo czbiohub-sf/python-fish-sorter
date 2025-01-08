@@ -37,8 +37,6 @@ class Pick():
         :raises FileNotFoundError: loggings critical if any of the files are not found
         """
 
-        #TODO update input argument descriptions (throughout)
-
         logging.info('Initializing Picking Pipette hardware controller')
         cfg_dir = Path().absolute().parent
         try:
