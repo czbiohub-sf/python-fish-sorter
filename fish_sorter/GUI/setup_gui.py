@@ -15,7 +15,8 @@ from qtpy.QtWidgets import (
     QFileDialog,
     QGridLayout,
     QHBoxLayout,
-    QLabel, 
+    QLabel,
+    QLineEdit, 
     QPushButton,
     QRadioButton, 
     QSizePolicy, 
@@ -34,17 +35,25 @@ class SetupWidget(QWidget):
 
     def __init__(self, pick_type_cfg_path, parent=None):
         """
+        :param pick_type_cfg_path: path directory for the pick type config file
+        :type pick_type_cfg_path: str
         """
 
         super().__init__(parent)
 
         self.layout = QVBoxLayout(self)
 
-        self.img_path_label = QLabel("selected Path: None")
-        self.img_path_button = QPushButton("Select Mosaic Image Filepath")
-        self.img_path_button.clicked.connect(self.select_img_path)
-        self.layout.addWidget(self.img_path_label)
-        self.layout.addWidget(self.img_path_button)
+        self.expt_path_label = QLabel("Selected Path: None")
+        self.expt_path_button = QPushButton("Select Mosaic Image Filepath")
+        self.expt_path_button.clicked.connect(self.select_expt_path)
+        self.layout.addWidget(self.expt_path_label)
+        self.layout.addWidget(self.expt_path_button)
+
+        self.prefix_label = QLabel("Experiment Prefix:")
+        self.prefix_input - QLineEdit()
+        self.prefix_input.setPlaceholderText("Enter prefix for experiment")
+        self.layout.addWidget(self.prefix_label)
+        self.layout.addWidget(self.prefix_input)
 
         self.array_label = QLabel("Select Imaging Plate Array:")
         self.array_dropdown = QComboBox()
@@ -61,7 +70,11 @@ class SetupWidget(QWidget):
 
     def load_config(self):
         """
+        Loads the pick type config file
         """
+
+        #TODO should this be handled differently loading all of the configs?
+        #This does require user input to decide which part of the config to use
 
         try:
             with open(self.pick_type_cfg_path, 'r') as file:
@@ -70,18 +83,26 @@ class SetupWidget(QWidget):
             logging.critical("Config file not found")
             return {}
 
-    def select_img_path(self):
+    def select_expt_path(self):
         """
+        Selects the filepath directory for the experiment
         """
+        #TODO should this be in the higher level init and passed in?
+        preset_dir = "fish_picker/expt/parent_dir"
 
-        #TODO have it preset to a fish sorter default directory
-        filepath = QFileDialog.getExistingDirectory(self, "Select Directory")
+        if os.path.exists(preset_dir):
+            default_path = preset_dir
+        else:
+            default_path = os.path.expanduser("~")        
+
+        filepath = QFileDialog.getExistingDirectory(self, "Select Directory", default_path)
         if filepath:
-            self.img_path_label.setText(f"Selected Path: {filepath}")
+            self.expt_path_label.setText(f"Selected Path: {filepath}")
             logging.info(f"Selected Path:" {filepath})
 
     def refresh_list(self):
         """
+        Refreshes the list of array types to select
         """
 
         #TODO this should be handled better from the setup 
@@ -95,6 +116,7 @@ class SetupWidget(QWidget):
 
     def populate_options(self):
         """
+        Populates the pick type options from the config file
         """
 
         if not self.config_data:
@@ -108,6 +130,10 @@ class SetupWidget(QWidget):
 
     def get_selected_option(self):
         """
+        Returns user input of the selected option for the pick type
+
+        :returns: pick type selection
+        :rtype: str
         """
 
         for button in self.pick_type_grp.buttons():
@@ -115,14 +141,34 @@ class SetupWidget(QWidget):
                 return button.text()
         return None
 
-    def get_img_path(self):
+    def get_expt_path(self):
         """
+        Returns the user input for the experiment folder path to
+        save the experiment data
+
+        :returns: experiment folder path
+        :rtype: str
         """
 
-        return self.img_path_label.text().replace("Selected Path:", "")
+        return self.expt_path_label.text().replace("Selected Path:", "")
 
+    def get_expt_prefix(self):
+        """
+        Returns the user input of the experiment prefix to use when saving
+        experiment data
+
+        :returns: experiment prefix
+        :rtype: str
+        """
+
+        return self.prefix_input.text()
+    
     def get_array(self):
         """
+        Returns the user input selected image plate array 
+
+        :returns: image plate array in use
+        :rtype: str
         """
 
         return self.array_dropdown.currentText()
