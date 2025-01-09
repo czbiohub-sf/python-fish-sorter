@@ -11,6 +11,8 @@ from typing import overload
 from pymmcore_plus import DeviceType
 from pymmcore_widgets import StageWidget
 
+from fish_sorter.gui.classify import Classify
+from fish_sorter.gui.picking import Pick
 from fish_sorter.gui.picking_gui import Picking
 from fish_sorter.gui.setup_gui import SetupWidget
 # TODO delete this
@@ -28,9 +30,13 @@ except ModuleNotFoundError:
 os.environ['MICROMANAGER_PATH'] = "C:/Program Files/Micro-Manager-2.0-20240130"
 micromanager_path = os.environ.get('MICROMANAGER_PATH')
 
-
 class nmm:
     def __init__(self, sim=False):
+
+        self.cfg_dir = Path().absolute().parent / "fish_sorter/configs/"
+        
+        #TODO replace with the local directory to where experiments are saved
+        self.expt_parent_dir = Path().absolute().parent
 
         self.v = napari.Viewer()
         dw, self.main_window = self.v.window.add_plugin_dock_widget("napari-micromanager")
@@ -48,11 +54,17 @@ class nmm:
                 # make sure we start in a valid channel group
                 self.core.setConfig("Channel", "Cy5")
         else:
-            cfg_dir = Path().absolute().parent / "fish_sorter/configs/micromanager"
-            cfg_file = "20240718 - LeicaDMI - AndorZyla.cfg"
-            cfg_path = cfg_dir / cfg_file
-            logging.info(f'Micromanager config: {cfg_path}')
-            self.core.loadSystemConfiguration(str(cfg_path))
+            mm_dir = self.cfg_dir / "micromanager"
+            if mm_dir.exists() and mm_dir.is_dir():
+                mm_cfg_files = list(mm_dir.glob("*.cfg"))
+                if mm_cfg_files:
+                    mm_cfg_path = mm_cfg_files[0]
+                    logging.info(f'Micromanager config: {mm_cfg_path}')
+                    self.core.loadSystemConfiguration(str(mm_cfg_path))
+                else:
+                    logging.critical("Micromanager config file not found")
+            else:
+                logging.critical("Micromanager config folder does not exisit")
 
         # Load and push sequence
         self.mosaic = Mosaic(self.v)
@@ -79,6 +91,11 @@ class nmm:
         return np.flip(self.core.getImage(numChannel), axis=1)
 
     def assign_widgets(self, sequence):
+        
+        #Setup
+        self.setup = SetupWidget(self.cfg_dir, self.expt_parent_dir)
+        self.v.window.add_dock_widget(self.setup, name = 'Setup', area='right')
+        
         # MDA
         self.main_window._show_dock_widget("MDA")
         self.mda = self.v.window._dock_widgets.get("MDA").widget()
@@ -87,11 +104,6 @@ class nmm:
             {"main_window": self.main_window, "mmc": self.core, "sequence": sequence, "np": np}
         )
 
-        #Setup
-        #TODO add in larger level of loading in configs etc here
-        self.setup = SetupWidget(pick_type_cfg_path)
-        self.v.window.add_dock_widget(self.setup, name = 'Setup', area='right')
-
         # Tester
         # TODO delete
         self.tester = TesterWidget(sequence)
@@ -99,10 +111,6 @@ class nmm:
         self.tester.btn.clicked.connect(self.run)
         # self.tester.calibrate.clicked.connect(self.set_home)
         # self.tester.pos.clicked.connect()
-
-        # Picking
-        self.picking = Picking()
-        self.v.window.add_dock_widget(self.picking, name='Picking')
 
         # # Stage
         # stages = list(self.core.getLoadedDevicesOfType(DeviceType.XYStage))
@@ -114,14 +122,42 @@ class nmm:
         #     bx_layout.setContentsMargins(0, 0, 0, 0)
         #     bx_layout.addWidget(StageWidget(device=stage))
         #     self.v.window.add_dock_widget(bx)
-
+    
     def run(self):
+        
+        self.start_setup()
+
         sequence = self.mda.value()
         img_arr = self.main_window._core_link._mda_handler._tmp_arrays
         self.mosaic.stitch_mosaic(sequence, img_arr)
         # self.mosaic.get_mosaic_metadata(sequence)
 
-        #TODO make sure to disconnect hardware on shutdown
+
+        #stich_mosaic class returns the mosaic as a numpy array
+        #probs level higher than this stich mosaic call and then call napari points
+        #use the self.viewer to load those layers
+        #Link here to name / pass mosaic into classify??
+        logging.info('Start Classification')
+        #TODO make sure all of the input parameters are here
+        self.classify = Classify(self.cfg_dir, self.array_type, self.core, self.mda, self.pick_type, self.expt_prefix, self.expt_path, self.v)
+        logging.info('Completed Classification')
+
+    def start_setup(self):
+        """
+        Collect setup information and initialize picking hardware
+        """
+
+        self.expt_path = self.setup.get_expt_path()
+        self.expt_prefix = self.setup.get_expt_prefix()
+        self.array_type = self.setup.get_array()
+        self.pick_type, self.offset = self.setup.get_pick_type()
+        self.pick = PickingPipette(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.core, self.mda)
+        logging.info('Loaded picking hardware')
+        
+        logging.info('Load picker GUI')
+        self.picking = Picking(self.pick)
+        self.v.window.add_dock_widget(self.picking, name='Picking')
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

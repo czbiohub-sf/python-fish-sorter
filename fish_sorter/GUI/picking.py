@@ -20,25 +20,26 @@ class Pick():
     It uses the PickingPipette class and the Mapping class
     """
 
-    def __init__(self, pick_dir, prefix, mmc, mda, zc):
+    def __init__(self, cfg_dir, pick_dir, prefix, offset, mmc, mda):
         """Loads the files for classification and initializes PickingPipette class
         
-        :param pick_dir: directory for classification and pick files
+        :param cfg_dir: parent path directory for all of the config files
+        :type cfg_dir: Path
+        :param pick_dir: experiment directory for classification and pick files
         :type pick_dir: str
         :param prefix: prefix name details
         :type prefix: str
+        :param offset: offset value from center points for picking
+        :type offset: float
         :param mmc: pymmcore-plus core
         :type mmc: pymmcore-plus  core instance
         :param mda: pymmcore-plus multidimensial acquisition engine
         :type mda: pymmcore-plus mda instance
-        :param zc: zaber controller class 
-        :type zc: zaber controller instance
         
         :raises FileNotFoundError: loggings critical if any of the files are not found
         """
 
         logging.info('Initializing Picking Pipette hardware controller')
-        cfg_dir = Path().absolute().parent
         try:
             self.pp = PickingPipette(cfg_dir)
         except Exception as e:
@@ -50,9 +51,10 @@ class Pick():
         self.pick_param_file = None
         
         self.iplate = ImagingPlate(mmc, mda)
-        self.dplate = DispensePlate(mmc, zc)
+        self.dplate = DispensePlate(mmc, self.pp.zc)
         
         self.matches = None
+        self.pick_offset = offset
 
     def connect_hardware(self):
         """Connects to hardware
@@ -77,7 +79,7 @@ class Pick():
         :type well: str
         """
 
-        if calibrated:
+        if not calibrated:
             if pick:
                 logging.info('Calbrating Pick Height')
                 self.pp.move_for_calib(pick)
@@ -139,12 +141,13 @@ class Pick():
         logging.info('Begin iterating through pick list')
         self.matches.drop(columns=['lHead']).head(0).to_csv(self.picked_file, index=False)
         self.pp.move_pipette('clearance')
-        self.pp.dest_home()        
+        self.pp.dest_home()
+        
         for match in self.matches.index:
             if self.matches['lHead'][match]:
-                offset = - pick_type_config['larvae']['picker']['offset']
+                offset = - self.offset
             else:
-                offset = pick_type_config['larvae']['picker']['offset']
+                offset = self.offset
             
             self.iplate.go_to_well(self.matches['slotName'][match], offset)
             self.pp.move_pipette('pick')
@@ -163,14 +166,11 @@ class Pick():
             pd.DataFrame([self.matches.drop(columns=['lHead']).iloc[match].values], columns=self.matches.drop(columns=['lHead']).columns)\
                 .to_csv(self.picked_file, mode='a', header=False, index=False)
 
-
         #TODO how to more elegantly handle lHead, rightHead, none, etc
         #call to mapping?
         #call mapping for the dest plate at init?      
         #Better handle 'lHead' column in csv??? or rather abstract at some point to also include embryos
-        #Use better pick_type_config.json to determine what columns are needed
-
-
+        #Use pick_type_config.json better to determine what columns are needed
 
 
     def match_pick(self):

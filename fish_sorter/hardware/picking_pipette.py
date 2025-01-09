@@ -27,8 +27,7 @@ class PickingPipette():
         """
         
         self.hardware_data = {}
-
-        hardware_dir = parent_dir / 'fish_sorter/configs/hardware'
+        hardware_dir = parent_dir / 'hardware'
         for filename in os.listdir(hardware_dir):
             if filename.endswith('.json'):
                 file_path = os.path.join(hardware_dir, filename)

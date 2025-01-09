@@ -35,53 +35,45 @@ from typing import List, Optional, Tuple, Callable
 
 from fish_sorter.hardware.imaging_plate import ImagingPlate
 
-
 class Classify():
     """Add points layer of the well locations to the image mosaic in napari.
     """
     
-    def __init__(self, parent_dir, mmc, mda, viewer=None):
+    def __init__(self, cfg_dir, array_cfg, mmc, mda, pick_type, prefix, expt_dir, viewer=None):
         """Load pymmcore-plus core, acquisition engine and napari viewer, and load classification features
         
-        :param parent_dir: parent directory for array config files
-        :type parent_dir: str
+        :param cfg_dir: parent path directory for all of the config files
+        :type cfg_dir: Path
+        :param array_cfg: array config file
+        :type array_cfg: filename with path
         :param mmc: pymmcore-plus core
         :type mmc: pymmcore-plus  core instance
         :param mda: pymmcore-plus multidimensial acquisition engine
         :type mda: pymmcore-plus mda instance
+        :param pick_type: user-input pick type from pick type config options
+        :type pick_type: str
+        :param prefix: experiment name prefix
+        :type prefix: str
+        :param expt_dir: experiment directory
+        :type expt_dir: str
         :param viewer: Optional napari viewer to use, otherwise a new one is created
         :type viewer: napari.Viewer, optional
 
         :raises FileNotFoundError: loggings critical if the array config file not found
         """
 
-        logging.info('Initialize for fish classification')
-        #TODO this should no longer be needed once the filename is figured out
-        for filename in os.listdir(array_dir):
-            if filename.endswith('.json'):
-                file_path = os.path.join(array_dir, filename)
-                try:
-                    with open(file_path, 'r') as file:
-                        data = json.load(file)
-                        var_name = os.path.splitext(filename)[0]
-                        if num_wells in var_name:
-                            self.array_data[var_name] = data
+        #TODO will need to add in loading previous classifications
 
         self.iplate = ImagingPlate(mmc, mda)
-        #TODO need to make sure that filename is handled properly at different level, possibly adjust mapping helper
-        self.iplate.load_wells(filename)
+        self.iplate.load_wells(array_cfg)
         self.total_wells = self.iplate.wells["array_design"]["rows"] * self.iplate.wells["array_design"]["columns"]
         
-        feat_dir = Path(parent_dir) / "configs/pick"
+        feat_dir = cfg_dir / "pick"
         self.feat_data = {}
         self.features = {}
         self.well_feat = {}
         self.fish_feat = {}
-
-
-
-        #TODO change to handle whether larvae / embryos / something else
-        self.picking = 'larvae'
+        self.picking = pick_type
 
         for filename in os.listdir(feat_dir):
             if filename.endswith('.json'):
@@ -109,6 +101,7 @@ class Classify():
         #stich_mosaic class returns the mosaic as a numpy array
         #probs level higher than this stich mosaic call and then call napari points
         #use the self.viewer to load those layers
+        
         FITC_path = '/Users/diane.wiener/Documents/fish-sorter-data/2024-02-15-cldnb-mScarlet_she-GFP/51hpf-pick1_FITC_2.5x_mosaic.tif'
         FITC_mosaic = np.array(imread(FITC_path))
         TXR_path = '/Users/diane.wiener/Documents/fish-sorter-data/2024-02-15-cldnb-mScarlet_she-GFP/51hpf-pick1_TXR_2.5x_mosaic.tif'
@@ -143,10 +136,9 @@ class Classify():
         self.viewer.bind_key("Right", self._next_well)
         self.viewer.bind_key("Left", self._previous_well)
 
+        self.prefix = prefix
+        self.expt_dir = expt_dir
         self.save_data()
-
-
-        #TODO will need to add in loading previous classifications
             
         napari.run()
 
@@ -279,20 +271,14 @@ class Classify():
             boolean_columns = class_df.select_dtypes(include='bool').columns
             class_df[boolean_columns] = class_df[boolean_columns].astype(int)
 
-            prefix = "fish_test"
-            file_path = '/Users/diane.wiener/Documents/fish-sorter-data/2024-02-15-cldnb-mScarlet_she-GFP/'
-            
-            #TODO load in the prefix name and file path
-            #Do we want timestamp, or simply overwrite?
-
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-            file_name = f"{timestamp}_{prefix}_classifications.csv"
-            classified = os.path.join(file_path, file_name)
+            file_name = f"{timestamp}_{self.prefix}_classifications.csv"
+            classified = os.path.join(self.expt_dir, file_name)
             class_df.to_csv(classified, index=False)
             logging.info(f'Classification saved as {classified}')
 
             pickable_file_name = f"{timestamp}_{prefix}_pickable.csv"
-            pick = os.path.join(file_path, pickable_file_name)
+            pick = os.path.join(self.expt_dir, pickable_file_name)
             headers_df = pd.DataFrame(columns=class_df.columns)
             headers_df.rename(columns={'slotName': 'dispenseWell'}, inplace=True) 
             headers_df.to_csv(pick, index=False)
@@ -974,4 +960,4 @@ class ContrastWidget(QWidget):
 
 
 if __name__ == '__main__':
-    NapariPts('/Users/diane.wiener/Documents/GitHub/python-fish-sorter/fish_sorter')
+    Classify()

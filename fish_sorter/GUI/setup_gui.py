@@ -33,19 +33,25 @@ class SetupWidget(QWidget):
     and the pick type
     """
 
-    def __init__(self, pick_type_cfg_path, parent=None):
+    def __init__(self, cfg_path, expt_parent_dir, parent: QWidget | None=None):
         """
-        :param pick_type_cfg_path: path directory for the pick type config file
-        :type pick_type_cfg_path: str
+        Initialization for widgets to return user inputs
+
+        :param cfg_path: parent path directory for all of the config files
+        :type cfg_path: Path
+        :param expt_parent_dir: parent directory to the experiment folder
+        :type expt_parent_dir: str
         """
 
         super().__init__(parent)
 
         self.layout = QVBoxLayout(self)
+        
+        self.config = cfg_path
 
         self.expt_path_label = QLabel("Selected Path: None")
         self.expt_path_button = QPushButton("Select Mosaic Image Filepath")
-        self.expt_path_button.clicked.connect(self.select_expt_path)
+        self.expt_path_button.clicked.connect(self.select_expt_path(expt_parent_dir))
         self.layout.addWidget(self.expt_path_label)
         self.layout.addWidget(self.expt_path_button)
 
@@ -61,37 +67,42 @@ class SetupWidget(QWidget):
         self.layout.addWidget(self.array_label)
         self.layout.addWidget(self.array_dropdown)
 
-        self.pick_type_cfg_path = pick_type_cfg_pth
-        self.config_data = self.load_config
+        self.pick_type = self.load_config("pick")
         self.pick_type_label = QLabel("Select Pick Type:")
         self.pick_type_grp = QButtonGroup(self)
         self.populate_options()
         self.layout.addWidget(self.pick_type_label)
 
-    def load_config(self):
+    def load_config(self, cfg):
         """
-        Loads the pick type config file
+        Loads the config file
+
+        :param cfg: desired config file to load
+        :type cfg: str
+
+        :returns: loaded json file
+        :rtype: dict
         """
 
-        #TODO should this be handled differently loading all of the configs?
-        #This does require user input to decide which part of the config to use
+        cfg_file = self.config / cfg
 
         try:
-            with open(self.pick_type_cfg_path, 'r') as file:
+            with open(cfg_file, 'r') as file:
                 return json.load(file)
         except FileNotFoundError:
             logging.critical("Config file not found")
             return {}
 
-    def select_expt_path(self):
+    def select_expt_path(self, parent_dir):
         """
         Selects the filepath directory for the experiment
-        """
-        #TODO should this be in the higher level init and passed in?
-        preset_dir = "fish_picker/expt/parent_dir"
 
-        if os.path.exists(preset_dir):
-            default_path = preset_dir
+        :param parent_dir: parent directory for the experiment folder
+        :type parent_dir: str
+        """
+
+        if os.path.exists(parent_dir):
+            default_path = parent_dir
         else:
             default_path = os.path.expanduser("~")        
 
@@ -105,8 +116,7 @@ class SetupWidget(QWidget):
         Refreshes the list of array types to select
         """
 
-        #TODO this should be handled better from the setup 
-        config_path = Path().absolute().parent / "configs/arrays"
+        config_path = self.config / "arrays"
         if os.path.exists(config_path):
             array_files = [f for f in os.listdir(config_path) if f.endswith('.json')]
             self.array_dropdown.clear()
@@ -119,26 +129,27 @@ class SetupWidget(QWidget):
         Populates the pick type options from the config file
         """
 
-        if not self.config_data:
+        if not self.pick_type:
             no_cfg_label = QLabel("Config Data Not Found")
             self.layout.addWidget(no_cfg_label)
 
-        for key in self.config_data.keys():
+        for key in self.pick_type.keys():
             radio_button = QRadioButton(key)
             self.pick_type_grp.addButton(radio_button)
             self.layout.addWidget(radio_button)
 
-    def get_selected_option(self):
+    def get_pick_type(self):
         """
         Returns user input of the selected option for the pick type
 
-        :returns: pick type selection
-        :rtype: str
+        :returns: pick type selection, offset
+        :rtype: str, float
         """
 
         for button in self.pick_type_grp.buttons():
             if button.isChecked():
-                return button.text()
+                offset = self.pick_type[button.text()]['picker']['offset']
+                return button.text(), offset
         return None
 
     def get_expt_path(self):
