@@ -20,9 +20,9 @@ class ImagingPlate(Mapping):
 
         # TODO initialize position list with these names
         for pos in seq.stage_positions:
-            if pos.name == prefix + TL_WELL_NAME:
+            if pos.name == TL_WELL_NAME:
                 self.um_home = np.array([pos.x, pos.y, pos.z])
-            if pos.name == prefix + TR_WELL_NAME:
+            if pos.name == TR_WELL_NAME:
                 self.um_TR = np.array([pos.x, pos.y, pos.z])
         
         # TODO throw an exception if calib was not set
