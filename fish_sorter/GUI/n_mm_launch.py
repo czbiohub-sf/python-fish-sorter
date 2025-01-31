@@ -92,16 +92,6 @@ class nmm:
         # self.tester.calibrate.clicked.connect(self.set_home)
         # self.tester.pos.clicked.connect()
 
-        # # Stage
-        # stages = list(self.core.getLoadedDevicesOfType(DeviceType.XYStage))
-        # stages.extend(self.core.getLoadedDevicesOfType(DeviceType.Stage))
-        # for stage in stages:
-        #     lbl = "Z" if self.core.getDeviceType(stage) == DeviceType.Stage else "XY"
-        #     bx = QGroupBox(f"{lbl} Control")
-        #     bx_layout = QHBoxLayout(bx)
-        #     bx_layout.setContentsMargins(0, 0, 0, 0)
-        #     bx_layout.addWidget(StageWidget(device=stage))
-        #     self.v.window.add_dock_widget(bx)
     
     def run(self):
         
