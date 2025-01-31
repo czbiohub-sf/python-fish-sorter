@@ -118,7 +118,11 @@ class Mosaic:
         return zarr[0, idx, :, :, :]
 
     def stitch_mosaic(self, sequence : MDASequence, img_arr):
-        """Get img for a given row and column"""
+        """
+        Stitch mosaic from MDA sequence and image array.
+
+        Returns 3D array which can be indexed by (channel, y, x)
+        """
         # Get metadata
         dir = self.get_dir(sequence)
         num_rows, num_cols, num_channels, overlap, idxs = self.get_mosaic_metadata(sequence)
@@ -162,13 +166,6 @@ class Mosaic:
                 mosaic[:, :, x_start : x_start - x_translation + IMG_X_PX],
                 2
             ).astype(np.uint32)
-
-        # # TODO delete this
-        # for channel in range(1, num_channels+1):
-        #     filename = f"test_mosaic_{channel}.png"
-        #     print(f"Saving mosaic {channel}/{num_channels}")
-        #     plt.imsave(filename, mosaic[channel-1, :, :].astype(dtype))
-        #     print(f"Saved mosaic {channel}/{num_channels} to {filename}")
 
         return mosaic.astype(dtype)
 
