@@ -66,7 +66,7 @@ class nmm:
 
         # Load and push sequence
         self.mosaic = Mosaic(self.v)
-        self.assign_widgets(self.mosaic.get_sequence())
+        self.assign_widgets(self.mosaic.set_sequence())
 
         napari.run()
 

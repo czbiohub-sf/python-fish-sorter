@@ -28,7 +28,7 @@ class Mosaic:
     def __init__(self, viewer):
         self.viewer = viewer
         
-    def get_sequence(self):
+    def set_sequence(self):
         # TODO this needs to be autocomputed based on imaging area
         sequence = MDASequence(
             channels = [
