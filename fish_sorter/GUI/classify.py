@@ -64,8 +64,8 @@ class Classify():
 
         #TODO will need to add in loading previous classifications
 
-        self.iplate = ImagingPlate(mmc, mda)
-        self.iplate.load_wells(array_cfg)
+        self.iplate = ImagingPlate(mmc, mda, array_cfg)
+        self.iplate.load_wells()
         self.total_wells = self.iplate.wells["array_design"]["rows"] * self.iplate.wells["array_design"]["columns"]
         
         feat_dir = cfg_dir / "pick"

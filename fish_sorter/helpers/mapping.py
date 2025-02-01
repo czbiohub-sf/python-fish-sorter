@@ -27,11 +27,11 @@ from fish_sorter.constants import (
 # TODO add type hints
 
 class Mapping:
-    def __init__(self, mmc):
+    def __init__(self, mmc, array_file):
         self.mmc = mmc
 
         # NOTE Does mda return z values?
-        self.um_home = None
+        self.um_TL = None
         self.um_TR = None
 
         self.px2um = self.mmc.getPixelSizeUm() # Scaling factor
@@ -40,6 +40,9 @@ class Mapping:
         self.theta = 0.0
         self.transform = np.array([[1, 0], [0, 1]])
         self.wells = {}
+
+        with open(array_file) as f:
+            self.plate_data = json.load(f)
 
         # TODO save TL/TR locations in experiment savefile
 
@@ -66,7 +69,7 @@ class Mapping:
 
     def set_home_and_transform(self):
         # User needs to previously set home in TL slot and navigate to TR corner before pressing "calibrate"
-        vector = self.um_TR[0:2] - self.um_home[0:2]
+        vector = self.um_TR[0:2] - self.um_TL[0:2]
         self.theta = np.arctan(vector[1] / vector[0])
 
         self.transform = np.array(
@@ -87,20 +90,17 @@ class Mapping:
         # TODO: Add user prompt if not
         return np.matmul(pos, self.transform)
 
-    def load_wells(self, filename):
+    def load_wells(self):
         # User needs to previously set home in TL slot and set transform
         # TODO: Add user prompt
 
-        with open(filename) as f:
-            plate_data = json.load(f)
-
         # Load metadata
         # TODO redo file compatibility
-        well_names = plate_data['wells']['well_names']
-        unformatted_well_pos = np.array(plate_data['wells']['well_coordinates'])
+        well_names = self.plate_data['wells']['well_names']
+        unformatted_well_pos = np.array(self.plate_data['wells']['well_coordinates'])
 
         # Format well positions
-        well_count = int(plate_data['array_design']['rows']) * int(plate_data['array_design']['columns'])
+        well_count = int(self.plate_data['array_design']['rows']) * int(self.plate_data['array_design']['columns'])
         well_pos = unformatted_well_pos.reshape(well_count, 2)
 
         # Transform wells
@@ -110,7 +110,7 @@ class Mapping:
 
         # Load sequence
         self.wells = {
-            'array_design' : plate_data['array_design'],
+            'array_design' : self.plate_data['array_design'],
             'names': well_names,
             'raw_rel_um' : well_pos,
             "calib_rel_um": transformed_well_pos,
@@ -147,11 +147,11 @@ class Mapping:
 
     def rel_um_to_abs_um(self, rel_um_pos):
         # Wellplate coords to stage coords
-        return rel_um_pos += self.um_home + self.um_center_to_corner_offset
+        return rel_um_pos += self.um_TL + self.um_center_to_corner_offset
 
     def abs_to_rel(self, abs_um_pos):
         # Stage coords to wellplate coords
-        return abs_um_pos -= self.um_home + self.um_center_to_corner_offset
+        return abs_um_pos -= self.um_TL + self.um_center_to_corner_offset
 
     def px_to_abs_um(self, px_pos):
         # Image coords to stage coords

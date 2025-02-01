@@ -11,9 +11,9 @@ TR_WELL_NAME = 'TR_well'
 
 # NOTE calibrate by setting positions in UI. Replace with dialogs? 
 class ImagingPlate(Mapping):
-    def __init__(self, mmc, mda):
+    def __init__(self, mmc, mda, filename):
         self.mda = mda
-        super().__init__(mmc)
+        super().__init__(mmc, filename)
 
     def set_calib_pts(self):
         seq = self.mda.value()
@@ -21,7 +21,7 @@ class ImagingPlate(Mapping):
         # TODO initialize position list with these names
         for pos in seq.stage_positions:
             if pos.name == TL_WELL_NAME:
-                self.um_home = np.array([pos.x, pos.y, pos.z])
+                self.um_TL = np.array([pos.x, pos.y, pos.z])
             if pos.name == TR_WELL_NAME:
                 self.um_TR = np.array([pos.x, pos.y, pos.z])
         

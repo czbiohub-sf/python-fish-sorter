@@ -20,7 +20,7 @@ class Pick():
     It uses the PickingPipette class and the Mapping class
     """
 
-    def __init__(self, cfg_dir, pick_dir, prefix, offset, mmc, mda):
+    def __init__(self, cfg_dir, pick_dir, prefix, offset, mmc, mda, array_file, cfg_file):
         """Loads the files for classification and initializes PickingPipette class
         
         :param cfg_dir: parent path directory for all of the config files
@@ -50,8 +50,8 @@ class Pick():
         self.class_file = None
         self.pick_param_file = None
         
-        self.iplate = ImagingPlate(mmc, mda)
-        self.dplate = DispensePlate(mmc, self.pp.zc)
+        self.iplate = ImagingPlate(mmc, mda, array_file)
+        self.dplate = DispensePlate(mmc, self.pp.zc, array_file, cfg_dir)
         
         self.matches = None
         self.pick_offset = offset
