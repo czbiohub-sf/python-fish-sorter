@@ -78,7 +78,8 @@ class Mosaic:
         # General metadata
         rows = int(sequence.grid_plan.rows)
         cols = int(sequence.grid_plan.columns)
-        channels = len(sequence.channels)
+        num_chan = len(sequence.channels)
+        chan_name = sequence.channels["config"]
         overlap = sequence.grid_plan.overlap
 
         # Get position at each id
@@ -110,7 +111,7 @@ class Mosaic:
         for i, pos in enumerate(u[np.argsort(u_idxs)]):
             idxs[row_dict[pos[0]], col_dict[pos[1]]] = i
 
-        return rows, cols, channels, overlap, idxs
+        return rows, cols, num_chan, chan_name, overlap, idxs
 
     def get_img(self, zarr, row, col, idxs):
         """Get img for a given row and column"""

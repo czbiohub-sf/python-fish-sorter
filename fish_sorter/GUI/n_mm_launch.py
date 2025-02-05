@@ -75,38 +75,46 @@ class nmm:
         #Setup
         self.setup = SetupWidget(self.cfg_dir, self.expt_parent_dir)
         self.v.window.add_dock_widget(self.setup, name = 'Setup', area='right')
+        self.start_setup()
         
         # MDA
         self.main_window._show_dock_widget("MDA")
         self.mda = self.v.window._dock_widgets.get("MDA").widget()
         self.mda.setValue(sequence)
+        # Move destination plate for fluorescence imaging with pipette tip
+        self.pick.move_for_calib(pick=False)
         self.v.window._qt_viewer.console.push(
             {"main_window": self.main_window, "mmc": self.core, "sequence": sequence, "np": np}
         )
 
-        # Tester
-        # TODO delete
-        self.tester = TesterWidget(sequence)
-        self.v.window.add_dock_widget(self.tester, name='tester')
-        self.tester.btn.clicked.connect(self.run)
+        # Stitch Mosaic
+        self.stitch = MosaicWidget(sequence)
+        self.v.window.add_dock_widget(self.stitch, name='Stitch Mosaic')
+        self.stitch.btn.clicked.connect(self.run)
         # self.tester.calibrate.clicked.connect(self.set_home)
         # self.tester.pos.clicked.connect()
 
     
     def run(self):
-        
-        self.start_setup()
+        """Runs the mosaic processing, dispay and setup of classification
+        """
 
         sequence = self.mda.value()
-        img_arr = self.main_window._core_link._mda_handler._tmp_arrays
-        self.mosaic.stitch_mosaic(sequence, img_arr)
-        # self.mosaic.get_mosaic_metadata(sequence)
+        img_arr = self.main_window._core_link._mda_handler._tmp_arrays 
+        self.stitch = self.mosaic.stitch_mosaic(sequence, img_arr)
+        rows, cols, num_chan, chan_name, overlap, idxs = self.mosaic.get_mosaic_metadata(sequence)
 
+        # TODO are any images open, if so close prior to loading mosaic
+        for chan in num_chan:
+            mosaic = self.stitch[chan, :, :]
+            if chan_name == 'FITC':
+                color = 'green'
+            elif chan_name == 'TXR':
+                color = 'red'
+            else:
+                color = 'grey'
+            self.v.add_image(mosaic, colormap=color, opacity=0.5, name=chan_name)
 
-        #stich_mosaic class returns the mosaic as a numpy array
-        #probs level higher than this stich mosaic call and then call napari points
-        #use the self.viewer to load those layers
-        #Link here to name / pass mosaic into classify??
         logging.info('Start Classification')
         #TODO make sure all of the input parameters are here
         self.classify = Classify(self.cfg_dir, self.array_type, self.core, self.mda, self.pick_type, self.expt_prefix, self.expt_path, self.v)
