@@ -1,6 +1,7 @@
 # TODO manually set grid array
 # TODO if user manually overrides grid update transform?
-
+import numpy as np
+from typing import Optional
 from fish_sorter.helpers.mapping import Mapping
 
 from typing import Optional

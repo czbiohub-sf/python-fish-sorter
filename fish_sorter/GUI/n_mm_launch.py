@@ -11,13 +11,13 @@ from typing import overload
 from pymmcore_plus import DeviceType
 from pymmcore_widgets import StageWidget
 
-from fish_sorter.gui.classify import Classify
-from fish_sorter.gui.picking import Pick
-from fish_sorter.gui.picking_gui import Picking
-from fish_sorter.gui.setup_gui import SetupWidget
+from fish_sorter.GUI.classify import Classify
+from fish_sorter.GUI.picking import Pick
+from fish_sorter.GUI.picking_gui import Picking
+from fish_sorter.GUI.setup_gui import SetupWidget
 # TODO delete this
 from fish_sorter.helpers.mosaic import Mosaic
-from fish_sorter.gui.tester_gui import TesterWidget
+from fish_sorter.GUI.tester_gui import TesterWidget
 
 from PyQt5.QtWidgets import QGroupBox, QHBoxLayout
 
@@ -116,7 +116,7 @@ class nmm:
             self.v.add_image(mosaic, colormap=color, opacity=0.5, name=chan_name)
 
         logging.info('Start Classification')
-        #TODO make sure all of the input parameters are here
+        # TODO make sure all of the input parameters are here
         self.classify = Classify(self.cfg_dir, self.array_type, self.core, self.mda, self.pick_type, self.expt_prefix, self.expt_path, self.v)
         logging.info('Completed Classification')
 
@@ -125,11 +125,13 @@ class nmm:
         Collect setup information and initialize picking hardware
         """
 
+        # TODO need to collect both the imaging array type and the dispense plate array type
+
         self.expt_path = self.setup.get_expt_path()
         self.expt_prefix = self.setup.get_expt_prefix()
         self.array_type = self.setup.get_array()
         self.pick_type, self.offset = self.setup.get_pick_type()
-        self.pick = PickingPipette(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.core, self.mda)
+        self.pick = Pick(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.core, self.mda)
         logging.info('Loaded picking hardware')
         
         logging.info('Load picker GUI')

@@ -147,11 +147,11 @@ class Mapping:
 
     def rel_um_to_abs_um(self, rel_um_pos):
         # Wellplate coords to stage coords
-        return rel_um_pos += self.um_TL + self.um_center_to_corner_offset
+        return rel_um_pos + self.um_TL + self.um_center_to_corner_offset
 
     def abs_to_rel(self, abs_um_pos):
         # Stage coords to wellplate coords
-        return abs_um_pos -= self.um_TL + self.um_center_to_corner_offset
+        return abs_um_pos - self.um_TL + self.um_center_to_corner_offset
 
     def px_to_abs_um(self, px_pos):
         # Image coords to stage coords

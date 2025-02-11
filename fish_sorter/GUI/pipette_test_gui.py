@@ -69,7 +69,7 @@ class ZaberInitWidget(QPushButton):
 
     def _zaber_init(self)->None:
 
-        cfg_dir = Path().absolute().parent / "fish_sorter/configs/hardware"
+        cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/hardware"
         cfg_file = "zaber_config.json"
         cfg_path = cfg_dir / cfg_file
         # Initialize and connect to hardware controller
@@ -118,7 +118,7 @@ class ZaberHomeWidget(QPushButton):
 
     def _zaber_home(self)->None:
 
-        cfg_dir = Path().absolute().parent / "fish_sorter/configs/hardware"
+        cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/hardware"
         cfg_file = "zaber_config.json"
         cfg_path = cfg_dir / cfg_file
         # Initialize and connect to hardware controller
@@ -165,7 +165,7 @@ class ZaberTestWidget(QPushButton):
 
     def _zaber_test(self)->None:
 
-        cfg_dir = Path().absolute().parent / "fish_sorter/configs/hardware"
+        cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/hardware"
         zaber_cfg_file = "zaber_config.json"
         zaber_cfg_path = cfg_dir / zaber_cfg_file
         picker_cfg_file = "picker_config.json"
@@ -246,14 +246,14 @@ class PipetteDrawWidget(QPushButton):
 
     def _draw(self)->None:
         # Initialize and connect to hardware controller
-        cfg_dir = Path().absolute().parent
+        cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
+        array_file = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays/6well_plate20240822.json"
         try:
-            pp = PickingPipette(cfg_dir)
+            pp = PickingPipette(cfg_dir, self._mmc, array_file)
         except Exception as e:
             logging.info("Could not initialize and connect hardware controller")
 
         logging.info('Pipette is Drawing')
-        pp.connect(env='prod')
         pp.draw()
         pp.disconnect()
 
@@ -281,14 +281,14 @@ class PipetteExpelWidget(QPushButton):
 
     def _expel(self)->None:
         # Initialize and connect to hardware controller
-        cfg_dir = Path().absolute().parent
+        cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
+        array_file = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays/6well_plate20240822.json"
         try:
-            pp = PickingPipette(cfg_dir)
+            pp = PickingPipette(cfg_dir, self._mmc, array_file)
         except Exception as e:
             logging.critical("Could not initialize and connect hardware controller")
 
         logging.info('Pipette is Expelling')
-        pp.connect(env='prod')
         pp.expel()
         pp.disconnect()
 
@@ -317,14 +317,14 @@ class PipettePressureWidget(QPushButton):
 
     def _pressure(self)->None:
         # Initialize and connect to hardware controller
-        cfg_dir = Path().absolute().parent
+        cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/" 
+        array_file = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays/6well_plate20240822.json"
         try:
-            pp = PickingPipette(cfg_dir)
+            pp = PickingPipette(cfg_dir, self._mmc, array_file)
         except Exception as e:
             logging.critical("Could not initialize and connect hardware controller")
 
         logging.info(f'Toggle Pressure Valve: {self.pressure_state}')
-        pp.connect(env='prod')
         self.pressure_state = not self.pressure_state
         pp.pressure(self.pressure_state)
         pp.disconnect()

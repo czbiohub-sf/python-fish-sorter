@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 from pathlib import Path
+from typing import Optional
 from time import sleep
 
 from fish_sorter.hardware.zaber_controller import ZaberController
@@ -14,13 +15,15 @@ class PickingPipette():
         It uses the ZaberController and ValveController classes
     """
 
-    def __init__(self, parent_dir, mmc, zc):
+    def __init__(self, parent_dir, mmc, array_file, zc=None):
         """Runs pipette hardware setup and passes config parameters to each hardware
         
         :param parent_dir: parent directory for config files
         :type parent_dir: path
         :param mmc: pymmcore-plus core 
         :type mmc: pymmcore-plus core instance
+        :param array_file: path to pick type array in config folder
+        :type: path
         :param zc: zaber controller class 
         :type zc: zaber controller instance
         :raises FileNotFoundError: loggings critical if the hardware config file not found
@@ -47,8 +50,13 @@ class PickingPipette():
         self.exp_t = self.hardware_data['picker_config']['pipette']['time']['expel']
         self.pick_h = self.hardware_data['picker_config']['pipette']['stage']['pick']['p']
         self.disp_h = self.hardware_data['picker_config']['pipette']['stage']['dispense']['p']
+        
+        if zc is None:
+            self.connect()
+        else:
+            self.zc = zc
 
-        self.dplate = DispensePlate(mmc, zc)
+        self.dplate = DispensePlate(mmc, self.zc, array_file, self.hardware_data['picker_config'])
 
     def connect(self, env='prod'):
         """Connect to hardware
@@ -191,7 +199,7 @@ class PickingPipette():
 
         for i in range(n):
             sleep(pause)
-            if self.vc.read_register(address_offset, 1) == 0:
+            if self.vc.read_register(address_offset) == 0:
                 break
 
     def _valve_cmd(self, address_offset: int, value: int, time: int=0):
@@ -251,6 +259,6 @@ class PickingPipette():
         :param pos: location to move pipette arm
         :type pos: str
         """
-        
+
         self.zc.move_arm('p', self.hardware_data['picker_config']['pipette']['stage'][pos]['p'])
         logging.info(f'Moved pipette to: {pos}')

@@ -21,8 +21,8 @@
             "expel": 4,
             "press_off": 8,
             "press_on": 9,
-            "vac_off": 16,
-            "vac_on": 17,
+            "vac_on": 16,
+            "vac_off": 17,
             "func_idle": 128,
             "description": "Function codes for Wago valve controller states"
         }

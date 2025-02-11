@@ -35,7 +35,7 @@ class ValveController():
 
         :raises ConnectionError: Logs critical if the connection fails
         """
-        
+
         framer = FramerType.SOCKET
         pymodbus_apply_logging_config("DEBUG")
 
@@ -69,14 +69,11 @@ class ValveController():
         self.valve.close()
         logging.info('Closed valve controller connection')
 
-    def read_register(self, add_offset: int, value: int):
+    def read_register(self, add_offset: int):
         """Reads the state of register specified by the function code
 
         :add_offset: register address offset from the start_address
         :type add_offset: int
-
-        :param value: state controller function code or setting
-        :type value: int
 
         :raises ModbusException: Logs critical if the connection fails
         :raise ValueError: Logs critical if the response contains an error in the Modbus library 
@@ -84,7 +81,7 @@ class ValveController():
         """
 
         try:
-            rr = self.valve.read_holding_registers(self.config['register']['start_address'] + add_offset, value)
+            rr = self.valve.read_holding_registers(self.config['register']['start_address'] + add_offset, count=1)
             logging.info(f'Reading register {rr}')
             logging.info(f'Register state: {rr.registers[0]:016b}')
 
@@ -114,7 +111,7 @@ class ValveController():
         """
 
         try:
-            wr = self.valve.write_registers(self.config['register']['start_address'] + add_offset, value)
+            wr = self.valve.write_register(self.config['register']['start_address'] + add_offset, value)
             logging.info(f'Writing register {wr}')
 
         except ModbusException as exc:

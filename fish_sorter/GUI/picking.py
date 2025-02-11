@@ -20,11 +20,11 @@ class Pick():
     It uses the PickingPipette class and the Mapping class
     """
 
-    def __init__(self, cfg_dir, pick_dir, prefix, offset, mmc, mda, array_file, cfg_file):
+    def __init__(self, cfg_dir, pick_dir, prefix, offset, mmc, mda, array_file):
         """Loads the files for classification and initializes PickingPipette class
         
         :param cfg_dir: parent path directory for all of the config files
-        :type cfg_dir: Path
+        :type cfg_dir: path
         :param pick_dir: experiment directory for classification and pick files
         :type pick_dir: str
         :param prefix: prefix name details
@@ -35,13 +35,16 @@ class Pick():
         :type mmc: pymmcore-plus  core instance
         :param mda: pymmcore-plus multidimensial acquisition engine
         :type mda: pymmcore-plus mda instance
-        
+        :param array_file: path to pick type array in config folder
+        :type: path
+
         :raises FileNotFoundError: loggings critical if any of the files are not found
         """
 
+        hardware_dir = cfg_dir / 'hardware'
         logging.info('Initializing Picking Pipette hardware controller')
         try:
-            self.pp = PickingPipette(cfg_dir)
+            self.pp = PickingPipette(hardware_dir)
         except Exception as e:
             logging.info("Could not initialize and connect hardware controller")
         
@@ -49,9 +52,10 @@ class Pick():
         self.prefix = prefix
         self.class_file = None
         self.pick_param_file = None
-        
+
+
+        # TODO check that this is the correct array file
         self.iplate = ImagingPlate(mmc, mda, array_file)
-        self.dplate = DispensePlate(mmc, self.pp.zc, array_file, cfg_dir)
         
         self.matches = None
         self.pick_offset = offset
@@ -131,7 +135,7 @@ class Pick():
         """
 
         # MK TODO ensure array formats are compatible
-        return self.dplate.get_abs_um_from_well_name(well)
+        return self.pp.dplate.get_abs_um_from_well_name(well)
 
     def pick_me(self):
         """Performs all actions to pick from the source plate to the destination plate using
@@ -155,7 +159,7 @@ class Pick():
             self.pp.draw()
             self.pp.move_pipette('clearance')
             
-            self.dplate.go_to_well(self.matches['dispenseWell'][match])
+            self.pp.dplate.go_to_well(self.matches['dispenseWell'][match])
             self.pp.move_pipette('dispense')
             self.pp.expel()
             sleep(1)

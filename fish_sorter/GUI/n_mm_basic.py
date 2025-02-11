@@ -9,7 +9,7 @@ import types
 from pathlib import Path
 from useq import MDASequence, Position
 
-from fish_sorter.gui.pipette_test_gui import PipetteWidget
+from fish_sorter.GUI.pipette_test_gui import PipetteWidget
 
 # For simulation
 try:
@@ -26,7 +26,6 @@ class nmm:
 
         self.v = napari.Viewer()
         dw, self.main_window = self.v.window.add_plugin_dock_widget("napari-micromanager")
-        print('created napari window')
         self.core = self.main_window._mmc
 
         if sim:
@@ -38,7 +37,7 @@ class nmm:
                 # make sure we start in a valid channel group
                 self.core.setConfig("Channel", "Cy5")
         else:
-            cfg_dir = Path().absolute().parent / "fish_sorter/configs/micromanager"
+            cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/micromanager"
             cfg_file = "20240718 - LeicaDMI - AndorZyla.cfg"
             cfg_path = cfg_dir / cfg_file
             print(cfg_path)
@@ -77,7 +76,6 @@ class nmm:
 
     def assign_widgets(self):
         # MDA
-        print('in assign_widgets')
         self.main_window._show_dock_widget("MDA")
         self.mda = self.v.window._dock_widgets.get("MDA").widget()
         self.mda.setValue(self.sequence)

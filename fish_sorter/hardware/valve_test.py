@@ -76,7 +76,8 @@ def run_sync_simple_client(func_code, framer=FramerType.SOCKET):
     print("get and verify data")
 
     try:
-        rr = client.read_holding_registers(12288 + ADDRESS_OFFSET, func_code)
+        print(type(func_code))
+        rr = client.read_holding_registers(12288 + ADDRESS_OFFSET, count = 1)
         print(rr)
         print(f'{rr.registers[0]:016b}')
 
@@ -95,9 +96,9 @@ def run_sync_simple_client(func_code, framer=FramerType.SOCKET):
         return
     
     try:
-        wr = client.write_registers(12288 + ADDRESS_OFFSET, func_code)
+        wr = client.write_register(12288 + ADDRESS_OFFSET, func_code)
         print(wr)
-        rr = client.read_holding_registers(12288 + ADDRESS_OFFSET, func_code)
+        rr = client.read_holding_registers(12288 + ADDRESS_OFFSET, count = 1)
         print(rr)
         print(f'{rr.registers[0]:016b}')
 
