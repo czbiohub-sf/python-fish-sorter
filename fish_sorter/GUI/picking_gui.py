@@ -10,7 +10,7 @@ from qtpy.QtCore import QSize, Qt
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QPushButton, QSizePolicy, QWidget, QGridLayout
 
-from fish_sorter.gui.picking import Pick
+from fish_sorter.GUI.picking import Pick
 
 COLOR_TYPES = Union[
     QColor,
@@ -33,6 +33,9 @@ class Picking(QWidget):
         super().__init__(parent=parent)
         CMMCorePlus.instance()
 
+        self.calibrated = False
+        self.pick = picker
+
         calib = PipetteCalibrateWidget()
         picking = PickWidget()
         disconnect = DisconnectWidget()
@@ -44,8 +47,6 @@ class Picking(QWidget):
         ppp = PipettePressureWidget()
         
         
-
-
         layout = QGridLayout(self)
         layout.addWidget(calib, 1, 0)
         layout.addWidget(ddd, 2, 0)
@@ -54,10 +55,7 @@ class Picking(QWidget):
         layout.addWidget(picking, 3, 0)
         layout.addWidget(disconnect, 3, 1)
 
-        self.calibrated = False
-        self.pick = picker
-
-
+     
  class PipetteCalibrateWidget(QPushButton):
     """A push button widget to calibrate the pipette
     """

@@ -1,3 +1,4 @@
+import logging
 import sys
 from json import load
 from pathlib import Path
@@ -9,20 +10,26 @@ from qtpy.QtCore import QSize, Qt
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QPushButton, QSizePolicy, QWidget, QGridLayout
 
+COLOR_TYPES = Union[
+    QColor,
+    int,
+    str,
+    Qt.GlobalColor,
+    "tuple[int, int, int, int]",
+    "tuple[int, int, int]"
+]
 
-class TesterWidget(QWidget):
+class PickSetup(QWidget):
 
-    def __init__(self, sequence, parent: QWidget | None=None):
+    def __init__(self, parent: QWidget | None=None):
+        """Initialize Picker GUI
+
+        """
         
         super().__init__(parent=parent)
         CMMCorePlus.instance()
 
-        self.btn = QPushButton("Stitch mosaic")
-        self.calibrate = QPushButton("Calibrate")
-        self.pos = QPushButton("Position")
-
+        self.setup = QPushButton("Setup Picker")
 
         layout = QGridLayout(self)
-        layout.addWidget(self.btn, 1, 0)
-        layout.addWidget(self.calibrate, 2, 0)
-        layout.addWidget(self.pos, 3, 0)
+        layout.addWidget(self.setup, 1, 0)

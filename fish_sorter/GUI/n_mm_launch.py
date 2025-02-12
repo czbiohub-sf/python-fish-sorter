@@ -10,16 +10,16 @@ from typing import overload
 
 from pymmcore_plus import DeviceType
 from pymmcore_widgets import StageWidget
+from PyQt5.QtWidgets import QGroupBox, QHBoxLayout
 
 from fish_sorter.GUI.classify import Classify
 from fish_sorter.GUI.picking import Pick
+from fish_sorter.GUI.pick_setup_gui import PickSetup
 from fish_sorter.GUI.picking_gui import Picking
 from fish_sorter.GUI.setup_gui import SetupWidget
-# TODO delete this
+from fish_sorter.GUI.mosaic_gui import MosaicWidget
 from fish_sorter.helpers.mosaic import Mosaic
-from fish_sorter.GUI.tester_gui import TesterWidget
 
-from PyQt5.QtWidgets import QGroupBox, QHBoxLayout
 
 # For simulation
 try:
@@ -72,7 +72,7 @@ class nmm:
 
     def assign_widgets(self, sequence):
         
-        #Setup
+        # Setup
         self.setup = SetupWidget(self.cfg_dir, self.expt_parent_dir)
         self.v.window.add_dock_widget(self.setup, name = 'Setup', area='right')
         self.start_setup()
@@ -82,10 +82,16 @@ class nmm:
         self.mda = self.v.window._dock_widgets.get("MDA").widget()
         self.mda.setValue(sequence)
         # Move destination plate for fluorescence imaging with pipette tip
-        self.pick.move_for_calib(pick=False)
+        
         self.v.window._qt_viewer.console.push(
             {"main_window": self.main_window, "mmc": self.core, "sequence": sequence, "np": np}
         )
+        
+        # Picker
+        logging.info('Load picker GUI')
+        self.pick_setup = PickSetup()
+        self.v.window.add_dock_widget(self.pick_setup, name='Picking')
+        self.pick_setup.setup.clicked.connect(self.setup_picker)
 
         # Stitch Mosaic
         self.stitch = MosaicWidget(sequence)
@@ -131,13 +137,16 @@ class nmm:
         self.expt_prefix = self.setup.get_expt_prefix()
         self.array_type = self.setup.get_array()
         self.pick_type, self.offset = self.setup.get_pick_type()
+
+    def setup_picker(self):
+        """After collecting required setup information, setup the picker
+        """
+
         self.pick = Pick(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.core, self.mda)
         logging.info('Loaded picking hardware')
-        
-        logging.info('Load picker GUI')
         self.picking = Picking(self.pick)
-        self.v.window.add_dock_widget(self.picking, name='Picking')
-
+        self.pick.move_for_calib(pick=False)
+        
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
