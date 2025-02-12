@@ -48,6 +48,7 @@ class SetupWidget(QWidget):
         self.layout = QVBoxLayout(self)
         
         self.config = Path(cfg_path)
+        logging.info(f'parent dir passed to SetupWidget: {expt_parent_dir}')
         self.expt_parent_dir = expt_parent_dir
 
         self.expt_path_label = QLabel("Selected Path: None")
@@ -88,7 +89,7 @@ class SetupWidget(QWidget):
         """
 
         cfg_path = self.config / cfg_folder / cfg_file
-        logging.info(cfg_path)
+        logging.info(f'{cfg_path}')
 
         try:
             with open(cfg_path, 'r') as file:
@@ -102,8 +103,8 @@ class SetupWidget(QWidget):
         Selects the filepath directory for the experiment
         """
 
-        if os.path.exists(parent_dir):
-            default_path = parent_dir
+        if os.path.exists(self.expt_parent_dir):
+            default_path = self.expt_parent_dir
         else:
             default_path = os.path.expanduser("~")        
 

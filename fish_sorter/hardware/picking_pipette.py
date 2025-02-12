@@ -22,7 +22,7 @@ class PickingPipette():
         :type parent_dir: path
         :param mmc: pymmcore-plus core 
         :type mmc: pymmcore-plus core instance
-        :param array_file: path to pick type array in config folder
+        :param array_file: path to dispense plate pick type array in config folder
         :type: path
         :param zc: zaber controller class 
         :type zc: zaber controller instance
@@ -31,6 +31,7 @@ class PickingPipette():
         
         self.hardware_data = {}
         hardware_dir = parent_dir / 'hardware'
+        logging.info(f'Picking Pipette hardware dir {hardware_dir}')
         for filename in os.listdir(hardware_dir):
             if filename.endswith('.json'):
                 file_path = os.path.join(hardware_dir, filename)
@@ -238,7 +239,7 @@ class PickingPipette():
         :type pick: bool
         """
         
-        if pos:
+        if pick:
             self.pick_h = self.zc.get_pos('p')
             logging.info(f'Set pick height to: {self.pick_h}')
         else:

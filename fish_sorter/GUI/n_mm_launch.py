@@ -33,10 +33,8 @@ micromanager_path = os.environ.get('MICROMANAGER_PATH')
 class nmm:
     def __init__(self, sim=False):
 
-        self.cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
-        
-        #TODO replace with the local directory to where experiments are saved
         self.expt_parent_dir = "D:/Documents/FishPickerFiles/"
+        self.cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
         self.v = napari.Viewer()
         dw, self.main_window = self.v.window.add_plugin_dock_widget("napari-micromanager")
         
@@ -73,12 +71,10 @@ class nmm:
         
         # Setup
         #TODO delete logging steps if desired
-        logging.info(self.cfg_dir)
-        logging.info(self.expt_parent_dir)
-        print(self.expt_parent_dir)
+        logging.info(f'Config Dir: {self.cfg_dir}')
+        logging.info(f'Parent Expt Path: {self.expt_parent_dir}')
         self.setup = SetupWidget(self.cfg_dir, self.expt_parent_dir)
         self.v.window.add_dock_widget(self.setup, name = 'Setup', area='right')
-        self.start_setup()
         
         # MDA
         self.main_window._show_dock_widget("MDA")
@@ -103,7 +99,6 @@ class nmm:
         # self.tester.calibrate.clicked.connect(self.set_home)
         # self.tester.pos.clicked.connect()
 
-    
     def run(self):
         """Runs the mosaic processing, dispay and setup of classification
         """
@@ -129,26 +124,29 @@ class nmm:
         self.classify = Classify(self.cfg_dir, self.array_type, self.core, self.mda, self.pick_type, self.expt_prefix, self.expt_path, self.v)
         logging.info('Completed Classification')
 
-    def start_setup(self):
-        """
-        Collect setup information and initialize picking hardware
+    def setup_picker(self):
+        """After collecting required setup information, setup the picker
         """
 
-        # TODO need to collect both the imaging array type and the dispense plate array type
+        
+        # TODO need to collect both the imaging array type and the dispense plate array type or will need to get dispense plate in future
 
         self.expt_path = self.setup.get_expt_path()
         self.expt_prefix = self.setup.get_expt_prefix()
         self.array_type = self.setup.get_array()
         self.pick_type, self.offset = self.setup.get_pick_type()
 
-    def setup_picker(self):
-        """After collecting required setup information, setup the picker
-        """
+        logging.info('Picker setup parameters: ')
+        logging.info(f'Expt Path: {self.expt_path}')
+        logging.info(f'Expt Prefix: {self.expt_prefix}')
+        logging.info(f'Array type: {self.array_type}')
+        logging.info(f'Cfg dir: {self.cfg_dir}')
+        logging.info(f'Pick offset: {self.offset}')
 
-        self.pick = Pick(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.core, self.mda)
-        logging.info('Loaded picking hardware')
+        logging.info('Loading picking hardware')
+        self.pick = Pick(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.core, self.mda, self.array_type)
         self.picking = Picking(self.pick)
-        self.pick.move_for_calib(pick=False)
+        self.pick.pp.move_for_calib(pick=False)
         self.v.window.add_dock_widget(self.picking, name='Picking')
         
 

@@ -41,10 +41,12 @@ class Pick():
         :raises FileNotFoundError: loggings critical if any of the files are not found
         """
 
-        hardware_dir = cfg_dir / 'hardware'
+        logging.info(f'cfg dir {cfg_dir}')
         logging.info('Initializing Picking Pipette hardware controller')
+        # TODO future add dplate array types to selection
+        dplate_array = cfg_dir / 'arrays/6well_plate20240822.json'
         try:
-            self.pp = PickingPipette(hardware_dir)
+            self.pp = PickingPipette(cfg_dir, mmc, dplate_array)
         except Exception as e:
             logging.info("Could not initialize and connect hardware controller")
         
@@ -53,9 +55,11 @@ class Pick():
         self.class_file = None
         self.pick_param_file = None
 
+        array = cfg_dir / 'arrays' / array_file
+        logging.info(f'Array file path {array}')
 
         # TODO check that this is the correct array file
-        self.iplate = ImagingPlate(mmc, mda, array_file)
+        self.iplate = ImagingPlate(mmc, mda, array)
         
         self.matches = None
         self.pick_offset = offset
