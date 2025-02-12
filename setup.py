@@ -13,6 +13,7 @@ setup(
         'iter-tools',
         'useq-schema',
         'argparse',
+        'matplotlib',
         'numpy',
         'pymodbus',
         'pymmcore-widgets',

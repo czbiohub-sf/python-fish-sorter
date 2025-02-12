@@ -94,7 +94,7 @@ class Pick():
         else:
             logging.info('Already calibrated')
         
-    def set_calib(self, pick: bool=True)
+    def set_calib(self, pick: bool=True):
         """Sets pipette calibration once user acknowledges location
                 
         :param pick: pick location is True

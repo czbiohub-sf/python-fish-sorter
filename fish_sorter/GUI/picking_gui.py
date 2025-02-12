@@ -174,7 +174,7 @@ class PipettePressureWidget(QPushButton):
         self.pressure_state = not self.pressure_state
         self.pick.pressure(self.pressure_state)
 
- class PickWidget(QPushButton):
+class PickWidget(QPushButton):
     """A push button widget to start picking
 
     """
@@ -207,7 +207,7 @@ class PipettePressureWidget(QPushButton):
         else:
             logging.info('Pipette not calibrated')
 
- class DisconnectWidget(QPushButton):
+class DisconnectWidget(QPushButton):
     """A push button widget to disconnect hardware
 
     """

@@ -33,11 +33,10 @@ micromanager_path = os.environ.get('MICROMANAGER_PATH')
 class nmm:
     def __init__(self, sim=False):
 
-        self.cfg_dir = Path().absolute().parent / "fish_sorter/configs/"
+        self.cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
         
         #TODO replace with the local directory to where experiments are saved
-        self.expt_parent_dir = Path().absolute().parent
-
+        self.expt_parent_dir = "D:/Documents/FishPickerFiles/"
         self.v = napari.Viewer()
         dw, self.main_window = self.v.window.add_plugin_dock_widget("napari-micromanager")
         
@@ -73,6 +72,10 @@ class nmm:
     def assign_widgets(self, sequence):
         
         # Setup
+        #TODO delete logging steps if desired
+        logging.info(self.cfg_dir)
+        logging.info(self.expt_parent_dir)
+        print(self.expt_parent_dir)
         self.setup = SetupWidget(self.cfg_dir, self.expt_parent_dir)
         self.v.window.add_dock_widget(self.setup, name = 'Setup', area='right')
         self.start_setup()
@@ -90,7 +93,7 @@ class nmm:
         # Picker
         logging.info('Load picker GUI')
         self.pick_setup = PickSetup()
-        self.v.window.add_dock_widget(self.pick_setup, name='Picking')
+        self.v.window.add_dock_widget(self.pick_setup, name='Picker Setup')
         self.pick_setup.setup.clicked.connect(self.setup_picker)
 
         # Stitch Mosaic
@@ -146,6 +149,7 @@ class nmm:
         logging.info('Loaded picking hardware')
         self.picking = Picking(self.pick)
         self.pick.move_for_calib(pick=False)
+        self.v.window.add_dock_widget(self.picking, name='Picking')
         
 
 if __name__ == "__main__":

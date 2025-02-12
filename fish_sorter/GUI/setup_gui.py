@@ -47,16 +47,17 @@ class SetupWidget(QWidget):
 
         self.layout = QVBoxLayout(self)
         
-        self.config = cfg_path
+        self.config = Path(cfg_path)
+        self.expt_parent_dir = expt_parent_dir
 
         self.expt_path_label = QLabel("Selected Path: None")
         self.expt_path_button = QPushButton("Select Mosaic Image Filepath")
-        self.expt_path_button.clicked.connect(self.select_expt_path(expt_parent_dir))
+        self.expt_path_button.clicked.connect(self.select_expt_path)
         self.layout.addWidget(self.expt_path_label)
         self.layout.addWidget(self.expt_path_button)
 
         self.prefix_label = QLabel("Experiment Prefix:")
-        self.prefix_input - QLineEdit()
+        self.prefix_input = QLineEdit()
         self.prefix_input.setPlaceholderText("Enter prefix for experiment")
         self.layout.addWidget(self.prefix_label)
         self.layout.addWidget(self.prefix_input)
@@ -67,38 +68,38 @@ class SetupWidget(QWidget):
         self.layout.addWidget(self.array_label)
         self.layout.addWidget(self.array_dropdown)
 
-        self.pick_type = self.load_config("pick")
+        self.pick_type = self.load_config("pick", "pick_type_config.json")
         self.pick_type_label = QLabel("Select Pick Type:")
         self.pick_type_grp = QButtonGroup(self)
         self.populate_options()
         self.layout.addWidget(self.pick_type_label)
 
-    def load_config(self, cfg):
+    def load_config(self, cfg_folder, cfg_file):
         """
         Loads the config file
 
-        :param cfg: desired config file to load
-        :type cfg: str
+        :param cfg_folder: desired config folder to load
+        :type cfg_folder: str
+        :param cfg_file: desired config file to load
+        :type cfg_file: str
 
         :returns: loaded json file
         :rtype: dict
         """
 
-        cfg_file = self.config / cfg
+        cfg_path = self.config / cfg_folder / cfg_file
+        logging.info(cfg_path)
 
         try:
-            with open(cfg_file, 'r') as file:
+            with open(cfg_path, 'r') as file:
                 return json.load(file)
         except FileNotFoundError:
             logging.critical("Config file not found")
             return {}
 
-    def select_expt_path(self, parent_dir):
+    def select_expt_path(self):
         """
         Selects the filepath directory for the experiment
-
-        :param parent_dir: parent directory for the experiment folder
-        :type parent_dir: str
         """
 
         if os.path.exists(parent_dir):
@@ -109,7 +110,7 @@ class SetupWidget(QWidget):
         filepath = QFileDialog.getExistingDirectory(self, "Select Directory", default_path)
         if filepath:
             self.expt_path_label.setText(f"Selected Path: {filepath}")
-            logging.info(f"Selected Path:" {filepath})
+            logging.info(f"Selected Path: {filepath}")
 
     def refresh_list(self):
         """
@@ -150,7 +151,7 @@ class SetupWidget(QWidget):
             if button.isChecked():
                 offset = self.pick_type[button.text()]['picker']['offset']
                 return button.text(), offset
-        return None
+        return "default_pick_type", 0.0
 
     def get_expt_path(self):
         """
