@@ -29,7 +29,7 @@ class PipetteWidget(QWidget):
         super().__init__(parent=parent)
         CMMCorePlus.instance()
 
-        xxx = ZaberImageWidget()
+        xxx = ZaberInitWidget()
         xyz = ZaberHomeWidget()
         zzz = ZaberTestWidget()
         ddd = PipetteDrawWidget()
@@ -37,15 +37,15 @@ class PipetteWidget(QWidget):
         ppp = PipettePressureWidget()
 
         layout = QGridLayout(self)
-        layout.addWidget(xyz, 1, 0)
-        layout.addWidget(xxx, 1, 1)
+        layout.addWidget(xxx, 1, 0)
+        layout.addWidget(xyz, 1, 1)
         layout.addWidget(zzz, 1, 2)
         layout.addWidget(ddd, 2, 0)
         layout.addWidget(vvv, 2, 1)
         layout.addWidget(ppp, 2, 2)
 
-class ZaberImageWidget(QPushButton):
-    """A push button widget to move the Zaber stages to image.
+class ZaberInitWidget(QPushButton):
+    """A push button widget to connect to the Zaber stage.
 
     This is linked to the [hardware][zaber_controller] method
     """
@@ -64,33 +64,27 @@ class ZaberImageWidget(QPushButton):
 
     def _create_button(self)->None:
         
-        self.setText("Move for Fluor Imaging")
-        self.clicked.connect(self._zaber_image)
+        self.setText("Initialize Zaber")
+        self.clicked.connect(self._zaber_init)
 
-    def _zaber_image(self)->None:
+    def _zaber_init(self)->None:
 
         cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/hardware"
-        zaber_cfg_file = "zaber_config.json"
-        zaber_cfg_path = cfg_dir / zaber_cfg_file
-        picker_cfg_file = "picker_config.json"
-        picker_cfg_path = cfg_dir / picker_cfg_file
+        cfg_file = "zaber_config.json"
+        cfg_path = cfg_dir / cfg_file
         # Initialize and connect to hardware controller
         try:
-            with open(zaber_cfg_path, 'r') as f:
-                z = load(f)
-            zaber_config = z['zaber_config']
+            with open(cfg_path, 'r') as f:
+                p = load(f)
+            zaber_config = p['zaber_config']
             zc = ZaberController(zaber_config, env='prod')
         except Exception as e:
-            logging.info("Could not initialize and connect hardware controller")
-
-        with open(picker_cfg_path, 'r') as f:
-            p = load(f)
-        picker_config = p['pipette']
+            logging.critical("Could not initialize and connect hardware controller")
     
+        # Test moving the pipette, x, and y stages to max position
         stages = ['x', 'y', 'p']
 
-        logging.info('Move pipette to home and destination plate over objective')
-
+        logging.info('Move stages to max and back home')
         for stage in stages:
             zc.move_arm(stage, zaber_config['max_position'][stage])
             sleep(2)
@@ -140,9 +134,10 @@ class ZaberHomeWidget(QPushButton):
         stages = ['x', 'y', 'p']
 
         logging.info('Move stages to max and back home')
-        zc.move_arm('p', zaber_config['home']['p'])
-        zc.move_arm('y', zaber_config['max_position']['y'])
-        zc.move_arm('x', zaber_config['max_position']['x'])
+        for stage in stages:
+            zc.move_arm(stage, zaber_config['home'][stage])
+            sleep(2)
+        
         zc.disconnect()
 
 class ZaberTestWidget(QPushButton):
