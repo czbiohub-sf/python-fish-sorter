@@ -134,6 +134,8 @@ class PickingPipette():
 
         address_offset = self.hardware_data['pneumatic_config']['register']['func_add_offset']
 
+        logging.info(f'Pressure state requested: {state}')
+
         if state:
             func_code = self.hardware_data['pneumatic_config']['function_codes']['press_on']
             logging.info(f'Setting Pressure On with function code {func_code}')
@@ -151,6 +153,8 @@ class PickingPipette():
         """
 
         address_offset = self.hardware_data['pneumatic_config']['register']['func_add_offset']
+
+        logging.info(f'Vacuum state requested: {state}')
         
         if state:
             func_code = self.hardware_data['pneumatic_config']['function_codes']['vac_on']
