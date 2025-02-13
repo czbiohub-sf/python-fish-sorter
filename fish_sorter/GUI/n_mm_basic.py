@@ -1,3 +1,4 @@
+import logging
 import napari
 import napari_micromanager
 import numpy as np
@@ -40,11 +41,11 @@ class nmm:
             cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/micromanager"
             cfg_file = "20240718 - LeicaDMI - AndorZyla.cfg"
             cfg_path = cfg_dir / cfg_file
-            print(cfg_path)
+            logging.info(f'{cfg_path}')
             self.core.loadSystemConfiguration(str(cfg_path))
 
         self.sequence = self._get_seq()
-        print(self.sequence)
+        logging.info(f'{self.sequence}')
 
         # Load and push sequence
         self.assign_widgets()
@@ -54,24 +55,16 @@ class nmm:
     def _get_seq(self):
 
         sequence = MDASequence(
-        channels = [
-            {"config": "GFP","exposure": 100}, 
-            {"config": "TXR", "exposure": 100}
-        ],
-        stage_positions = [
-            {"x": 110495.44, "y": 10863.76, "z": 2779.09, "name": "top_R"},
-            {"x": 17883.77, "y" : 10166.54, "z": 2779.09, "name": "top_L"},
-            {"x": 110495.44, "y": 73208.59, "z": 2776.70, "name": "bot_R"},
-            {"x": 17492.82, "y": 73208.58, "z": 2776.70, "name": "bot_L"},
-            Position(
-                x=17883.77, y=10166.54, z=2779.09, name= "array", 
-                sequence=MDASequence(
-                    grid_plan={"rows": 13, "columns": 18, "relative_to": "top_left", "overlap": 5, "mode": "row_wise_snake"})
-            ),
-        ],
-        axis_order = "pc",
+            channels = [
+                {"config": "GFP","exposure": 100}, 
+                {"config": "TXR", "exposure": 100}
+            ],
+            stage_positions = [
+                {"x": 0.0, "y": 0.0, "z": 0.0, "name": "TL_well"},
+                {"x": 100.0, "y": 0.0, "z": 0.0, "name": "TR_well"},
+            ],
+            axis_order = "pc",
         )
-
         return sequence
 
     def assign_widgets(self):
