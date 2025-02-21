@@ -33,7 +33,7 @@ micromanager_path = os.environ.get('MICROMANAGER_PATH')
 class nmm:
     def __init__(self, sim=False):
 
-        self.expt_parent_dir = "D:/Documents/FishPickerFiles/"
+        self.expt_parent_dir = Path("D:/fishpicker_expts/")
         self.cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
         self.v = napari.Viewer()
         dw, self.main_window = self.v.window.add_plugin_dock_widget("napari-micromanager")
@@ -104,7 +104,8 @@ class nmm:
         """
 
         sequence = self.mda.value()
-        img_arr = self.main_window._core_link._mda_handler._tmp_arrays 
+        img_arr = self.main_window._core_link._mda_handler._tmp_arrays
+        logging.info(f'{type(img_arr)}') 
         self.stitch = self.mosaic.stitch_mosaic(sequence, img_arr)
         rows, cols, num_chan, chan_name, overlap, idxs = self.mosaic.get_mosaic_metadata(sequence)
 

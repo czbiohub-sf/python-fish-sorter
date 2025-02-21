@@ -40,16 +40,14 @@ class SetupWidget(QWidget):
         :param cfg_path: parent path directory for all of the config files
         :type cfg_path: Path
         :param expt_parent_dir: parent directory to the experiment folder
-        :type expt_parent_dir: str
+        :type expt_parent_dir: Path
         """
 
         super().__init__(parent)
-
-        self.layout = QVBoxLayout(self)
+        self.layout = QGridLayout(self)
         
         self.config = Path(cfg_path)
-        logging.info(f'parent dir passed to SetupWidget: {expt_parent_dir}')
-        self.expt_parent_dir = expt_parent_dir
+        self.expt_parent_dir = Path(expt_parent_dir)
 
         self.expt_path_label = QLabel("Selected Path: None")
         self.expt_path_button = QPushButton("Select Mosaic Image Filepath")
@@ -71,9 +69,9 @@ class SetupWidget(QWidget):
 
         self.pick_type = self.load_config("pick", "pick_type_config.json")
         self.pick_type_label = QLabel("Select Pick Type:")
+        self.layout.addWidget(self.pick_type_label)
         self.pick_type_grp = QButtonGroup(self)
         self.populate_options()
-        self.layout.addWidget(self.pick_type_label)
 
     def load_config(self, cfg_folder, cfg_file):
         """
@@ -89,7 +87,6 @@ class SetupWidget(QWidget):
         """
 
         cfg_path = self.config / cfg_folder / cfg_file
-        logging.info(f'{cfg_path}')
 
         try:
             with open(cfg_path, 'r') as file:
@@ -102,13 +99,13 @@ class SetupWidget(QWidget):
         """
         Selects the filepath directory for the experiment
         """
-
+ 
         if os.path.exists(self.expt_parent_dir):
             default_path = self.expt_parent_dir
         else:
             default_path = os.path.expanduser("~")        
 
-        filepath = QFileDialog.getExistingDirectory(self, "Select Directory", default_path)
+        filepath = QFileDialog.getExistingDirectory(self, "Select Directory", str(default_path))
         if filepath:
             self.expt_path_label.setText(f"Selected Path: {filepath}")
             logging.info(f"Selected Path: {filepath}")

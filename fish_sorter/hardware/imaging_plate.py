@@ -1,5 +1,6 @@
 # TODO manually set grid array
 # TODO if user manually overrides grid update transform?
+import logging
 import numpy as np
 from typing import Optional
 

@@ -1,4 +1,5 @@
 # TODO clean up the imports
+import logging
 import napari
 import napari_micromanager
 import numpy as np
@@ -43,6 +44,8 @@ class Mapping:
 
         with open(array_file) as f:
             self.plate_data = json.load(f)
+
+        logging.info(f'plate data: {self.plate_data}')
 
         # TODO save TL/TR locations in experiment savefile
 
@@ -117,6 +120,7 @@ class Mapping:
             "calib_abs_um": abs_well_pos,
             "calib_px": px_well_pos, # NOTE px is unused for dispense plate
         }
+        logging.info(f'wells {self.wells}')
 
     def get_well_id(self, well_name: str):
         return self.wells['names'].index(well_name)

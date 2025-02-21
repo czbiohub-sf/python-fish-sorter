@@ -10,8 +10,6 @@ import types
 from pathlib import Path
 from useq import MDASequence, Position
 
-from fish_sorter.GUI.pipette_test_gui import PipetteWidget
-
 # For simulation
 try:
     from mda_simulator.mmcore import FakeDemoCamera
@@ -44,43 +42,11 @@ class nmm:
             logging.info(f'{cfg_path}')
             self.core.loadSystemConfiguration(str(cfg_path))
 
-        self.sequence = self._get_seq()
-        logging.info(f'{self.sequence}')
-
-        # Load and push sequence
-        self.assign_widgets()
+        self.main_window._show_dock_widget("MDA")
+        self.mda = self.v.window._dock_widgets.get("MDA").widget()
 
         napari.run()
 
-    def _get_seq(self):
-
-        sequence = MDASequence(
-            channels = [
-                {"config": "GFP","exposure": 100}, 
-                {"config": "TXR", "exposure": 100}
-            ],
-            stage_positions = [
-                {"x": 0.0, "y": 0.0, "z": 0.0, "name": "TL_well"},
-                {"x": 100.0, "y": 0.0, "z": 0.0, "name": "TR_well"},
-                {"x": 1000.0, "y": 1000.0, "z": 0.0, "name": "Test_well"},
-
-            ],
-            axis_order = "pc",
-        )
-        return sequence
-
-    def assign_widgets(self):
-        # MDA
-        self.main_window._show_dock_widget("MDA")
-        self.mda = self.v.window._dock_widgets.get("MDA").widget()
-        self.mda.setValue(self.sequence)
-        self.v.window._qt_viewer.console.push(
-            {"main_window": self.main_window, "mmc": self.core, "sequence": self.sequence, "np": np}
-        )
-
-        # Pipette
-        self.pipette = PipetteWidget()
-        self.v.window.add_dock_widget(self.pipette, name='pipette')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
