@@ -101,12 +101,12 @@ class Mosaic:
         #     pos_order[i] = [grid.row, grid.col]
 
         # Reference abs position to grid position
-        row_dict = {pos: i for i, pos in enumerate(np.sort(np.unique(pos_order[:,0])))}
-        col_dict = {pos: i for i, pos in enumerate(np.sort(np.unique(pos_order[:,1])))}
+        row_dict = {pos: i for i, pos in enumerate(np.sort(np.unique(pos_list[:,0])))}
+        col_dict = {pos: i for i, pos in enumerate(np.sort(np.unique(pos_list[:,1])))}
 
         # Save order of positions
         idxs = np.zeros(np.shape(pos_list), dtype=int)
-        u, u_idxs = np.unique(pos_order, axis=0, return_index=True)
+        u, u_idxs = np.unique(pos_list, axis=0, return_index=True)
         for i, pos in enumerate(u[np.argsort(u_idxs)]):
             idxs[row_dict[pos[0]], col_dict[pos[1]]] = i
 
