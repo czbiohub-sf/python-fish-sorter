@@ -1,4 +1,5 @@
 # TODO clean up the imports
+import logging
 import napari
 import napari_micromanager
 import numpy as np
@@ -43,6 +44,8 @@ class Mapping:
 
         with open(array_file) as f:
             self.plate_data = json.load(f)
+
+        logging.info(f'plate data: {self.plate_data}')
 
         # TODO save TL/TR locations in experiment savefile
 
@@ -117,6 +120,7 @@ class Mapping:
             "calib_abs_um": abs_well_pos,
             "calib_px": px_well_pos, # NOTE px is unused for dispense plate
         }
+        logging.info(f'wells {self.wells}')
 
     def get_well_id(self, well_name: str):
         return self.wells['names'].index(well_name)
@@ -147,11 +151,11 @@ class Mapping:
 
     def rel_um_to_abs_um(self, rel_um_pos):
         # Wellplate coords to stage coords
-        return rel_um_pos += self.um_TL + self.um_center_to_corner_offset
+        return rel_um_pos + self.um_TL + self.um_center_to_corner_offset
 
     def abs_to_rel(self, abs_um_pos):
         # Stage coords to wellplate coords
-        return abs_um_pos -= self.um_TL + self.um_center_to_corner_offset
+        return abs_um_pos - self.um_TL + self.um_center_to_corner_offset
 
     def px_to_abs_um(self, px_pos):
         # Image coords to stage coords

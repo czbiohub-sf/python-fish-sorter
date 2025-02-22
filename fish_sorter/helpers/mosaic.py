@@ -1,3 +1,4 @@
+import logging
 import numpy as np
 import matplotlib.pyplot as plt
 
@@ -77,12 +78,19 @@ class Mosaic:
         """Get mosaic info from the MDASequence metadata"""
         # General metadata
         rows = int(sequence.grid_plan.rows)
+        logging.info(f'rows: {rows}')
         cols = int(sequence.grid_plan.columns)
-        channels = len(sequence.channels)
+        logging.info(f'cols: {cols}')
+        num_chan = len(sequence.channels)
+        logging.info(f'num_chan: {num_chan}')
+        chan_name = [channel.config for channel in sequence.channels]
+        logging.info(f'chan_nam: {chan_name}')
         overlap = sequence.grid_plan.overlap
+        logging.info(f'overlap: {overlap}')
 
         # Get position at each id
         pos_list = [[event.x_pos, event.y_pos] for event in list(sequence)]
+        logging.info(f'pos_list: {pos_list}')
 
         # # Snippet below copied from useq._iter_sequence.py
         # order = _used_axes(sequence)
@@ -110,7 +118,7 @@ class Mosaic:
         for i, pos in enumerate(u[np.argsort(u_idxs)]):
             idxs[row_dict[pos[0]], col_dict[pos[1]]] = i
 
-        return rows, cols, channels, overlap, idxs
+        return rows, cols, num_chan, chan_name, overlap, idxs
 
     def get_img(self, zarr, row, col, idxs):
         """Get img for a given row and column"""

@@ -1,10 +1,10 @@
 # TODO manually set grid array
 # TODO if user manually overrides grid update transform?
-
-from fish_sorter.helpers.mapping import Mapping
-
+import logging
+import numpy as np
 from typing import Optional
 
+from fish_sorter.helpers.mapping import Mapping
 
 TL_WELL_NAME = 'TL_well'
 TR_WELL_NAME = 'TR_well'
@@ -37,6 +37,7 @@ class DispensePlate(Mapping):
                 self.cfg_data['dispense_plate']['TR_corner']['y'],
             ]
         )
+        logging.info(f'{self.cfg_data}')
 
     def set_calib_pts_manually(self):
         # TODO prompt home
@@ -54,6 +55,7 @@ class DispensePlate(Mapping):
         print(f'HOME={self.um_TL}\nTR={self.um_TR}')
 
     def go_to_well(self, well: Optional[str], offset=np.array([0,0])):
+        logging.info(f'move to well {well}')
         if well is not None:
             x, y = self._get_well_pos(well, offset)
             self.move_arm('x', x / MM_TO_UM, is_relative=False)

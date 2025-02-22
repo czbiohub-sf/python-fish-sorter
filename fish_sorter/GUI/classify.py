@@ -102,13 +102,13 @@ class Classify():
         #probs level higher than this stich mosaic call and then call napari points
         #use the self.viewer to load those layers
         
-        FITC_path = '/Users/diane.wiener/Documents/fish-sorter-data/2024-02-15-cldnb-mScarlet_she-GFP/51hpf-pick1_FITC_2.5x_mosaic.tif'
-        FITC_mosaic = np.array(imread(FITC_path))
-        TXR_path = '/Users/diane.wiener/Documents/fish-sorter-data/2024-02-15-cldnb-mScarlet_she-GFP/51hpf-pick1_TXR_2.5x_mosaic.tif'
-        TXR_mosaic = np.array(imread(TXR_path))
+        # FITC_path = '/Users/diane.wiener/Documents/fish-sorter-data/2024-02-15-cldnb-mScarlet_she-GFP/51hpf-pick1_FITC_2.5x_mosaic.tif'
+        # FITC_mosaic = np.array(imread(FITC_path))
+        # TXR_path = '/Users/diane.wiener/Documents/fish-sorter-data/2024-02-15-cldnb-mScarlet_she-GFP/51hpf-pick1_TXR_2.5x_mosaic.tif'
+        # TXR_mosaic = np.array(imread(TXR_path))
 
-        self.viewer.add_image(FITC_mosaic, colormap='green', opacity=0.5, name='FITC')
-        self.viewer.add_image(TXR_mosaic, colormap='red', opacity=0.5, name='TXR')
+        # self.viewer.add_image(FITC_mosaic, colormap='green', opacity=0.5, name='FITC')
+        # self.viewer.add_image(TXR_mosaic, colormap='red', opacity=0.5, name='TXR')
 
         self.contrast_callbacks = {}
         self.contrast_widget = ContrastWidget(self.viewer)

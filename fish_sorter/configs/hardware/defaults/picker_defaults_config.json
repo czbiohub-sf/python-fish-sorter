@@ -26,5 +26,16 @@
             }  
         },
         "description": "Default settings to use for reset and archive"
+    },
+    "dispense_plate": {
+        "TL_corner": {
+            "x": 100,
+            "y": 100
+        },
+        "TR_corner": {
+            "x": 400,
+            "y": 100
+        }
+
     }
 }

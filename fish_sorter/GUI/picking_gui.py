@@ -10,7 +10,7 @@ from qtpy.QtCore import QSize, Qt
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import QPushButton, QSizePolicy, QWidget, QGridLayout
 
-from fish_sorter.gui.picking import Pick
+from fish_sorter.GUI.picking import Pick
 
 COLOR_TYPES = Union[
     QColor,
@@ -33,19 +33,20 @@ class Picking(QWidget):
         super().__init__(parent=parent)
         CMMCorePlus.instance()
 
-        calib = PipetteCalibrateWidget()
-        picking = PickWidget()
-        disconnect = DisconnectWidget()
+        self.pick = picker
+        self.calibrated = False
+        
+        calib = PipetteCalibrateWidget(self)
+        picking = PickWidget(self)
+        disconnect = DisconnectWidget(self)
         
         #TODO do these still need to be here
         #Could they live in a service hardware picker GUI 
-        ddd = PipetteDrawWidget()
-        vvv = PipetteExpelWidget()
-        ppp = PipettePressureWidget()
+        ddd = PipetteDrawWidget(self)
+        vvv = PipetteExpelWidget(self)
+        ppp = PipettePressureWidget(self)
         
         
-
-
         layout = QGridLayout(self)
         layout.addWidget(calib, 1, 0)
         layout.addWidget(ddd, 2, 0)
@@ -54,15 +55,12 @@ class Picking(QWidget):
         layout.addWidget(picking, 3, 0)
         layout.addWidget(disconnect, 3, 1)
 
-        self.calibrated = False
-        self.pick = picker
-
-
- class PipetteCalibrateWidget(QPushButton):
+     
+class PipetteCalibrateWidget(QPushButton):
     """A push button widget to calibrate the pipette
     """
     
-    def __init__(self, parent: QWidget | None=None):
+    def __init__(self, picking, parent: QWidget | None=None):
         
         super().__init__(parent=parent)
 
@@ -70,6 +68,7 @@ class Picking(QWidget):
             QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         )
 
+        self.picking = picking
         self._mmc = CMMCorePlus.instance()
         self._create_button()
 
@@ -85,16 +84,16 @@ class Picking(QWidget):
         #TODO allow option for different destination plate well
         
         logging.info('Calibrate pick height into array')
-        self.pick.check_calib(self.calibrate)
-        self.pick.set_calib(pick=True)
+        self.picking.pick.check_calib(self.picking.calibrated)
+        self.picking.pick.set_calib(pick=True)
 
         logging.info('Calibrate dispense height into destination plate')
         
-        self.pick.check_calib(self.calibrate, pick=False, well='A1')
-        self.pick.set_calib(pick=False)
+        self.picking.pick.check_calib(self.picking.calibrated, pick=False, well='A1')
+        self.picking.pick.set_calib(pick=False)
 
         logging.info('Pipette draw and expel locations set')
-        self.calibrate = True       
+        self.picking.calibrated = True       
 
 class PipetteDrawWidget(QPushButton):
     """A push button widget to connect to the valve controller to actuate the draw function
@@ -102,7 +101,7 @@ class PipetteDrawWidget(QPushButton):
     This is linked to the [hardware][picking_pipette] method
     """
     
-    def __init__(self, parent: QWidget | None=None):
+    def __init__(self, picking, parent: QWidget | None=None):
         
         super().__init__(parent=parent)
 
@@ -110,6 +109,7 @@ class PipetteDrawWidget(QPushButton):
             QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         )
 
+        self.picking = picking
         self._mmc = CMMCorePlus.instance()
         self._create_button()
 
@@ -120,7 +120,7 @@ class PipetteDrawWidget(QPushButton):
 
     def _draw(self)->None:
         
-        self.pick.draw()
+        self.picking.pick.pp.draw()
 
 class PipetteExpelWidget(QPushButton):
     """A push button widget to connect to the valve controller to actuate the expel function
@@ -128,7 +128,7 @@ class PipetteExpelWidget(QPushButton):
     This is linked to the [hardware][picking_pipette] method
     """
     
-    def __init__(self, parent: QWidget | None=None):
+    def __init__(self, picking, parent: QWidget | None=None):
         
         super().__init__(parent=parent)
 
@@ -136,6 +136,7 @@ class PipetteExpelWidget(QPushButton):
             QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         )
 
+        self.picking = picking
         self._mmc = CMMCorePlus.instance()
         self._create_button()
 
@@ -146,7 +147,7 @@ class PipetteExpelWidget(QPushButton):
 
     def _expel(self)->None:
         
-        self.pick.expel()
+        self.picking.pick.pp.expel()
         
 class PipettePressureWidget(QPushButton):
     """A push button widget to connect to the valve controller to toggle the pressure
@@ -154,7 +155,7 @@ class PipettePressureWidget(QPushButton):
     This is linked to the [hardware][picking_pipette] method
     """
     
-    def __init__(self, parent: QWidget | None=None):
+    def __init__(self, picking, parent: QWidget | None=None):
         
         super().__init__(parent=parent)
 
@@ -162,6 +163,7 @@ class PipettePressureWidget(QPushButton):
             QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         )
 
+        self.picking = picking
         self._mmc = CMMCorePlus.instance()
         self._create_button()
         self.pressure_state = False
@@ -174,14 +176,13 @@ class PipettePressureWidget(QPushButton):
     def _pressure(self)->None:
         
         self.pressure_state = not self.pressure_state
-        self.pick.pressure(self.pressure_state)
+        self.picking.pick.pp.pressure(self.pressure_state)
 
- class PickWidget(QPushButton):
+class PickWidget(QPushButton):
     """A push button widget to start picking
-
     """
     
-    def __init__(self, parent: QWidget | None=None):
+    def __init__(self, picking, parent: QWidget | None=None):
         
         super().__init__(parent=parent)
 
@@ -189,6 +190,7 @@ class PipettePressureWidget(QPushButton):
             QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         )
 
+        self.picking = picking
         self._mmc = CMMCorePlus.instance()
         self._create_button()
 
@@ -199,22 +201,21 @@ class PipettePressureWidget(QPushButton):
     
     def _start_picking(self):
         
-        if self.calibrate:
+        if self.picking.calibrated:
             logging.info('Opening classifications')
-            self.pick.get_classified()
+            self.picking.pick.get_classified()
             logging.info('Matching to pick parameters')
-            self.pick.match_pick()
+            self.picking.pick.match_pick()
             logging.info('Start of picking')
-            self.pick.pick_me()
+            self.picking.pick.pick_me()
         else:
             logging.info('Pipette not calibrated')
 
- class DisconnectWidget(QPushButton):
+class DisconnectWidget(QPushButton):
     """A push button widget to disconnect hardware
-
     """
     
-    def __init__(self, parent: QWidget | None=None):
+    def __init__(self, picking, parent: QWidget | None=None):
         
         super().__init__(parent=parent)
 
@@ -222,10 +223,11 @@ class PipettePressureWidget(QPushButton):
             QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         )
 
+        self.picking = picking
         self._mmc = CMMCorePlus.instance()
         self._create_button()
 
     def _create_button(self)->None:
         
         self.setText("Disconnect Hardware")
-        self.clicked.connect(self.pick.disconnect_hardware()) 
+        self.clicked.connect(self.picking.pick.disconnect_hardware) 

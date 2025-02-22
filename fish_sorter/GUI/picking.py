@@ -20,11 +20,11 @@ class Pick():
     It uses the PickingPipette class and the Mapping class
     """
 
-    def __init__(self, cfg_dir, pick_dir, prefix, offset, mmc, mda, array_file, cfg_file):
+    def __init__(self, cfg_dir, pick_dir, prefix, offset, mmc, mda, array_file):
         """Loads the files for classification and initializes PickingPipette class
         
         :param cfg_dir: parent path directory for all of the config files
-        :type cfg_dir: Path
+        :type cfg_dir: path
         :param pick_dir: experiment directory for classification and pick files
         :type pick_dir: str
         :param prefix: prefix name details
@@ -35,13 +35,18 @@ class Pick():
         :type mmc: pymmcore-plus  core instance
         :param mda: pymmcore-plus multidimensial acquisition engine
         :type mda: pymmcore-plus mda instance
-        
+        :param array_file: path to pick type array in config folder
+        :type: path
+
         :raises FileNotFoundError: loggings critical if any of the files are not found
         """
 
+        logging.info(f'cfg dir {cfg_dir}')
         logging.info('Initializing Picking Pipette hardware controller')
+        # TODO future add dplate array types to selection
+        dplate_array = cfg_dir / 'arrays/6well_plate20240822.json'
         try:
-            self.pp = PickingPipette(cfg_dir)
+            self.pp = PickingPipette(cfg_dir, mmc, dplate_array)
         except Exception as e:
             logging.info("Could not initialize and connect hardware controller")
         
@@ -49,9 +54,12 @@ class Pick():
         self.prefix = prefix
         self.class_file = None
         self.pick_param_file = None
-        
-        self.iplate = ImagingPlate(mmc, mda, array_file)
-        self.dplate = DispensePlate(mmc, self.pp.zc, array_file, cfg_dir)
+
+        array = cfg_dir / 'arrays' / array_file
+        logging.info(f'Array file path {array}')
+
+        # TODO check that this is the correct array file
+        self.iplate = ImagingPlate(mmc, mda, array)
         
         self.matches = None
         self.pick_offset = offset
@@ -90,7 +98,7 @@ class Pick():
         else:
             logging.info('Already calibrated')
         
-    def set_calib(self, pick: bool=True)
+    def set_calib(self, pick: bool=True):
         """Sets pipette calibration once user acknowledges location
                 
         :param pick: pick location is True
@@ -131,7 +139,7 @@ class Pick():
         """
 
         # MK TODO ensure array formats are compatible
-        return self.dplate.get_abs_um_from_well_name(well)
+        return self.pp.dplate.get_abs_um_from_well_name(well)
 
     def pick_me(self):
         """Performs all actions to pick from the source plate to the destination plate using
@@ -155,7 +163,7 @@ class Pick():
             self.pp.draw()
             self.pp.move_pipette('clearance')
             
-            self.dplate.go_to_well(self.matches['dispenseWell'][match])
+            self.pp.dplate.go_to_well(self.matches['dispenseWell'][match])
             self.pp.move_pipette('dispense')
             self.pp.expel()
             sleep(1)

@@ -1,10 +1,10 @@
 # TODO manually set grid array
 # TODO if user manually overrides grid update transform?
-
-from fish_sorter.helpers.mapping import Mapping
-
+import logging
+import numpy as np
 from typing import Optional
 
+from fish_sorter.helpers.mapping import Mapping
 
 TL_WELL_NAME = 'TL_well'
 TR_WELL_NAME = 'TR_well'

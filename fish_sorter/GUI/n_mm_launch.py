@@ -10,16 +10,16 @@ from typing import overload
 
 from pymmcore_plus import DeviceType
 from pymmcore_widgets import StageWidget
-
-from fish_sorter.gui.classify import Classify
-from fish_sorter.gui.picking import Pick
-from fish_sorter.gui.picking_gui import Picking
-from fish_sorter.gui.setup_gui import SetupWidget
-# TODO delete this
-from fish_sorter.helpers.mosaic import Mosaic
-from fish_sorter.gui.tester_gui import TesterWidget
-
 from PyQt5.QtWidgets import QGroupBox, QHBoxLayout
+
+from fish_sorter.GUI.classify import Classify
+from fish_sorter.GUI.picking import Pick
+from fish_sorter.GUI.pick_setup_gui import PickSetup
+from fish_sorter.GUI.picking_gui import Picking
+from fish_sorter.GUI.setup_gui import SetupWidget
+from fish_sorter.GUI.mosaic_gui import MosaicWidget
+from fish_sorter.helpers.mosaic import Mosaic
+
 
 # For simulation
 try:
@@ -33,11 +33,8 @@ micromanager_path = os.environ.get('MICROMANAGER_PATH')
 class nmm:
     def __init__(self, sim=False):
 
-        self.cfg_dir = Path().absolute().parent / "fish_sorter/configs/"
-        
-        #TODO replace with the local directory to where experiments are saved
-        self.expt_parent_dir = Path().absolute().parent
-
+        self.expt_parent_dir = Path("D:/fishpicker_expts/")
+        self.cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
         self.v = napari.Viewer()
         dw, self.main_window = self.v.window.add_plugin_dock_widget("napari-micromanager")
         
@@ -72,7 +69,10 @@ class nmm:
 
     def assign_widgets(self, sequence):
         
-        #Setup
+        # Setup
+        #TODO delete logging steps if desired
+        logging.info(f'Config Dir: {self.cfg_dir}')
+        logging.info(f'Parent Expt Path: {self.expt_parent_dir}')
         self.setup = SetupWidget(self.cfg_dir, self.expt_parent_dir)
         self.v.window.add_dock_widget(self.setup, name = 'Setup', area='right')
         
@@ -80,54 +80,76 @@ class nmm:
         self.main_window._show_dock_widget("MDA")
         self.mda = self.v.window._dock_widgets.get("MDA").widget()
         self.mda.setValue(sequence)
+        # Move destination plate for fluorescence imaging with pipette tip
+        
         self.v.window._qt_viewer.console.push(
             {"main_window": self.main_window, "mmc": self.core, "sequence": sequence, "np": np}
         )
+        
+        # Picker
+        logging.info('Load picker GUI')
+        self.pick_setup = PickSetup()
+        self.v.window.add_dock_widget(self.pick_setup, name='Picker Setup')
+        self.pick_setup.setup.clicked.connect(self.setup_picker)
 
-        # Tester
-        # TODO delete
-        self.tester = TesterWidget(sequence)
-        self.v.window.add_dock_widget(self.tester, name='tester')
-        self.tester.btn.clicked.connect(self.run)
+        # Stitch Mosaic
+        self.stitch = MosaicWidget(sequence)
+        self.v.window.add_dock_widget(self.stitch, name='Stitch Mosaic')
+        self.stitch.btn.clicked.connect(self.run)
         # self.tester.calibrate.clicked.connect(self.set_home)
         # self.tester.pos.clicked.connect()
 
-    
     def run(self):
-        
-        self.start_setup()
+        """Runs the mosaic processing, dispay and setup of classification
+        """
 
         sequence = self.mda.value()
         img_arr = self.main_window._core_link._mda_handler._tmp_arrays
-        self.mosaic.stitch_mosaic(sequence, img_arr)
-        # self.mosaic.get_mosaic_metadata(sequence)
+        logging.info(f'{type(img_arr)}') 
+        self.stitch = self.mosaic.stitch_mosaic(sequence, img_arr)
+        rows, cols, num_chan, chan_name, overlap, idxs = self.mosaic.get_mosaic_metadata(sequence)
 
+        # TODO are any images open, if so close prior to loading mosaic
+        for chan in num_chan:
+            mosaic = self.stitch[chan, :, :]
+            if chan_name == 'FITC':
+                color = 'green'
+            elif chan_name == 'TXR':
+                color = 'red'
+            else:
+                color = 'grey'
+            self.v.add_image(mosaic, colormap=color, opacity=0.5, name=chan_name)
 
-        #stich_mosaic class returns the mosaic as a numpy array
-        #probs level higher than this stich mosaic call and then call napari points
-        #use the self.viewer to load those layers
-        #Link here to name / pass mosaic into classify??
         logging.info('Start Classification')
-        #TODO make sure all of the input parameters are here
+        # TODO make sure all of the input parameters are here
         self.classify = Classify(self.cfg_dir, self.array_type, self.core, self.mda, self.pick_type, self.expt_prefix, self.expt_path, self.v)
         logging.info('Completed Classification')
 
-    def start_setup(self):
+    def setup_picker(self):
+        """After collecting required setup information, setup the picker
         """
-        Collect setup information and initialize picking hardware
-        """
+
+        
+        # TODO need to collect both the imaging array type and the dispense plate array type or will need to get dispense plate in future
 
         self.expt_path = self.setup.get_expt_path()
         self.expt_prefix = self.setup.get_expt_prefix()
         self.array_type = self.setup.get_array()
         self.pick_type, self.offset = self.setup.get_pick_type()
-        self.pick = PickingPipette(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.core, self.mda)
-        logging.info('Loaded picking hardware')
-        
-        logging.info('Load picker GUI')
-        self.picking = Picking(self.pick)
-        self.v.window.add_dock_widget(self.picking, name='Picking')
 
+        logging.info('Picker setup parameters: ')
+        logging.info(f'Expt Path: {self.expt_path}')
+        logging.info(f'Expt Prefix: {self.expt_prefix}')
+        logging.info(f'Array type: {self.array_type}')
+        logging.info(f'Cfg dir: {self.cfg_dir}')
+        logging.info(f'Pick offset: {self.offset}')
+
+        logging.info('Loading picking hardware')
+        self.pick = Pick(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.core, self.mda, self.array_type)
+        self.picking = Picking(self.pick)
+        self.pick.pp.move_for_calib(pick=False)
+        self.v.window.add_dock_widget(self.picking, name='Picking')
+        
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
