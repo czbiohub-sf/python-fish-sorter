@@ -20,6 +20,8 @@ from fish_sorter.GUI.setup_gui import SetupWidget
 from fish_sorter.GUI.mosaic_gui import MosaicWidget
 from fish_sorter.helpers.mosaic import Mosaic
 
+from useq import GridFromEdges
+
 
 # For simulation
 try:
@@ -63,7 +65,7 @@ class nmm:
 
         # Load and push sequence
         self.mosaic = Mosaic(self.v)
-        self.assign_widgets(self.mosaic.set_sequence())
+        self.assign_widgets(self.mosaic.init_pos())
 
         napari.run()
 
@@ -96,8 +98,13 @@ class nmm:
         self.stitch = MosaicWidget(sequence)
         self.v.window.add_dock_widget(self.stitch, name='Stitch Mosaic')
         self.stitch.btn.clicked.connect(self.run)
-        # self.tester.calibrate.clicked.connect(self.set_home)
-        # self.tester.pos.clicked.connect()
+        self.stitch.dummy.clicked.connect(self.image_now)
+
+    def image_now(self):
+        seq = self.mda.value()
+        self.mda.setValue(self.mosaic.set_grid(seq))
+
+        
 
     def run(self):
         """Runs the mosaic processing, dispay and setup of classification
