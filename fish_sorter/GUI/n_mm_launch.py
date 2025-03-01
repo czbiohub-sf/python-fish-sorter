@@ -20,7 +20,7 @@ from fish_sorter.GUI.setup_gui import SetupWidget
 from fish_sorter.GUI.mosaic_gui import MosaicWidget
 from fish_sorter.helpers.mosaic import Mosaic
 
-from useq import GridFromEdges
+from useq import GridFromEdges, MDASequence
 
 
 # For simulation
@@ -102,9 +102,28 @@ class nmm:
 
     def image_now(self):
         seq = self.mda.value()
-        self.mda.setValue(self.mosaic.set_grid(seq))
+        logging.info(f'{self.mda.value()}')
+        logging.info(f'{seq.grid_plan}')
 
+        # Update the MDA widget with the modified sequence
+        self.mda.setValue(self.mosaic.set_grid(seq))
         
+        new_seq = self.mda.value()
+        logging.info(f'{new_seq}')
+        logging.info(f'{new_seq.axis_order}')
+        logging.info(f'{new_seq.stage_positions}')
+        logging.info(f'{new_seq.grid_plan}')
+
+        new_seq.metadata['pymmcore_widgets'] = {
+            'save_dir': self.expt_path,
+            'save_name': self.expt_prefix,
+            'should_save': True,
+            'axis_order': new_seq.axis_order,
+            'grid_plan': new_seq.grid_plan
+        }
+        self.mda.setValue(new_seq)
+        logging.info(f'{self.mda.value()}')
+
 
     def run(self):
         """Runs the mosaic processing, dispay and setup of classification
@@ -136,23 +155,22 @@ class nmm:
         """After collecting required setup information, setup the picker
         """
 
-        
-        # TODO need to collect both the imaging array type and the dispense plate array type or will need to get dispense plate in future
-
         self.expt_path = self.setup.get_expt_path()
         self.expt_prefix = self.setup.get_expt_prefix()
-        self.array_type = self.setup.get_array()
+        self.img_array = self.setup.get_img_array()
+        self.dp_array = self.setup.get_dp_array()
         self.pick_type, self.offset = self.setup.get_pick_type()
 
         logging.info('Picker setup parameters: ')
         logging.info(f'Expt Path: {self.expt_path}')
         logging.info(f'Expt Prefix: {self.expt_prefix}')
-        logging.info(f'Array type: {self.array_type}')
-        logging.info(f'Cfg dir: {self.cfg_dir}')
+        logging.info(f'Image array: {self.img_array}')
+        logging.info(f'Dispense array: {self.dp_array}')
+        logging.info(f'cfg dir: {self.cfg_dir}')
         logging.info(f'Pick offset: {self.offset}')
 
         logging.info('Loading picking hardware')
-        self.pick = Pick(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.core, self.mda, self.array_type)
+        self.pick = Pick(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.core, self.mda, self.img_array, self.dp_array)
         self.picking = Picking(self.pick)
         self.pick.pp.move_for_calib(pick=False)
         self.v.window.add_dock_widget(self.picking, name='Picking')

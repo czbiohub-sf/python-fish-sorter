@@ -35,6 +35,10 @@ class Mosaic:
                 {"x": 0.0, "y": 0.0, "z": 0.0, "name": "TL_well"},
                 {"x": 100.0, "y": 100.0, "z": 0.0, "name": "BR_well"},
             ],
+            channels = [
+                {"config": "GFP","exposure": 100}, 
+                {"config": "TXR", "exposure": 100}
+            ],
         )
         return sequence
 
@@ -47,17 +51,32 @@ class Mosaic:
                 bottom = pos.y
                 right = pos.x
 
+        # new_seq = MDASequence(
+        #     stage_positions = seq.stage_positions,
+        #     channels = seq.channels,
+        #     grid_plan = {
+        #         "top": top,
+        #         "left": left,
+        #         "bottom": bottom,
+        #         "right": right,
+        #         "overlap": 5,
+        #     },
+        #     axis_order = seq.axis_order,
+        # )
+
+ 
+
         new_seq = MDASequence(
-            stage_positions = seq.stage_positions,
-            channels = seq.channels,
+            axis_order = "gc",  
+            stage_positions = seq.stage_positions,  
             grid_plan = {
                 "top": top,
                 "left": left,
                 "bottom": bottom,
                 "right": right,
-                "overlap": 5,
+                "overlap": 5.0,
             },
-            axis_order = seq.axis_order,
+            channels = seq.channels,
         )
         return(new_seq)
 
