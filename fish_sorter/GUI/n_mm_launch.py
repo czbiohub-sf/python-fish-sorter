@@ -108,18 +108,14 @@ class nmm:
         # Update the MDA widget with the modified sequence
         # self.mda.setValue(self.mosaic.set_grid(seq))
         
-        updated_seq = self.mosaic.set_grid(seq)
+        # updated_seq = self.mosaic.set_grid(seq)
 
-        logging.info(f'{updated_seq}')
-        logging.info(f'{updated_seq.axis_order}')
-        logging.info(f'{updated_seq.stage_positions}')
-        logging.info(f'{updated_seq.grid_plan}')
 
         new_seq = MDASequence(
-            axis_order = updated_seq.axis_order,
+            axis_order = seq.axis_order,
             # stage_positions=updated_seq.stage_positions,  
-            grid_plan=updated_seq.grid_plan,  
-            channels=updated_seq.channels,
+            grid_plan=seq.grid_plan,  
+            channels=seq.channels,
             metadata={
                 "pymmcore_widgets": {
                 "save_dir": self.expt_path.strip(),
@@ -128,7 +124,7 @@ class nmm:
                 },
                 "napari_micromanager": {
                     "axis_order": ("g", "c"),
-                    "grid_plan": updated_seq.grid_plan
+                    "grid_plan": seq.grid_plan
                 }
              }
         )
