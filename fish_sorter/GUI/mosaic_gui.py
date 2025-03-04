@@ -18,11 +18,13 @@ class MosaicWidget(QWidget):
         CMMCorePlus.instance()
 
         self.btn = QPushButton("Stitch mosaic")
+        self.dummy =  QPushButton("do something")
         self.calibrate = QPushButton("Calibrate")
         self.pos = QPushButton("Position")
 
 
         layout = QGridLayout(self)
         layout.addWidget(self.btn, 1, 0)
+        layout.addWidget(self.dummy, 1, 1)
         layout.addWidget(self.calibrate, 2, 0)
         layout.addWidget(self.pos, 3, 0)

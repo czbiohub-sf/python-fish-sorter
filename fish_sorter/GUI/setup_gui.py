@@ -45,6 +45,7 @@ class SetupWidget(QWidget):
 
         super().__init__(parent)
         self.layout = QGridLayout(self)
+        self.layout.setSpacing(10)
         
         self.config = Path(cfg_path)
         self.expt_parent_dir = Path(expt_parent_dir)
@@ -52,24 +53,30 @@ class SetupWidget(QWidget):
         self.expt_path_label = QLabel("Selected Path: None")
         self.expt_path_button = QPushButton("Select Mosaic Image Filepath")
         self.expt_path_button.clicked.connect(self.select_expt_path)
-        self.layout.addWidget(self.expt_path_label)
-        self.layout.addWidget(self.expt_path_button)
+        self.layout.addWidget(self.expt_path_label, 0, 0, 1, 2)
+        self.layout.addWidget(self.expt_path_button, 0, 2)
 
         self.prefix_label = QLabel("Experiment Prefix:")
         self.prefix_input = QLineEdit()
         self.prefix_input.setPlaceholderText("Enter prefix for experiment")
-        self.layout.addWidget(self.prefix_label)
-        self.layout.addWidget(self.prefix_input)
+        self.layout.addWidget(self.prefix_label, 1, 0)
+        self.layout.addWidget(self.prefix_input, 1, 1, 1, 2)
 
-        self.array_label = QLabel("Select Imaging Plate Array:")
-        self.array_dropdown = QComboBox()
+        self.img_array_label = QLabel("Select Imaging Plate Array:")
+        self.img_array_dropdown = QComboBox()
+        self.layout.addWidget(self.img_array_label, 2, 0)
+        self.layout.addWidget(self.img_array_dropdown, 2, 1, 1, 2)
+
+        self.dp_array_label = QLabel("Select Dispense Plate Array:")
+        self.dp_array_dropdown = QComboBox()
+        self.layout.addWidget(self.dp_array_label, 3, 0)
+        self.layout.addWidget(self.dp_array_dropdown, 3, 1, 1, 2)
+        
         self.refresh_list()
-        self.layout.addWidget(self.array_label)
-        self.layout.addWidget(self.array_dropdown)
 
         self.pick_type = self.load_config("pick", "pick_type_config.json")
         self.pick_type_label = QLabel("Select Pick Type:")
-        self.layout.addWidget(self.pick_type_label)
+        self.layout.addWidget(self.pick_type_label, 4, 0, 1, 3)
         self.pick_type_grp = QButtonGroup(self)
         self.populate_options()
 
@@ -108,7 +115,6 @@ class SetupWidget(QWidget):
         filepath = QFileDialog.getExistingDirectory(self, "Select Directory", str(default_path))
         if filepath:
             self.expt_path_label.setText(f"Selected Path: {filepath}")
-            logging.info(f"Selected Path: {filepath}")
 
     def refresh_list(self):
         """
@@ -118,10 +124,14 @@ class SetupWidget(QWidget):
         config_path = self.config / "arrays"
         if os.path.exists(config_path):
             array_files = [f for f in os.listdir(config_path) if f.endswith('.json')]
-            self.array_dropdown.clear()
-            self.array_dropdown.addItems(array_files)
+            self.img_array_dropdown.clear()
+            self.img_array_dropdown.addItems(array_files)
+
+            self.dp_array_dropdown.clear()
+            self.dp_array_dropdown.addItems(array_files)
         else:
-            self.array_dropdown.addItems('Config Files Not Found')
+            self.img_array_dropdown.addItems('Config Files Not Found')
+            self.dp_array_dropdown.addItems('Config Files Not Found')
 
     def populate_options(self):
         """
@@ -173,7 +183,7 @@ class SetupWidget(QWidget):
 
         return self.prefix_input.text()
     
-    def get_array(self):
+    def get_img_array(self):
         """
         Returns the user input selected image plate array 
 
@@ -181,4 +191,14 @@ class SetupWidget(QWidget):
         :rtype: str
         """
 
-        return self.array_dropdown.currentText()
+        return self.img_array_dropdown.currentText()
+
+    def get_dp_array(self):
+        """
+        Returns the user input selected dispense plate array 
+
+        :returns: dispense plate array in use
+        :rtype: str
+        """
+
+        return self.dp_array_dropdown.currentText()

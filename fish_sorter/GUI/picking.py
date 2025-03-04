@@ -20,7 +20,7 @@ class Pick():
     It uses the PickingPipette class and the Mapping class
     """
 
-    def __init__(self, cfg_dir, pick_dir, prefix, offset, mmc, mda, array_file):
+    def __init__(self, cfg_dir, pick_dir, prefix, offset, mmc, mda, img_array, dp_array):
         """Loads the files for classification and initializes PickingPipette class
         
         :param cfg_dir: parent path directory for all of the config files
@@ -35,7 +35,9 @@ class Pick():
         :type mmc: pymmcore-plus  core instance
         :param mda: pymmcore-plus multidimensial acquisition engine
         :type mda: pymmcore-plus mda instance
-        :param array_file: path to pick type array in config folder
+        :param img_array: path to image plate array in config folder
+        :type: path
+        :param dp_file: path to dispense plate array in config folder
         :type: path
 
         :raises FileNotFoundError: loggings critical if any of the files are not found
@@ -43,8 +45,7 @@ class Pick():
 
         logging.info(f'cfg dir {cfg_dir}')
         logging.info('Initializing Picking Pipette hardware controller')
-        # TODO future add dplate array types to selection
-        dplate_array = cfg_dir / 'arrays/6well_plate20240822.json'
+        dplate_array = cfg_dir / 'arrays' / dp_array
         try:
             self.pp = PickingPipette(cfg_dir, mmc, dplate_array)
         except Exception as e:
@@ -55,10 +56,9 @@ class Pick():
         self.class_file = None
         self.pick_param_file = None
 
-        array = cfg_dir / 'arrays' / array_file
-        logging.info(f'Array file path {array}')
+        array = cfg_dir / 'arrays' / img_array
+        logging.info(f'Imgaing array file path {array}')
 
-        # TODO check that this is the correct array file
         self.iplate = ImagingPlate(mmc, mda, array)
         
         self.matches = None

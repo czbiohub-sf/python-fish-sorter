@@ -8,7 +8,7 @@ from tqdm import tqdm
 from typing import cast
 from itertools import product
 
-from useq import MDASequence, Position
+from useq import MDASequence, Position, GridFromEdges
 from useq._iter_sequence import _used_axes, _iter_axis, _parse_axes
 
 # from fish_sorter.constants import IMG_X_PX, IMG_Y_PX
@@ -28,33 +28,107 @@ DEFAULT_NAME = "Exp"
 class Mosaic:
     def __init__(self, viewer):
         self.viewer = viewer
-        
-    def set_sequence(self):
-        # TODO this needs to be autocomputed based on imaging area
-        sequence = MDASequence(
+
+    def init_pos(self):
+        # sequence = MDASequence(            
+        #     stage_positions = [
+        #         {"x": 0.0, "y": 0.0, "z": 0.0, "name": "TL_well"},
+        #         {"x": 100.0, "y": 100.0, "z": 0.0, "name": "BR_well"},
+        #     ],
+        #     channels = [
+        #         {"config": "GFP","exposure": 100}, 
+        #         {"config": "TXR", "exposure": 100}
+        #     ],
+        #     axis_order = "gc",
+        # )
+
+        sequence = MDASequence(            
+            grid_plan = {
+                "top": 0.0,
+                "left": 0.0,
+                "bottom": 0.0,
+                "right": 0.0,
+                "overlap": 5.0,
+                "fov_width": 5324.8,  # Field of view width
+                "fov_height": 5324.8  # Field of view height
+            },
             channels = [
                 {"config": "GFP","exposure": 100}, 
                 {"config": "TXR", "exposure": 100}
             ],
-            # grid_plan = {"rows": 4, "columns": 3, "relative_to": "center", "overlap": 5, "mode": "row_wise_snake"},
-            stage_positions = [
-                {"x": 0.0, "y": 0.0, "z": 0.0, "name": "TL_well"},
-                {"x": 100.0, "y": 0.0, "z": 0.0, "name": "TR_well"},
-            ],
-            # stage_positions = [
-            #     # {"x": 110495.44, "y": 10863.76, "z": 2779.09, "name": "top_R"},
-            #     # {"x": 17883.77, "y" : 10166.54, "z": 2779.09, "name": "top_L"},
-            #     # {"x": 110495.44, "y": 73208.59, "z": 2776.70, "name": "bot_R"},
-            #     # {"x": 17492.82, "y": 73208.58, "z": 2776.70, "name": "bot_L"},
-            #     Position(
-            #         x=17883.77, y=10166.54, z=2779.09, name= "array", 
-            #         sequence=MDASequence(
-            #             grid_plan={"rows": 3, "columns": 4, "relative_to": "top_left", "overlap": 5, "mode": "row_wise_snake"})
-            #     ),
-            # ],
-            axis_order = "pc",
+            axis_order = "gc",
+        )
+
+        if isinstance(sequence.grid_plan, GridFromEdges):
+            grid_plan = sequence.grid_plan  # Already correct
+        else:
+             # Convert if not already GridFromEdges
+            grid_plan = GridFromEdges(
+                fov_width=5324.8,  # Set appropriate FOV values
+                fov_height=5324.8,
+                overlap=(5.0, 5.0),
+                top=sequence.grid_plan.top,
+                left=sequence.grid_plan.left,
+                bottom=sequence.grid_plan.bottom,
+                right=sequence.grid_plan.right,
         )
         return sequence
+
+    def set_grid(self, seq):
+
+        # top = left = bottom = right = None
+        # for pos in seq.stage_positions:
+        #     if pos.name == "TL_well":
+        #         top = pos.y
+        #         left = pos.x
+        #     elif pos.name == "BR_well":
+        #         bottom = pos.y
+        #         right = pos.x
+
+        # new_seq = MDASequence(
+        #     stage_positions = seq.stage_positions,
+        #     channels = seq.channels,
+        #     grid_plan = {
+        #         "top": top,
+        #         "left": left,
+        #         "bottom": bottom,
+        #         "right": right,
+        #         "overlap": 5,
+        #     },
+        #     axis_order = seq.axis_order,
+        # )
+
+        new_seq = MDASequence(
+            axis_order = "gc",  
+            stage_positions = seq.stage_positions,
+            grid_plan = {
+                "top": top,
+                "left": left,
+                "bottom": bottom,
+                "right": right,
+                "overlap": 5.0,
+                "fov_width": 5324.8,  # Field of view width
+                "fov_height": 5324.8  # Field of view height
+            },
+            channels = seq.channels,
+        )
+
+        if isinstance(new_seq.grid_plan, GridFromEdges):
+            grid_plan = new_seq.grid_plan  # Already correct
+        else:
+             # Convert if not already GridFromEdges
+            grid_plan = GridFromEdges(
+                fov_width=5324.8,  # Set appropriate FOV values
+                fov_height=5324.8,
+                overlap=(5.0, 5.0),
+                top=new_seq.grid_plan.top,
+                left=new_seq.grid_plan.left,
+                bottom=new_seq.grid_plan.bottom,
+                right=new_seq.grid_plan.right,
+        )
+
+        logging.info(f'From set_grid in mosaic: {new_seq}')
+        return(new_seq)
 
     def get_dir(self, sequence: MDASequence) -> str:
         """
