@@ -106,23 +106,40 @@ class nmm:
         logging.info(f'{seq.grid_plan}')
 
         # Update the MDA widget with the modified sequence
-        self.mda.setValue(self.mosaic.set_grid(seq))
+        # self.mda.setValue(self.mosaic.set_grid(seq))
         
-        new_seq = self.mda.value()
-        logging.info(f'{new_seq}')
-        logging.info(f'{new_seq.axis_order}')
-        logging.info(f'{new_seq.stage_positions}')
-        logging.info(f'{new_seq.grid_plan}')
+        updated_seq = self.mosaic.set_grid(seq)
 
-        new_seq.metadata['pymmcore_widgets'] = {
-            'save_dir': self.expt_path,
-            'save_name': self.expt_prefix,
-            'should_save': True,
-            'axis_order': new_seq.axis_order,
-            'grid_plan': new_seq.grid_plan
-        }
+        logging.info(f'{updated_seq}')
+        logging.info(f'{updated_seq.axis_order}')
+        logging.info(f'{updated_seq.stage_positions}')
+        logging.info(f'{updated_seq.grid_plan}')
+
+        new_seq = MDASequence(
+            axis_order = updated_seq.axis_order,
+            # stage_positions=updated_seq.stage_positions,  
+            grid_plan=updated_seq.grid_plan,  
+            channels=updated_seq.channels,
+            metadata={
+                "pymmcore_widgets": {
+                "save_dir": self.expt_path.strip(),
+                "save_name": self.expt_prefix.strip(),
+                "should_save": True,
+                },
+                "napari_micromanager": {
+                    "axis_order": ("g", "c"),
+                    "grid_plan": updated_seq.grid_plan
+                }
+             }
+        )
+
+
+        logging.info(f'new sequence: {new_seq}')
+        logging.info(f'new sequence axis order: {new_seq.axis_order}')
+
         self.mda.setValue(new_seq)
-        logging.info(f'{self.mda.value()}')
+        final_seq = self.mda.value()
+        logging.info(f'{final_seq}')
 
 
     def run(self):

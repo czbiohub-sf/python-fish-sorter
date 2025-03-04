@@ -8,7 +8,7 @@ from tqdm import tqdm
 from typing import cast
 from itertools import product
 
-from useq import MDASequence, Position
+from useq import MDASequence, Position, GridFromEdges
 from useq._iter_sequence import _used_axes, _iter_axis, _parse_axes
 
 # from fish_sorter.constants import IMG_X_PX, IMG_Y_PX
@@ -39,10 +39,13 @@ class Mosaic:
                 {"config": "GFP","exposure": 100}, 
                 {"config": "TXR", "exposure": 100}
             ],
+            axis_order = "gc",
         )
         return sequence
 
     def set_grid(self, seq):
+
+        top = left = bottom = right = None
         for pos in seq.stage_positions:
             if pos.name == "TL_well":
                 top = pos.y
@@ -64,20 +67,36 @@ class Mosaic:
         #     axis_order = seq.axis_order,
         # )
 
- 
-
         new_seq = MDASequence(
             axis_order = "gc",  
-            stage_positions = seq.stage_positions,  
+            stage_positions = seq.stage_positions,
             grid_plan = {
                 "top": top,
                 "left": left,
                 "bottom": bottom,
                 "right": right,
                 "overlap": 5.0,
+                "fov_width": 5324.8,  # Field of view width
+                "fov_height": 5324.8  # Field of view height
             },
             channels = seq.channels,
         )
+
+        if isinstance(new_seq.grid_plan, GridFromEdges):
+            grid_plan = new_seq.grid_plan  # Already correct
+        else:
+             # Convert if not already GridFromEdges
+            grid_plan = GridFromEdges(
+                fov_width=5324.8,  # Set appropriate FOV values
+                fov_height=5324.8,
+                overlap=(5.0, 5.0),
+                top=new_seq.grid_plan.top,
+                left=new_seq.grid_plan.left,
+                bottom=new_seq.grid_plan.bottom,
+                right=new_seq.grid_plan.right,
+        )
+
+        logging.info(f'From set_grid in mosaic: {new_seq}')
         return(new_seq)
 
     def get_dir(self, sequence: MDASequence) -> str:
