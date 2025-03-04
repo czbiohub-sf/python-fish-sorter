@@ -11,9 +11,9 @@ TR_WELL_NAME = 'TR_well'
 
 # NOTE calibrate by setting positions in UI. Replace with dialogs? 
 class ImagingPlate(Mapping):
-    def __init__(self, mmc, mda, filename):
+    def __init__(self, mmc, mda, array_file):
         self.mda = mda
-        super().__init__(mmc, filename)
+        super().__init__(mmc, array_file)
 
     def set_calib_pts(self):
         seq = self.mda.value()

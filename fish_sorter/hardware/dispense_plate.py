@@ -18,7 +18,7 @@ MM_TO_UM = 1000.0
 # QUESTION should we switch to mm instead of um?
 
 class DispensePlate(Mapping):
-    def __init__(self, mmc, zc, array_file, cfg_file):
+    def __init__(self, mmc, zc, array_file):
         self.zc = zc
         super().__init__(mmc, array_file)
 
