@@ -84,52 +84,35 @@ class Mosaic:
     def get_mosaic_metadata(self, sequence: MDASequence):
         """Get mosaic info from the MDASequence metadata"""
         # General metadata
-        rows = int(sequence.grid_plan.rows)
-        logging.info(f'rows: {rows}')
-        cols = int(sequence.grid_plan.columns)
-        logging.info(f'cols: {cols}')
         num_chan = len(sequence.channels)
         logging.info(f'num_chan: {num_chan}')
-        chan_name = [channel.config for channel in sequence.channels]
-        logging.info(f'chan_nam: {chan_name}')
+        chan_names = [channel.config for channel in sequence.channels]
+        logging.info(f'chan_nam: {chan_names}')
         overlap = sequence.grid_plan.overlap
         logging.info(f'overlap: {overlap}')
 
         # Get position at each id
-        pos_list = [[event.x_pos, event.y_pos] for event in list(sequence)]
+        event_iterator = sequence.iter_events()
+        pos_list = np.unique([[event.index['g'], event.x_pos, event.y_pos] for event in event_iterator], axis=0)
+        xpos_list, x_ids = np.unique(pos_list[:,1], return_inverse=True)
+        ypos_list, y_ids = np.unique(pos_list[:,2], return_inverse=True)
+
         logging.info(f'pos_list: {pos_list}')
-
-        # # Snippet below copied from useq._iter_sequence.py
-        # order = _used_axes(sequence)
-        # # this needs to be tuple(...) to work for mypyc
-        # axis_iterators = tuple(enumerate(_iter_axis(sequence, ax)) for ax in order)
-        # for i, item in enumerate(product(*axis_iterators)):
-        #     if not item:  # the case with no events
-        #         continue  # pragma: no cover
-        #     # get axes objects for this event
-        #     index, time, position, grid, channel, z_pos = _parse_axes(zip(order, item))
-
-
-        #     print(grid)
-        #     print(index)
-        #     print(position)
-        #     pos_order[i] = [grid.row, grid.col]
-
-        # Reference abs position to grid position
-        row_dict = {pos: i for i, pos in enumerate(np.sort(np.unique(pos_list[:,0])))}
-        col_dict = {pos: i for i, pos in enumerate(np.sort(np.unique(pos_list[:,1])))}
+        num_rows = len(np.unique(pos_list[:,1]))
+        logging.info(f'rows: {num_rows}')
+        num_cols = len(np.unique(pos_list[:,2]))
+        logging.info(f'cols: {num_cols}')
 
         # Save order of positions
-        idxs = np.zeros(np.shape(pos_list), dtype=int)
-        u, u_idxs = np.unique(pos_list, axis=0, return_index=True)
-        for i, pos in enumerate(u[np.argsort(u_idxs)]):
-            idxs[row_dict[pos[0]], col_dict[pos[1]]] = i
+        grid_list = np.zeros((num_cols, num_rows, 3), dtype=int)
+        for grid_pos, x_id, y_id in zip(pos_list, x_ids, y_ids):
+            grid_list[x_id, y_id] = grid_pos
 
-        return rows, cols, num_chan, chan_name, overlap, idxs
+        return grid_list, num_rows, num_cols, num_chan, chan_names, overlap
 
-    def get_img(self, zarr, row, col, idxs):
+    def get_img(self, zarr, row, col, grid_list):
         """Get img for a given row and column"""
-        idx = int(idxs[row, col])
+        idx = int(grid_list[col, row, 0])
         return zarr[0, idx, :, :, :]
 
     def stitch_mosaic(self, sequence : MDASequence, img_arr):
@@ -140,7 +123,7 @@ class Mosaic:
         """
         # Get metadata
         dir = self.get_dir(sequence)
-        num_rows, num_cols, num_channels, overlap, idxs = self.get_mosaic_metadata(sequence)
+        grid_list, num_rows, num_cols, num_channels, chan_names, overlap = self.get_mosaic_metadata(sequence)
 
         # Compute key distances
         x_overlap = int(IMG_X_PX * overlap[0] / 100.0)
@@ -165,7 +148,7 @@ class Mosaic:
             y_start = int(row * y_translation)
             for col in tqdm(range(0, num_cols), desc="Column"):
                 x_start = int(col * x_translation)
-                mosaic[:, y_start : y_start + IMG_Y_PX, x_start : x_start + IMG_X_PX] += self.get_img(arr_data, row, col, idxs)
+                mosaic[:, y_start : y_start + IMG_Y_PX, x_start : x_start + IMG_X_PX] += self.get_img(arr_data, row, col, grid_list)
 
         # Take average of overlapping areas
         print("Taking average of overlapping areas")
