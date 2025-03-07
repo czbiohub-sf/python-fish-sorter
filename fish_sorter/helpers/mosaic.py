@@ -19,7 +19,7 @@ try:
     from pymmcore_widgets.useq_widgets import PYMMCW_METADATA_KEY as PYMMCW_METADATA_KEY
 except ImportError:
     # key in MDASequence.metadata where we expect to find pymmcore_widgets metadata
-    print('failed')
+    logging.info('failed')
     PYMMCW_METADATA_KEY = "pymmcore_widgets"
 
 DEFAULT_NAME = "Exp"
@@ -143,7 +143,7 @@ class Mosaic:
         mosaic = np.zeros((num_channels, mosaic_y_dim, mosaic_x_dim), dtype=np.uint32)
 
         # Assemble mosaic
-        print("Stitching images together")
+        logging.info("Stitching images together")
         for row in tqdm(range(num_rows), desc="Row"):
             y_start = int(row * y_translation)
             for col in tqdm(range(0, num_cols), desc="Column"):
@@ -151,7 +151,7 @@ class Mosaic:
                 mosaic[:, y_start : y_start + IMG_Y_PX, x_start : x_start + IMG_X_PX] += self.get_img(arr_data, row, col, grid_list)
 
         # Take average of overlapping areas
-        print("Taking average of overlapping areas")
+        logging.info("Taking average of overlapping areas")
         for row in tqdm(range(1, num_rows), desc="Row"):
             y_start = int(row * y_translation)
             mosaic[:, y_start : y_start - y_translation + IMG_Y_PX, :] = np.floor_divide(

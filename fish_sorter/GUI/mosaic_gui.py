@@ -12,7 +12,7 @@ from qtpy.QtWidgets import QPushButton, QSizePolicy, QWidget, QGridLayout
 
 class MosaicWidget(QWidget):
 
-    def __init__(self, sequence, parent: QWidget | None=None):
+    def __init__(self, parent: QWidget | None=None):
         
         super().__init__(parent=parent)
         CMMCorePlus.instance()

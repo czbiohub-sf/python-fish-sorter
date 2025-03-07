@@ -57,7 +57,7 @@ class PickingPipette():
         else:
             self.zc = zc
 
-        self.dplate = DispensePlate(mmc, self.zc, array_file, self.hardware_data['picker_config'])
+        self.dplate = DispensePlate(mmc, self.zc, array_file)
 
     def connect(self, env='prod'):
         """Connect to hardware

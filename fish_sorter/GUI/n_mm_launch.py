@@ -63,13 +63,13 @@ class nmm:
             else:
                 logging.critical("Micromanager config folder does not exisit")
 
-        # Load and push sequence
+        # Load sequence and Mosaic class
         self.mosaic = Mosaic(self.v)
-        self.assign_widgets(self.mosaic.init_pos())
+        self.assign_widgets()
 
         napari.run()
 
-    def assign_widgets(self, sequence):
+    def assign_widgets(self):
         
         # Setup
         #TODO delete logging steps if desired
@@ -78,64 +78,22 @@ class nmm:
         self.setup = SetupWidget(self.cfg_dir, self.expt_parent_dir)
         self.v.window.add_dock_widget(self.setup, name = 'Setup', area='right')
         
-        # MDA
-        self.main_window._show_dock_widget("MDA")
-        self.mda = self.v.window._dock_widgets.get("MDA").widget()
-        self.mda.setValue(sequence)
-        # Move destination plate for fluorescence imaging with pipette tip
-        
-        self.v.window._qt_viewer.console.push(
-            {"main_window": self.main_window, "mmc": self.core, "sequence": sequence, "np": np}
-        )
-        
         # Picker
         logging.info('Load picker GUI')
         self.pick_setup = PickSetup()
-        self.v.window.add_dock_widget(self.pick_setup, name='Picker Setup')
+        self.v.window.add_dock_widget(self.pick_setup, name='Setup Picker')
         self.pick_setup.setup.clicked.connect(self.setup_picker)
 
         # Stitch Mosaic
-        self.stitch = MosaicWidget(sequence)
+        self.stitch = MosaicWidget()
         self.v.window.add_dock_widget(self.stitch, name='Stitch Mosaic')
         self.stitch.btn.clicked.connect(self.run)
-        self.stitch.dummy.clicked.connect(self.image_now)
-
-    def image_now(self):
-        seq = self.mda.value()
-        logging.info(f'{self.mda.value()}')
-        logging.info(f'{seq.grid_plan}')
-
-        # Update the MDA widget with the modified sequence
-        # self.mda.setValue(self.mosaic.set_grid(seq))
+        self.stitch.dummy.clicked.connect(self.dummy_func)
         
-        # updated_seq = self.mosaic.set_grid(seq)
 
-
-        new_seq = MDASequence(
-            axis_order = seq.axis_order,
-            # stage_positions=updated_seq.stage_positions,  
-            grid_plan=seq.grid_plan,  
-            channels=seq.channels,
-            metadata={
-                "pymmcore_widgets": {
-                "save_dir": self.expt_path.strip(),
-                "save_name": self.expt_prefix.strip(),
-                "should_save": True,
-                },
-                "napari_micromanager": {
-                    "axis_order": ("g", "c"),
-                    "grid_plan": seq.grid_plan
-                }
-             }
-        )
-
-
-        logging.info(f'new sequence: {new_seq}')
-        logging.info(f'new sequence axis order: {new_seq.axis_order}')
-
-        self.mda.setValue(new_seq)
-        final_seq = self.mda.value()
-        logging.info(f'{final_seq}')
+    def dummy_func(self):
+        """TESTER BUTTON DUMMY FUNCTION
+        """
 
 
     def run(self):
@@ -146,7 +104,10 @@ class nmm:
         img_arr = self.main_window._core_link._mda_handler._tmp_arrays
         logging.info(f'{type(img_arr)}') 
         self.stitch = self.mosaic.stitch_mosaic(sequence, img_arr)
-        rows, cols, num_chan, chan_name, overlap, idxs = self.mosaic.get_mosaic_metadata(sequence)
+        
+        mosaic_metadata = self.mosaic.get_mosaic_metadata(sequence)
+
+        num_chan = mosaic_metadata[3]
 
         # TODO are any images open, if so close prior to loading mosaic
         for chan in num_chan:
@@ -182,12 +143,53 @@ class nmm:
         logging.info(f'cfg dir: {self.cfg_dir}')
         logging.info(f'Pick offset: {self.offset}')
 
+        self.setup_MDA()
+
         logging.info('Loading picking hardware')
         self.pick = Pick(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.core, self.mda, self.img_array, self.dp_array)
         self.picking = Picking(self.pick)
+
+        
+
+        # TODO
+        # Move destination plate for fluorescence imaging with pipette tip
+        # Needs to happen before imaging or is this in the run function?
+
         self.pick.pp.move_for_calib(pick=False)
         self.v.window.add_dock_widget(self.picking, name='Picking')
-        
+
+    def setup_MDA(self):
+        """Setup the MDA from Picker setup information and the starting configuration
+        """
+
+        sequence = self.mosaic.init_pos()
+        self.main_window._show_dock_widget("MDA")
+        self.mda = self.v.window._dock_widgets.get("MDA").widget()
+        self.mda.setValue(sequence)
+        seq = self.mda.value()
+        new_seq = MDASequence(
+            axis_order = seq.axis_order,  
+            grid_plan=seq.grid_plan,  
+            channels=seq.channels,
+            metadata={
+                "pymmcore_widgets": {
+                "save_dir": self.expt_path.strip(),
+                "save_name": self.expt_prefix.strip(),
+                "should_save": True,
+                },
+                "napari_micromanager": {
+                    "axis_order": ("g", "c"),
+                    "grid_plan": seq.grid_plan
+                }
+             }
+        )
+        self.mda.setValue(new_seq)
+        final_seq = self.mda.value()
+        logging.info(f'Initial MDA setup sequence prior to TL and BR bounds: {final_seq}')
+
+        self.v.window._qt_viewer.console.push(
+            {"main_window": self.main_window, "mmc": self.core, "sequence": final_seq, "np": np}
+        )
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
