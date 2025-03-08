@@ -80,6 +80,9 @@ class SetupWidget(QWidget):
         self.pick_type_grp = QButtonGroup(self)
         self.populate_options()
 
+        self.pick_setup = QPushButton("Setup Picker")
+        self.layout.addWidget(self.pick_setup, 6, 0)
+
     def load_config(self, cfg_folder, cfg_file):
         """
         Loads the config file

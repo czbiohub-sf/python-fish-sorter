@@ -2,16 +2,14 @@ import logging
 import numpy as np
 import matplotlib.pyplot as plt
 
+from itertools import product
 from time import perf_counter
 from tqdm import tqdm
-
 from typing import cast
-from itertools import product
-
 from useq import MDASequence, Position, GridFromEdges
 from useq._iter_sequence import _used_axes, _iter_axis, _parse_axes
 
-from fish_sorter.constants import FOV_WIDTH, FOV_HEIGHT
+from fish_sorter.constants import FOV_WIDTH, FOV_HEIGHT, IMG_X_PX, IMG_Y_PX
 
 # TODO is there an easier way to get the mosaic positions?
 
@@ -105,7 +103,11 @@ class Mosaic:
 
         # Save order of positions
         grid_list = np.zeros((num_cols, num_rows, 3), dtype=int)
+        logging.info(f'grid_list before populating: {grid_list.shape}')
+        logging.info(f'num_col expected: {max(x_ids)}')
+        logging.info(f'num_row expected: {max(y_ids)}')
         for grid_pos, x_id, y_id in zip(pos_list, x_ids, y_ids):
+            logging.info(f'x_id: {x_id}, y_id {y_id}, grid_list.shape: {grid_list.shape}')
             grid_list[x_id, y_id] = grid_pos
 
         return grid_list, num_rows, num_cols, num_chan, chan_names, overlap

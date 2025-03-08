@@ -63,8 +63,10 @@ class Classify():
         """
 
         #TODO will need to add in loading previous classifications
-
-        self.iplate = ImagingPlate(mmc, mda, array_cfg)
+        
+        img_array = cfg_dir / 'arrays' / array_cfg
+        logging.info(f'Imgaing array file path {img_array}')
+        self.iplate = ImagingPlate(mmc, mda, img_array)
         self.iplate.load_wells()
         self.total_wells = self.iplate.wells["array_design"]["rows"] * self.iplate.wells["array_design"]["columns"]
         
@@ -635,7 +637,7 @@ class Classify():
                 viewer_model = ViewerModel(title=layer_name)
                 qt_viewer = QtViewerWrap(self.viewer, viewer_model)
 
-                if layer_name == 'FITC':
+                if layer_name == 'GFP':
                     color = 'green'
                 elif layer_name == 'TXR':
                     color = 'red'

@@ -6,21 +6,18 @@ import os
 import types
 
 from pathlib import Path
-from typing import overload
-
 from pymmcore_plus import DeviceType
 from pymmcore_widgets import StageWidget
 from PyQt5.QtWidgets import QGroupBox, QHBoxLayout
+from typing import overload
+from useq import GridFromEdges, MDASequence
 
 from fish_sorter.GUI.classify import Classify
 from fish_sorter.GUI.picking import Pick
-from fish_sorter.GUI.pick_setup_gui import PickSetup
 from fish_sorter.GUI.picking_gui import Picking
 from fish_sorter.GUI.setup_gui import SetupWidget
 from fish_sorter.GUI.mosaic_gui import MosaicWidget
 from fish_sorter.helpers.mosaic import Mosaic
-
-from useq import GridFromEdges, MDASequence
 
 
 # For simulation
@@ -77,53 +74,18 @@ class nmm:
         logging.info(f'Parent Expt Path: {self.expt_parent_dir}')
         self.setup = SetupWidget(self.cfg_dir, self.expt_parent_dir)
         self.v.window.add_dock_widget(self.setup, name = 'Setup', area='right')
-        
-        # Picker
-        logging.info('Load picker GUI')
-        self.pick_setup = PickSetup()
-        self.v.window.add_dock_widget(self.pick_setup, name='Setup Picker')
-        self.pick_setup.setup.clicked.connect(self.setup_picker)
+        self.setup.pick_setup.clicked.connect(self.setup_picker)
 
         # Stitch Mosaic
         self.stitch = MosaicWidget()
-        self.v.window.add_dock_widget(self.stitch, name='Stitch Mosaic')
+        self.v.window.add_dock_widget(self.stitch, name='Stitch Mosaic', area='right')
         self.stitch.btn.clicked.connect(self.run)
         self.stitch.dummy.clicked.connect(self.dummy_func)
         
 
     def dummy_func(self):
-        """TESTER BUTTON DUMMY FUNCTION
+        """TESTER BUTTON DUMMY FUNCTION from mosaic widget do something button
         """
-
-
-    def run(self):
-        """Runs the mosaic processing, dispay and setup of classification
-        """
-
-        sequence = self.mda.value()
-        img_arr = self.main_window._core_link._mda_handler._tmp_arrays
-        logging.info(f'{type(img_arr)}') 
-        self.stitch = self.mosaic.stitch_mosaic(sequence, img_arr)
-        
-        mosaic_metadata = self.mosaic.get_mosaic_metadata(sequence)
-
-        num_chan = mosaic_metadata[3]
-
-        # TODO are any images open, if so close prior to loading mosaic
-        for chan in num_chan:
-            mosaic = self.stitch[chan, :, :]
-            if chan_name == 'FITC':
-                color = 'green'
-            elif chan_name == 'TXR':
-                color = 'red'
-            else:
-                color = 'grey'
-            self.v.add_image(mosaic, colormap=color, opacity=0.5, name=chan_name)
-
-        logging.info('Start Classification')
-        # TODO make sure all of the input parameters are here
-        self.classify = Classify(self.cfg_dir, self.array_type, self.core, self.mda, self.pick_type, self.expt_prefix, self.expt_path, self.v)
-        logging.info('Completed Classification')
 
     def setup_picker(self):
         """After collecting required setup information, setup the picker
@@ -186,10 +148,44 @@ class nmm:
         self.mda.setValue(new_seq)
         final_seq = self.mda.value()
         logging.info(f'Initial MDA setup sequence prior to TL and BR bounds: {final_seq}')
-
         self.v.window._qt_viewer.console.push(
             {"main_window": self.main_window, "mmc": self.core, "sequence": final_seq, "np": np}
         )
+
+    def run(self):
+        """Runs the mosaic processing, dispay and setup of classification
+        """
+
+        sequence = self.mda.value()
+        img_arr = self.main_window._core_link._mda_handler._tmp_arrays
+        self.stitch = self.mosaic.stitch_mosaic(sequence, img_arr)
+        
+        mosaic_metadata = self.mosaic.get_mosaic_metadata(sequence)
+
+        num_chan, chan_names = mosaic_metadata[3], mosaic_metadata[4]
+
+        # TODO are any images open, if so close prior to loading mosaic
+        for chan, chan_name in zip(range(num_chan), chan_names):
+            logging.info(f'chan: {chan}')
+            logging.info(f'chan_name: {chan_name}')
+            logging.info(f'type chan_name: {type(chan_name)}')
+
+            mosaic = self.stitch[chan, :, :]
+            logging.info(f'mosaic type: {type(mosaic)}')
+            if chan_name == 'GFP':
+                color = 'green'
+            elif chan_name == 'TXR':
+                color = 'red'
+            else:
+                color = 'grey'
+
+            logging.info(f'{color}')
+            self.v.add_image(mosaic, colormap=color, opacity=0.5, name=chan_name)
+
+        logging.info('Start Classification')
+        # TODO make sure all of the input parameters are here
+        self.classify = Classify(self.cfg_dir, self.img_array, self.core, self.mda, self.pick_type, self.expt_prefix, self.expt_path, self.v)
+        logging.info('Completed Classification')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(

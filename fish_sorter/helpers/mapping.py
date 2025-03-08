@@ -117,7 +117,7 @@ class Mapping:
         well_pos = unformatted_well_pos.reshape(well_count, 2)
 
         # Transform wells
-        transformed_well_pos = self._apply_transform(well_pos)
+        transformed_well_pos = self.apply_transform(well_pos)
         abs_well_pos = self.rel_um_to_abs_um(transformed_well_pos)
         px_well_pos = self.rel_um_to_px(transformed_well_pos)
 
