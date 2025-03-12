@@ -7,7 +7,7 @@ from typing import Optional
 from fish_sorter.helpers.mapping import Mapping
 
 TL_WELL_NAME = 'TL_well'
-TR_WELL_NAME = 'TR_well'
+BR_WELL_NAME = 'BR_well'
 
 # NOTE calibrate by setting positions in UI. Replace with dialogs? 
 class ImagingPlate(Mapping):
@@ -22,7 +22,7 @@ class ImagingPlate(Mapping):
         for pos in seq.stage_positions:
             if pos.name == TL_WELL_NAME:
                 self.um_TL = np.array([pos.x, pos.y, pos.z])
-            if pos.name == TR_WELL_NAME:
+            if pos.name == BR_WELL_NAME:
                 self.um_TR = np.array([pos.x, pos.y, pos.z])
         
         # TODO throw an exception if calib was not set

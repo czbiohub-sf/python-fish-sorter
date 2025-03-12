@@ -94,20 +94,13 @@ class Mosaic:
         pos_list = np.unique([[event.index['g'], event.x_pos, event.y_pos] for event in event_iterator], axis=0)
         xpos_list, x_ids = np.unique(pos_list[:,1], return_inverse=True)
         ypos_list, y_ids = np.unique(pos_list[:,2], return_inverse=True)
-
-        logging.info(f'pos_list: {pos_list}')
-        num_rows = len(np.unique(pos_list[:,1]))
-        logging.info(f'rows: {num_rows}')
-        num_cols = len(np.unique(pos_list[:,2]))
-        logging.info(f'cols: {num_cols}')
+        num_rows = len(np.unique(pos_list[:,2]))
+        num_cols = len(np.unique(pos_list[:,1]))
 
         # Save order of positions
         grid_list = np.zeros((num_cols, num_rows, 3), dtype=int)
-        logging.info(f'grid_list before populating: {grid_list.shape}')
-        logging.info(f'num_col expected: {max(x_ids)}')
-        logging.info(f'num_row expected: {max(y_ids)}')
-        for grid_pos, x_id, y_id in zip(pos_list, x_ids, y_ids):
-            logging.info(f'x_id: {x_id}, y_id {y_id}, grid_list.shape: {grid_list.shape}')
+        for grid_pos, y_id, x_id in zip(pos_list, y_ids, x_ids):
+            logging.info(f'y_id: {y_id}, x_id {x_id}, grid_list.shape: {grid_list.shape}')
             grid_list[x_id, y_id] = grid_pos
 
         return grid_list, num_rows, num_cols, num_chan, chan_names, overlap
@@ -148,9 +141,10 @@ class Mosaic:
         logging.info("Stitching images together")
         for row in tqdm(range(num_rows), desc="Row"):
             y_start = int(row * y_translation)
-            for col in tqdm(range(0, num_cols), desc="Column"):
+            for col in tqdm(range(num_cols), desc="Column"):
                 x_start = int(col * x_translation)
-                mosaic[:, y_start : y_start + IMG_Y_PX, x_start : x_start + IMG_X_PX] += self.get_img(arr_data, row, col, grid_list)
+                mirrored_col = (num_cols - 1) - col
+                mosaic[:, y_start : y_start + IMG_Y_PX, x_start : x_start + IMG_X_PX] += self.get_img(arr_data, row, mirrored_col, grid_list)
 
         # Take average of overlapping areas
         logging.info("Taking average of overlapping areas")
@@ -166,6 +160,8 @@ class Mosaic:
                 mosaic[:, :, x_start : x_start - x_translation + IMG_X_PX],
                 2
             ).astype(np.uint32)
+
+        mosaic = np.flip(mosaic, axis=2)
 
         return mosaic.astype(dtype)
 

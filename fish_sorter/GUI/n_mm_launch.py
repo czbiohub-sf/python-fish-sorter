@@ -182,10 +182,12 @@ class nmm:
             logging.info(f'{color}')
             self.v.add_image(mosaic, colormap=color, opacity=0.5, name=chan_name)
 
-        logging.info('Start Classification')
-        # TODO make sure all of the input parameters are here
-        self.classify = Classify(self.cfg_dir, self.img_array, self.core, self.mda, self.pick_type, self.expt_prefix, self.expt_path, self.v)
-        logging.info('Completed Classification')
+        # TODO new button to calibrate on the mosaic???? then start Classifcation GUI
+
+        # logging.info('Start Classification')
+        # # TODO make sure all of the input parameters are here
+        # self.classify = Classify(self.cfg_dir, self.img_array, self.core, self.mda, self.pick_type, self.expt_prefix, self.expt_path, self.v)
+        # logging.info('Completed Classification')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
