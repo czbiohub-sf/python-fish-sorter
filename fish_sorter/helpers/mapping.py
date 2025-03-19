@@ -1,21 +1,10 @@
 # TODO clean up the imports
 import logging
-import napari
-import napari_micromanager
 import numpy as np
 import os
 import json
-import pymmcore_plus
 
-from tqdm import tqdm
-from useq import MDASequence, Position
 from abc import ABC, abstractmethod
-
-from typing import cast, Optional, Tuple
-
-from pathlib import Path
-from useq import MDASequence, Position
-from useq._iter_sequence import _sizes, _used_axes, _iter_axis, _parse_axes
 
 # TODO dynamically load pixel count
 from fish_sorter.constants import (
