@@ -10,7 +10,7 @@ from fish_sorter.helpers.mapping import Mapping
 class ImagingPlate(Mapping):
     def __init__(self, mmc, mda, array_file):
         self.mda = mda
-        super().__init__(mmc, array_file)
+        super().__init__(array_file)
 
     def set_calib_pts(self):
         seq = self.mda.value()

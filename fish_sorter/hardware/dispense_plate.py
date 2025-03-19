@@ -18,9 +18,9 @@ MM_TO_UM = 1000.0
 # QUESTION should we switch to mm instead of um?
 
 class DispensePlate(Mapping):
-    def __init__(self, mmc, zc, array_file):
+    def __init__(self, zc, array_file):
         self.zc = zc
-        super().__init__(mmc, array_file)
+        super().__init__(array_file)
 
     def set_calib_pts_default(self, cfg_file):
         with open(cfg_file) as f:

@@ -21,6 +21,7 @@ from useq._iter_sequence import _sizes, _used_axes, _iter_axis, _parse_axes
 from fish_sorter.constants import (
     IMG_X_PX,
     IMG_Y_PX,
+    PIXEL_SIZE_UM,
 )
 
 # NOTE TL corner needs to have image center at corner,
@@ -28,14 +29,12 @@ from fish_sorter.constants import (
 # TODO add type hints
 
 class Mapping:
-    def __init__(self, mmc, array_file):
-        self.mmc = mmc
-
+    def __init__(self, array_file):
         # NOTE Does mda return z values?
         self.um_TL = None
         self.um_BR = None
 
-        self.px2um = self.mmc.getPixelSizeUm() # Scaling factor
+        # self.px2um = self.mmc.getPixelSizeUm() # Automatically load pixel size
         self.um_center_to_corner_offset = 0.0
 
         self.theta_diff = 0.0
@@ -61,8 +60,8 @@ class Mapping:
         # Compute home in px units assuming TL mosaic tile is centered on home
         return np.array(
             [
-                IMG_X_PX * self.px2um / 2,
-                IMG_Y_PX * self.px2um / 2,
+                IMG_X_PX * PIXEL_SIZE_UM / 2,
+                IMG_Y_PX * PIXEL_SIZE_UM / 2,
             ]
         )
 
@@ -70,7 +69,7 @@ class Mapping:
         # Manually set home in px units
         self.um_center_to_corner_offset = np.multiply(
             self._get_center_to_corner_offset_px(),
-            self.px2um
+            PIXEL_SIZE_UM,
         )
 
     def calc_transform(self):
@@ -153,11 +152,11 @@ class Mapping:
 
     def px_to_rel_um(self, px_pos):
         # Wellplate coords to stage coords
-        return (px_pos * self.px2um) - self.um_center_to_corner_offset
+        return (px_pos * PIXEL_SIZE_UM) - self.um_center_to_corner_offset
 
     def rel_um_to_px(self, rel_um_pos):
         # Wellplate coords to image coords        
-        return (rel_um_pos + self.um_center_to_corner_offset) / self.px2um
+        return (rel_um_pos + self.um_center_to_corner_offset) / PIXEL_SIZE_UM
 
     def rel_um_to_abs_um(self, rel_um_pos):
         # Wellplate coords to stage coords
@@ -169,9 +168,9 @@ class Mapping:
 
     def px_to_abs_um(self, px_pos):
         # Image coords to stage coords
-        return (px_pos * self.px2um) - self.um_center_to_corner_offset + self.um_TL
+        return (px_pos * PIXEL_SIZE_UM) - self.um_center_to_corner_offset + self.um_TL
 
     def abs_um_to_px(self, abs_um_pos):
         # Stage coords to image coords
-        return (abs_um_pos - self.um_TL + self.um_center_to_corner_offset) / self.px2um
+        return (abs_um_pos - self.um_TL + self.um_center_to_corner_offset) / PIXEL_SIZE_UM
 
