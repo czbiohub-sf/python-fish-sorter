@@ -50,7 +50,7 @@ class Mapping:
         # TODO save TL/BR locations in experiment savefile
 
     @abstractmethod
-    def set_calib_pts(self):
+    def set_calib_pts(self, pipettor_cfg=None):
         pass
 
     @abstractmethod
@@ -142,10 +142,10 @@ class Mapping:
         return self.wells['calib_px'][self.get_well_id(well_name)]
 
     def _get_well_pos(self, well: str, offset):
-        if well not in self.wells:
+        if well not in self.wells['names']:
             return
 
-        pos = self.wells[well].abs_um
+        pos = self.wells['calib_abs_um'][self.get_well_id(well_name)]
         x = pos[0] + offset[0]
         y = pos[1] + offset[1]
 

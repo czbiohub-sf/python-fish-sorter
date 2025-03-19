@@ -100,7 +100,6 @@ class Mosaic:
         # Save order of positions
         grid_list = np.zeros((num_cols, num_rows, 3), dtype=int)
         for grid_pos, y_id, x_id in zip(pos_list, y_ids, x_ids):
-            logging.info(f'y_id: {y_id}, x_id {x_id}, grid_list.shape: {grid_list.shape}')
             grid_list[x_id, y_id] = grid_pos
 
         return grid_list, num_rows, num_cols, num_chan, chan_names, overlap
@@ -135,7 +134,11 @@ class Mosaic:
         # Initialize empty mosaic
         mosaic_x_dim = int((IMG_X_PX * num_cols) - (x_overlap * (num_cols - 1)))
         mosaic_y_dim = int((IMG_Y_PX * num_rows) - (y_overlap * (num_rows - 1)))
-        mosaic = np.zeros((num_channels, mosaic_y_dim, mosaic_x_dim), dtype=np.uint32)
+
+        #TODO figure out right datatype
+
+
+        mosaic = np.zeros((num_channels, mosaic_y_dim, mosaic_x_dim), dtype=np.uint16)
 
         # Assemble mosaic
         logging.info("Stitching images together")
@@ -153,13 +156,19 @@ class Mosaic:
             mosaic[:, y_start : y_start - y_translation + IMG_Y_PX, :] = np.floor_divide(
                 mosaic[:, y_start : y_start - y_translation + IMG_Y_PX, :],
                 2
-            ).astype(np.uint32)
+            ).astype(np.uint16)
+
+            #TODO figure out right datatype
+
         for col in tqdm(range(1, num_cols), desc="Column"):
             x_start = int(col * x_translation)
             mosaic[:, :, x_start : x_start - x_translation + IMG_X_PX] = np.floor_divide(
                 mosaic[:, :, x_start : x_start - x_translation + IMG_X_PX],
                 2
-            ).astype(np.uint32)
+            ).astype(np.uint16)
+
+            #TODO figure out right datatype
+
 
         mosaic = np.flip(mosaic, axis=2)
 

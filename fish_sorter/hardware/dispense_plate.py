@@ -1,5 +1,6 @@
 # TODO manually set grid array
 # TODO if user manually overrides grid update transform?
+import json
 import logging
 import numpy as np
 from typing import Optional
@@ -22,9 +23,15 @@ class DispensePlate(Mapping):
         self.zc = zc
         super().__init__(mmc, array_file)
 
-    def set_calib_pts_default(self, cfg_file):
-        with open(cfg_file) as f:
+    def set_calib_pts(self, pipettor_cfg=None):
+        # MK TODO don't use optional argument here!
+        logging.info(f'in dplate: {pipettor_cfg}')
+        self.set_calib_pts_default(pipettor_cfg)
+
+    def set_calib_pts_default(self, pipettor_cfg):
+        with open(pipettor_cfg) as f:
             self.cfg_data = json.load(f)
+            logging.info(f'in dplate: {self.cfg_data}')
         self.um_TL = np.array(
             [
                 self.cfg_data['dispense_plate']['TL_corner']['x'],

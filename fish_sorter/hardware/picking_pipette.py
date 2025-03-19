@@ -57,7 +57,13 @@ class PickingPipette():
         else:
             self.zc = zc
 
+        logging.info('past hardware connection')
         self.dplate = DispensePlate(mmc, self.zc, array_file)
+        logging.info('initialized dispense plate')
+        pipettor_cfg = hardware_dir / 'picker_config.json'
+        logging.info(f'pipettor cfg: {pipettor_cfg}')
+        self.dplate.set_calib_pts(pipettor_cfg=pipettor_cfg)
+        self.dplate.load_wells()
 
     def connect(self, env='prod'):
         """Connect to hardware
@@ -248,7 +254,7 @@ class PickingPipette():
             logging.info(f'Set pick height to: {self.pick_h}')
         else:
             self.disp_h = self.zc.get_pos('p')
-            logging.info(f'Set dispense height to: {self.pick_h}')
+            logging.info(f'Set dispense height to: {self.disp_h}')
 
     def dest_home(self):
         """Convenience function to move destination plate to home position
@@ -265,5 +271,34 @@ class PickingPipette():
         :type pos: str
         """
 
-        self.zc.move_arm('p', self.hardware_data['picker_config']['pipette']['stage'][pos]['p'])
+        if pos == 'pick':
+            self.zc.move_arm('p', self.pick_h)
+        elif pos == 'dispense':
+            self.zc.move_arm('p', self.disp_h)
+        else:
+            self.zc.move_arm('p', self.hardware_data['picker_config']['pipette']['stage'][pos]['p'])
         logging.info(f'Moved pipette to: {pos}')
+
+    def move_pipette_increment(self, dist: float, units: bool=True):
+        """Moves pipette a specified distance and unit
+
+        :param dist: distance to move the stage
+        :type dist: float
+        :param units: units for distance 
+        :type units: bool, True for mm / False for um
+        """
+
+        if units is False:
+            dist =  dist / 1000
+        self.zc.move_arm('p', dist, is_relative=True)
+
+    def move_fluor_img(self):
+        """Moves the destination stages to image with fluorescent channels
+        The destination stages are moved between the objective and pipettte to prevent reflections
+        off of the pipette tip
+        """
+
+        logging.info('Move for fluorecent imaging')
+        self.zc.move_arm('p', self.hardware_data['picker_config']['fluor_img']['stage']['p'])
+        self.zc.move_arm('y', self.hardware_data['picker_config']['fluor_img']['stage']['y'])
+        self.zc.move_arm('x', self.hardware_data['picker_config']['fluor_img']['stage']['x'])
