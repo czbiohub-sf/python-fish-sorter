@@ -7,9 +7,6 @@ from typing import Optional
 
 from fish_sorter.helpers.mapping import Mapping
 
-TL_WELL_NAME = 'TL_well'
-TR_WELL_NAME = 'TR_well'
-
 MM_TO_UM = 1000.0
 
 # NOTE calibrate by setting positions in UI. Replace with dialogs?
@@ -38,10 +35,10 @@ class DispensePlate(Mapping):
                 self.cfg_data['dispense_plate']['TL_corner']['y'],
             ]
         )
-        self.um_TR = (
+        self.um_BR = np.array(
             [
-                self.cfg_data['dispense_plate']['TR_corner']['x'],
-                self.cfg_data['dispense_plate']['TR_corner']['y'],
+                self.cfg_data['dispense_plate']['BR_corner']['x'],
+                self.cfg_data['dispense_plate']['BR_corner']['y'],
             ]
         )
         logging.info(f'{self.cfg_data}')
@@ -56,11 +53,12 @@ class DispensePlate(Mapping):
         sleep(5)
         x = self.get_pos('x') * MM_TO_UM
         y = self.get_pos('y') * MM_TO_UM
-        self.um_TR = np.array([x, y])
+        self.um_BR = np.array([x, y])
 
         # For temporary testing only
-        print(f'HOME={self.um_TL}\nTR={self.um_TR}')
+        print(f'HOME={self.um_TL}\nBR={self.um_BR}')
 
+    # MK TODO do we need mm to um conversion? (See MM_TO_UM refs)
     def go_to_well(self, well: Optional[str], offset=np.array([0,0])):
         logging.info(f'move to well {well}')
         if well is not None:
