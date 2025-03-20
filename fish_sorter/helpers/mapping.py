@@ -24,10 +24,20 @@ class Mapping:
         self.um_BR = None
 
         # self.px2um = self.mmc.getPixelSizeUm() # Automatically load pixel size
-        self.um_center_to_corner_offset = 0.0
+        self.um_center_to_corner_offset = np.array([0.0, 0.0])
+        self.px_center_to_corner_offset = np.array(
+                [
+                    IMG_X_PX / 2,
+                    IMG_Y_PX / 2,
+                ]
+            )
 
-        self.theta_diff = 0.0
-        self.transform = np.array([[1, 0], [0, 1]])
+        self.transform_exp2actual = np.array(
+            [
+                [1.0, 0.0],
+                [0.0, 1.0]
+            ]
+        )
         self.wells = {}
 
         with open(array_file) as f:
@@ -45,23 +55,11 @@ class Mapping:
     def go_to_well(self, well, offset):
         pass
 
-    def _get_center_to_corner_offset_px(self):
-        # Compute home in px units assuming TL mosaic tile is centered on home
-        return np.array(
-            [
-                IMG_X_PX * PIXEL_SIZE_UM / 2,
-                IMG_Y_PX * PIXEL_SIZE_UM / 2,
-            ]
-        )
-
-    def set_center_to_corner_offset_um(self, px_home ):
-        # Manually set home in px units
-        self.um_center_to_corner_offset = np.multiply(
-            self._get_center_to_corner_offset_px(),
-            PIXEL_SIZE_UM,
-        )
-
     def calc_transform(self):
+        # Compute transformation from expected rel pos [mm] to actual rel pos [mm]
+
+        self.um_center_to_corner_offset = self.um_TL[0:2]
+
         # User needs to previously set home in TL slot and navigate to BR corner before pressing "calibrate"
         vector_actual = self.um_BR[0:2] - self.um_TL[0:2]
         theta_actual = np.arctan(vector_actual[1] / vector_actual[0])
@@ -71,25 +69,36 @@ class Mapping:
         vector_expected = np.max(all_wells, axis=0)
         theta_expected = np.arctan(vector_expected[1] / vector_expected[0])
 
-        self.theta_diff = theta_actual - theta_diff
-
-        self.transform = np.array(
+        theta_diff = theta_actual - theta_expected                
+        theta_transform = np.array(
             [
-                [np.cos(self.theta_diff), np.sin(self.theta_diff)],
-                [-np.sin(self.theta_diff), np.cos(self.theta_diff)]
+                [np.cos(theta_diff), np.sin(theta_diff)],
+                [-np.sin(theta_diff), np.cos(theta_diff)]
             ]
         )
 
+        scale = np.sqrt(
+            (vector_actual[1]**2 + vector_actual[0]**2) / (vector_expected[1]**2 + vector_expected[0]**2)
+        )
+        scale_transform = np.array(
+            [
+                [scale, 0],
+                [0, scale]
+            ]
+        )
+
+        self.transform_exp2actual = np.dot(theta_transform, scale_transform)
+
     def get_transform(self):
         # Get transformation matrix and corresponding angle
-        return self.transform, self.theta_diff
+        return self.transform_exp2actual
 
     def apply_transform(self, pos):
         # Assume input is a np array, with each position as a row array [[x1; y1], [x2, y2], ...] 
 
         # Ideally, user has previously set transform
         # TODO: Add user prompt if not
-        return np.matmul(pos, self.transform)
+        return np.matmul(pos, self.transform_exp2actual)
 
     def load_wells(self):
         # User needs to previously set home in TL slot and set transform
@@ -105,18 +114,16 @@ class Mapping:
         well_pos = unformatted_well_pos.reshape(well_count, 2)
 
         # Transform wells
-        transformed_well_pos = self.apply_transform(well_pos)
-        abs_well_pos = self.rel_um_to_abs_um(transformed_well_pos)
-        px_well_pos = self.rel_um_to_px(transformed_well_pos)
+        rel_um_pos = self.apply_transform(well_pos)
+        px_pos = self.rel_um_to_px(rel_um_pos)
 
         # Load sequence
         self.wells = {
             'array_design' : self.plate_data['array_design'],
             'names': well_names,
-            'raw_rel_um' : well_pos,
-            "calib_rel_um": transformed_well_pos,
-            "calib_abs_um": abs_well_pos,
-            "calib_px": px_well_pos, # NOTE px is unused for dispense plate
+            'exp_rel_um' : well_pos,
+            "actual_rel_um": rel_um_pos,
+            "actual_px": px_pos, # NOTE px is unused for dispense plate
         }
         logging.info(f'wells {self.wells}')
 
@@ -141,25 +148,25 @@ class Mapping:
 
     def px_to_rel_um(self, px_pos):
         # Wellplate coords to stage coords
-        return (px_pos * PIXEL_SIZE_UM) - self.um_center_to_corner_offset
+        return (px_pos - self.px_center_to_corner_offset) * PIXEL_SIZE_UM
 
     def rel_um_to_px(self, rel_um_pos):
         # Wellplate coords to image coords        
-        return (rel_um_pos + self.um_center_to_corner_offset) / PIXEL_SIZE_UM
+        return (rel_um_pos / PIXEL_SIZE_UM) + self.px_center_to_corner_offset
 
     def rel_um_to_abs_um(self, rel_um_pos):
         # Wellplate coords to stage coords
-        return rel_um_pos + self.um_TL
+        return rel_um_pos + self.um_center_to_corner_offset
 
     def abs_um_to_rel_um(self, abs_um_pos):
         # Stage coords to wellplate coords
-        return abs_um_pos - self.um_TL
+        return abs_um_pos - self.um_center_to_corner_offset
 
     def px_to_abs_um(self, px_pos):
         # Image coords to stage coords
-        return (px_pos * PIXEL_SIZE_UM) - self.um_center_to_corner_offset + self.um_TL
+        return self.rel_um_to_abs_um(self.px_to_rel_um(px_pos))
 
     def abs_um_to_px(self, abs_um_pos):
         # Stage coords to image coords
-        return (abs_um_pos - self.um_TL + self.um_center_to_corner_offset) / PIXEL_SIZE_UM
+        return self.rel_um_to_px(self.abs_um_to_rel_um(abs_um_pos))
 
