@@ -126,7 +126,7 @@ class Pick():
                     logging.critical("File not found")
 
         picked_filename = datetime.now().strftime('%Y%m%d_%H%M%S') + '_' + self.prefix + '_picked.csv'
-        self.picked_file = os.path.join(self.pick_dir, picked_filename)
+        self.picked_file = os.path.normpath(os.path.join(self.pick_dir, picked_filename))
     
     def get_dest_xy(self, well: str) -> Tuple[float, float]:
         """"Uses the Mapping class to get the well x, y coordinates from the well ID

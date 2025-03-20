@@ -8,7 +8,16 @@ from typing import List, Optional, Union
 from pymmcore_plus import CMMCorePlus
 from qtpy.QtCore import QSize, Qt
 from qtpy.QtGui import QColor
-from qtpy.QtWidgets import QPushButton, QSizePolicy, QWidget, QGridLayout
+from qtpy.QtWidgets import (
+    QComboBox, 
+    QGridLayout, 
+    QLabel, 
+    QPushButton, 
+    QSizePolicy, 
+    QDoubleSpinBox, 
+    QVBoxLayout, 
+    QWidget
+)
 
 from fish_sorter.GUI.picking import Pick
 
@@ -34,9 +43,14 @@ class Picking(QWidget):
         CMMCorePlus.instance()
 
         self.pick = picker
-        self.calibrated = False
+        self.pick_calib = False
+        self.disp_calib = False
         
-        calib = PipetteCalibrateWidget(self)
+        calib_pick = PipettePickCalibWidget(self)
+        calib_disp = PipetteDispCalibWidget(self)
+        img = ImageWidget(self)
+        home = HomeWidget(self)
+        move_pipette = MovePipette(self)
         picking = PickWidget(self)
         disconnect = DisconnectWidget(self)
         
@@ -48,16 +62,20 @@ class Picking(QWidget):
         
         
         layout = QGridLayout(self)
-        layout.addWidget(calib, 1, 0)
-        layout.addWidget(ddd, 2, 0)
-        layout.addWidget(vvv, 2, 1)
-        layout.addWidget(ppp, 2, 2)
-        layout.addWidget(picking, 3, 0)
-        layout.addWidget(disconnect, 3, 1)
+        layout.addWidget(calib_pick, 1, 0)
+        layout.addWidget(calib_disp, 1, 1)
+        layout.addWidget(move_pipette, 2, 0)
+        layout.addWidget(img, 3, 0)
+        layout.addWidget(home, 3, 1)
+        layout.addWidget(ddd, 4, 0)
+        layout.addWidget(vvv, 4, 1)
+        layout.addWidget(ppp, 4, 2)
+        layout.addWidget(picking, 5, 0)
+        layout.addWidget(disconnect, 5, 1)
 
      
-class PipetteCalibrateWidget(QPushButton):
-    """A push button widget to calibrate the pipette
+class PipettePickCalibWidget(QPushButton):
+    """A push button widget to calibrate the pick position for the pipette
     """
     
     def __init__(self, picking, parent: QWidget | None=None):
@@ -74,27 +92,87 @@ class PipetteCalibrateWidget(QPushButton):
 
     def _create_button(self)->None:
         
-        self.setText("Calibrate Pipette")
-        self.clicked.connect(self._calibrate)
+        self.setText("Calibrate Pick Position")
+        self.clicked.connect(self._pick_calib)
 
-    def _calibrate(self)->None:
-
-        #TODO separate into separate buttons
-        #Click should be after moving to the position
-        #TODO allow option for different destination plate well
+    def _pick_calib(self)->None:
         
         logging.info('Calibrate pick height into array')
-        self.picking.pick.check_calib(self.picking.calibrated)
+        self.picking.pick.check_calib(self.picking.pick_calib)
         self.picking.pick.set_calib(pick=True)
+        self.picking.pick_calib = True
+
+class PipetteDispCalibWidget(QPushButton):
+    """A push button widget to calibrate the dispense position for the pipette
+    """
+    
+    def __init__(self, picking, parent: QWidget | None=None):
+        
+        super().__init__(parent=parent)
+
+        self.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        )
+
+        self.picking = picking
+        self._mmc = CMMCorePlus.instance()
+        self._create_button()
+
+    def _create_button(self)->None:
+        
+        self.setText("Calibrate Dispense Position")
+        self.clicked.connect(self._disp_calib)
+
+    def _disp_calib(self)->None:
 
         logging.info('Calibrate dispense height into destination plate')
         
-        self.picking.pick.check_calib(self.picking.calibrated, pick=False, well='A1')
+        self.picking.pick.check_calib(self.picking.disp_calib, pick=False, well='A01')
         self.picking.pick.set_calib(pick=False)
+        self.picking.disp_calib = True              
 
-        logging.info('Pipette draw and expel locations set')
-        self.picking.calibrated = True       
+class MovePipette(QWidget):
+    """A widget to move the pipette a user-defined distance"""
 
+    def __init__(self, picking, parent: QWidget | None=None):
+        
+        super().__init__(parent=parent)
+
+        self.picking = picking
+        self._mmc = CMMCorePlus.instance()
+        self._create_gui()
+
+    def _create_gui(self):
+
+        layout = QGridLayout(self)
+        label = QLabel('Move Pipette')
+        layout.addWidget(label, 0, 0)
+
+        self.distance_spinbox = QDoubleSpinBox()
+        self.distance_spinbox.setRange(-1000.00, 1000.00)
+        self.distance_spinbox.setSingleStep(0.05)
+        self.distance_spinbox.setDecimals(2)
+        self.distance_spinbox.setSuffix(" ")
+        layout.addWidget(self.distance_spinbox, 1, 0)
+
+        self.units_dropdown = QComboBox()
+        self.units_dropdown.addItems(['mm', 'um'])
+        layout.addWidget(self.units_dropdown, 1, 1)
+
+        self.move_button = QPushButton('Move Pipette')
+        self.move_button.clicked.connect(self._move_pipette)
+        layout.addWidget(self.move_button, 1, 2)
+
+
+    def _move_pipette(self):
+
+        dist = self.distance_spinbox.value()
+        units = self.units_dropdown.currentText()
+        unit_bool = units == 'mm'
+
+        logging.info(f'Moving pipette by {dist} {units}')
+        self.picking.pick.pp.move_pipette_increment(dist, unit_bool)
+        
 class PipetteDrawWidget(QPushButton):
     """A push button widget to connect to the valve controller to actuate the draw function
 
@@ -201,7 +279,7 @@ class PickWidget(QPushButton):
     
     def _start_picking(self):
         
-        if self.picking.calibrated:
+        if self.picking.pick_calib and self.picking.disp_calib:
             logging.info('Opening classifications')
             self.picking.pick.get_classified()
             logging.info('Matching to pick parameters')
@@ -231,3 +309,45 @@ class DisconnectWidget(QPushButton):
         
         self.setText("Disconnect Hardware")
         self.clicked.connect(self.picking.pick.disconnect_hardware) 
+
+class HomeWidget(QPushButton):
+    """A push button widget to move the dispense stages to the home position
+    """
+    
+    def __init__(self, picking, parent: QWidget | None=None):
+        
+        super().__init__(parent=parent)
+
+        self.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        )
+
+        self.picking = picking
+        self._mmc = CMMCorePlus.instance()
+        self._create_button()
+
+    def _create_button(self)->None:
+        
+        self.setText("Move Dispense Stages to Home")
+        self.clicked.connect(self.picking.pick.pp.dest_home)  
+
+class ImageWidget(QPushButton):
+    """A push button widget to move the stages for fluorescence imaging
+    """
+    
+    def __init__(self, picking, parent: QWidget | None=None):
+        
+        super().__init__(parent=parent)
+
+        self.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        )
+
+        self.picking = picking
+        self._mmc = CMMCorePlus.instance()
+        self._create_button()
+
+    def _create_button(self)->None:
+        
+        self.setText("Move Stages to Image")
+        self.clicked.connect(self.picking.pick.pp.move_fluor_img)  

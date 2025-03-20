@@ -47,7 +47,7 @@ class PipetteWidget(QWidget):
 class ZaberImageWidget(QPushButton):
     """A push button widget to move the Zaber stages to image.
 
-    This is linked to the [hardware][zaber_controller] method
+    This is linked to the [hardware][picking_pipette] method
     """
     
     def __init__(self, parent: QWidget | None=None):
@@ -72,8 +72,8 @@ class ZaberImageWidget(QPushButton):
         cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/hardware"
         zaber_cfg_file = "zaber_config.json"
         zaber_cfg_path = cfg_dir / zaber_cfg_file
-        image_cfg_file = "image_config.json"
-        image_cfg_path = cfg_dir / image_cfg_file
+        picker_cfg_file = "picker_config.json"
+        picker_cfg_path = cfg_dir / picker_cfg_file
         # Initialize and connect to hardware controller
         try:
             with open(zaber_cfg_path, 'r') as f:
@@ -83,17 +83,17 @@ class ZaberImageWidget(QPushButton):
         except Exception as e:
             logging.info("Could not initialize and connect hardware controller")
 
-        with open(image_cfg_path, 'r') as f:
+        with open(picker_cfg_path, 'r') as f:
             p = load(f)
-        image_config = p['fluor']
-        print(image_config)
+        picker_config = p['fluor_img']
+        print(picker_config)
 
         stages = ['x', 'y', 'p']
         logging.info('Move for fluorecent imaging')
         logging.info('Swing height')
-        zc.move_arm('p', image_config['stage']['p'])
-        zc.move_arm('y', image_config['stage']['y'])
-        zc.move_arm('x', image_config['stage']['x'])
+        zc.move_arm('p', picker_config['stage']['p'])
+        zc.move_arm('y', picker_config['stage']['y'])
+        zc.move_arm('x', picker_config['stage']['x'])
         zc.disconnect()
 
 class ZaberHomeWidget(QPushButton):

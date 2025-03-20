@@ -11,7 +11,7 @@
                 "description": "The pipette height to pick"
             },    
             "clearance": {
-                "p": 25,
+                "p": 7.5,
                 "description": "The pipette height to clear the destination plate"
             },
             "dispense": {
@@ -19,9 +19,17 @@
                 "description": "The pipette height to dispense"
             },
             "pipette_swing": {
-                "p": 37.5,
+                "p": 52,
                 "description": "The height to move pipette in order to rotate it in/out from the microscope"
             }
+        }
+    },
+    "fluor_img": {
+        "stage": {
+            "p": 7.5,    
+            "x": 100.0,
+            "y": 100.0,
+            "description": "The stage positions to image with fluorescence"
         }
     },
     "dispense_plate": {

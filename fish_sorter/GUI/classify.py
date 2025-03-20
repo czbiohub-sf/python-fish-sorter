@@ -13,8 +13,9 @@ from napari.qt import QtViewer
 from pathlib import Path
 from pymmcore_plus import CMMCorePlus
 from qtpy.QtCore import QSize, Qt
-from qtpy.QtGui import QColor
+from qtpy.QtGui import QColor, QScreen
 from qtpy.QtWidgets import (
+    QApplication,
     QCheckBox,
     QComboBox,
     QDoubleSpinBox,
@@ -67,6 +68,7 @@ class Classify():
         img_array = cfg_dir / 'arrays' / array_cfg
         logging.info(f'Imgaing array file path {img_array}')
         self.iplate = ImagingPlate(mmc, mda, img_array)
+        self.iplate.set_calib_pts()
         self.iplate.load_wells()
         self.total_wells = self.iplate.wells["array_design"]["rows"] * self.iplate.wells["array_design"]["columns"]
         
@@ -99,11 +101,6 @@ class Classify():
 
 
         #Temporary for testing
-        #TODO decide how to handle preloading mosaics
-        #stich_mosaic class returns the mosaic as a numpy array
-        #probs level higher than this stich mosaic call and then call napari points
-        #use the self.viewer to load those layers
-        
         # FITC_path = '/Users/diane.wiener/Documents/fish-sorter-data/2024-02-15-cldnb-mScarlet_she-GFP/51hpf-pick1_FITC_2.5x_mosaic.tif'
         # FITC_mosaic = np.array(imread(FITC_path))
         # TXR_path = '/Users/diane.wiener/Documents/fish-sorter-data/2024-02-15-cldnb-mScarlet_she-GFP/51hpf-pick1_TXR_2.5x_mosaic.tif'
@@ -123,7 +120,7 @@ class Classify():
         
         self._key_binding()
         for key, feature in self.key_feature_map.items():
-            self.viewer.bind_key(key)(self._toggle_feature(feature))
+            self.viewer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) #Note: set to overwriting standard shortkeys in napari
         
         self.feature_widget = None
         self.extract_fish(pts)
@@ -275,13 +272,14 @@ class Classify():
 
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
             file_name = f"{timestamp}_{self.prefix}_classifications.csv"
-            classified = os.path.join(self.expt_dir, file_name)
+            classified = os.path.normpath(os.path.join(self.expt_dir, file_name))
             class_df.to_csv(classified, index=False)
             logging.info(f'Classification saved as {classified}')
 
-            pickable_file_name = f"{timestamp}_{prefix}_pickable.csv"
-            pick = os.path.join(self.expt_dir, pickable_file_name)
+            pickable_file_name = f"{timestamp}_{self.prefix}_pickable.csv"
+            pick = os.path.normpath(os.path.join(self.expt_dir, pickable_file_name))
             headers_df = pd.DataFrame(columns=class_df.columns)
+            headers_df.drop(columns='lHead', inplace=True)
             headers_df.rename(columns={'slotName': 'dispenseWell'}, inplace=True) 
             headers_df.to_csv(pick, index=False)
             logging.info(f'Pickable template saved as {pick}')
@@ -315,11 +313,21 @@ class Classify():
         """Refresh the points layer after event
         """
 
-        self.points_layer.data = self._points()
-        self.points_layer.refresh_colors(update_color_mapping=False)
+        if not hasattr(self, "_refreshing"):
+            self._refreshing = False
         
-        if self.feature_widget is not None:
-            self._update_feature_display(self.current_well)
+        if self._refreshing:
+            return
+
+        self._refreshing = True
+
+        try:
+            self.points_layer.data = self._points()
+            self.points_layer.refresh_colors(update_color_mapping=False)
+            if self.feature_widget is not None:
+                self._update_feature_display(self.current_well)
+        finally:
+            self._refreshing = False
 
     def extract_fish(self, points):
         """Finds the locations of positive wells
@@ -389,7 +397,10 @@ class Classify():
                 layer_name = raw_layers[0].name
             else:
                 raw_layers = [layer for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)]
-                raw_data = np.zeros_like(raw_layers[0].data, dtype=np.float32)
+               
+                #TODO figure out right datatype
+
+                raw_data = np.zeros_like(raw_layers[0].data, dtype=np.uint16)
                 for layer in raw_layers:
                     raw_data += layer.data
                 layer_name = 'sum'
@@ -397,6 +408,9 @@ class Classify():
             mask_std = raw_data.std()
             thresh = mask_mean + sigma * mask_std
             binary_mask = raw_data > thresh
+            
+            #TODO figure out right datatype
+
             image_layers = [{'data': binary_mask.astype(np.uint8), 'name': layer_name}]
 
         extracted_regions = []
@@ -509,7 +523,10 @@ class Classify():
                 continue
             well_data = self.well_extract[fish]
             channels = list(well_data.values())
-            well_total = np.zeros_like(channels[0], dtype=np.float64)
+
+            #TODO figure out right datatype
+            
+            well_total = np.zeros_like(channels[0], dtype=np.uint16)
             for channel in channels:
                 well_total += channel
             well_total /= len(channels)
@@ -636,6 +653,7 @@ class Classify():
                 container_layout.addWidget(QLabel(layer_name))
                 viewer_model = ViewerModel(title=layer_name)
                 qt_viewer = QtViewerWrap(self.viewer, viewer_model)
+                qt_viewer.setParent(self.viewer.window._qt_window)
 
                 if layer_name == 'GFP':
                     color = 'green'
@@ -813,8 +831,20 @@ class Classify():
 class QtViewerWrap(QtViewer):
     
     def __init__(self, main_viewer, *args, **kwargs) -> None:
+
+        logging.info(f'QApplication in QtViewerWrap: {QApplication}')
+        
+        app = QApplication.instance()
+        if not app:
+            app = QApplication([])
+
         super().__init__(*args, **kwargs)
         self.main_viewer = main_viewer
+
+        screen = QApplication.primaryScreen().availableGeometry()
+        max_width, max_height = screen.width(), screen.height()
+        self.setMaximumSize(max_width, max_height)
+        self.resize(max_width, max_height)
 
     def _qt_open(
         self,

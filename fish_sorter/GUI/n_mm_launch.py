@@ -1,14 +1,22 @@
 import argparse
 import logging
-import napari
+
 import numpy as np
 import os
+
+#TODO delete and clean up once figured out
+
+os.environ["VISPY_LOG_LEVEL"] = "DEBUG"
+os.environ["VISPY_GL_DEBUG"] = "True"
+import napari
+from vispy.app import use_app
+
 import types
 
 from pathlib import Path
 from pymmcore_plus import DeviceType
 from pymmcore_widgets import StageWidget
-from PyQt5.QtWidgets import QGroupBox, QHBoxLayout
+from qtpy.QtWidgets import QGroupBox, QHBoxLayout
 from typing import overload
 from useq import GridFromEdges, MDASequence
 
@@ -18,7 +26,6 @@ from fish_sorter.GUI.picking_gui import Picking
 from fish_sorter.GUI.setup_gui import SetupWidget
 from fish_sorter.GUI.mosaic_gui import MosaicWidget
 from fish_sorter.helpers.mosaic import Mosaic
-
 
 # For simulation
 try:
@@ -31,6 +38,9 @@ micromanager_path = os.environ.get('MICROMANAGER_PATH')
 
 class nmm:
     def __init__(self, sim=False):
+        
+        logging.info(f'Napari is using: {napari.__version__}')
+        logging.info(f'Vispy is using: {use_app()}')
 
         self.expt_parent_dir = Path("D:/fishpicker_expts/")
         self.cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
@@ -86,12 +96,14 @@ class nmm:
     def dummy_func(self):
         """TESTER BUTTON DUMMY FUNCTION from mosaic widget do something button
         """
+        logging.info('Start Classification')
+        self.classify = Classify(self.cfg_dir, self.img_array, self.core, self.mda, self.pick_type, self.expt_prefix, self.expt_path, self.v)
 
     def setup_picker(self):
         """After collecting required setup information, setup the picker
         """
 
-        self.expt_path = self.setup.get_expt_path()
+        self.expt_path = self.setup.get_expt_path().strip()
         self.expt_prefix = self.setup.get_expt_prefix()
         self.img_array = self.setup.get_img_array()
         self.dp_array = self.setup.get_dp_array()
@@ -166,28 +178,15 @@ class nmm:
 
         # TODO are any images open, if so close prior to loading mosaic
         for chan, chan_name in zip(range(num_chan), chan_names):
-            logging.info(f'chan: {chan}')
-            logging.info(f'chan_name: {chan_name}')
-            logging.info(f'type chan_name: {type(chan_name)}')
-
             mosaic = self.stitch[chan, :, :]
-            logging.info(f'mosaic type: {type(mosaic)}')
             if chan_name == 'GFP':
                 color = 'green'
             elif chan_name == 'TXR':
                 color = 'red'
             else:
                 color = 'grey'
-
-            logging.info(f'{color}')
             self.v.add_image(mosaic, colormap=color, opacity=0.5, name=chan_name)
 
-        # TODO new button to calibrate on the mosaic???? then start Classifcation GUI
-
-        # logging.info('Start Classification')
-        # # TODO make sure all of the input parameters are here
-        # self.classify = Classify(self.cfg_dir, self.img_array, self.core, self.mda, self.pick_type, self.expt_prefix, self.expt_path, self.v)
-        # logging.info('Completed Classification')
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
