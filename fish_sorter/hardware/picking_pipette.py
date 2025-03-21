@@ -260,6 +260,7 @@ class PickingPipette():
         """Convenience function to move destination plate to home position
         """
 
+        self.zc.move_arm('p', self.hardware_data['picker_config']['pipette']['stage']['clearance']['p'])
         self.zc.move_arm('x', self.hardware_data['zaber_config']['home']['x'])
         self.zc.move_arm('y', self.hardware_data['zaber_config']['home']['y'])
         logging.info('Moved destination plate to home')
@@ -291,6 +292,7 @@ class PickingPipette():
         if units is False:
             dist =  dist / 1000
         self.zc.move_arm('p', dist, is_relative=True)
+        logging.info(f'Moved pipette {dist} mm')
 
     def move_fluor_img(self):
         """Moves the destination stages to image with fluorescent channels
