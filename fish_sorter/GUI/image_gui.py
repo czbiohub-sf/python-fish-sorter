@@ -28,7 +28,7 @@ class ImageWidget(QWidget):
         self.viewer = viewer
 
         self.btn = QPushButton("Stitch mosaic")
-        self.dummy =  QPushButton("Classify")
+        self.class_btn = QPushButton("Classify")
         self.cross_btn = QPushButton('\u271B')
        
         self.crosshair_layer = '\u271B'
@@ -37,7 +37,7 @@ class ImageWidget(QWidget):
 
         layout = QHBoxLayout()
         layout.addWidget(self.btn)
-        layout.addWidget(self.dummy)
+        layout.addWidget(self.class_btn)
         layout.addWidget(self.cross_btn)
         self.setLayout(layout)
         

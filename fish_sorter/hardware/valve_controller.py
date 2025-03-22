@@ -28,6 +28,7 @@ class ValveController():
         self.valve = None
         self.config = config
         self.env = env
+        logging.info('Start connection to Valve Controller')
         self._connect()
 
     def _connect(self):

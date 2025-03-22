@@ -22,13 +22,11 @@ class DispensePlate(Mapping):
 
     def set_calib_pts(self, pipettor_cfg=None):
         # MK TODO don't use optional argument here!
-        logging.info(f'in dplate: {pipettor_cfg}')
         self.set_calib_pts_default(pipettor_cfg)
 
     def set_calib_pts_default(self, pipettor_cfg):
         with open(pipettor_cfg) as f:
             self.cfg_data = json.load(f)
-            logging.info(f'in dplate: {self.cfg_data}')
         self.um_TL = np.array(
             [
                 self.cfg_data['dispense_plate']['TL_corner']['x'],
@@ -41,7 +39,6 @@ class DispensePlate(Mapping):
                 self.cfg_data['dispense_plate']['BR_corner']['y'],
             ]
         )
-        logging.info(f'{self.cfg_data}')
 
     def set_calib_pts_manually(self):
         # TODO prompt home

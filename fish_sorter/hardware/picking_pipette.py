@@ -15,13 +15,11 @@ class PickingPipette():
         It uses the ZaberController and ValveController classes
     """
 
-    def __init__(self, parent_dir, mmc, array_file, zc=None):
+    def __init__(self, parent_dir, array_file, zc=None):
         """Runs pipette hardware setup and passes config parameters to each hardware
         
         :param parent_dir: parent directory for config files
         :type parent_dir: path
-        :param mmc: pymmcore-plus core 
-        :type mmc: pymmcore-plus core instance
         :param array_file: path to dispense plate pick type array in config folder
         :type: path
         :param zc: zaber controller class 
@@ -57,11 +55,8 @@ class PickingPipette():
         else:
             self.zc = zc
 
-        logging.info('past hardware connection')
-        self.dplate = DispensePlate(mmc, self.zc, array_file)
-        logging.info('initialized dispense plate')
+        self.dplate = DispensePlate(self.zc, array_file)
         pipettor_cfg = hardware_dir / 'picker_config.json'
-        logging.info(f'pipettor cfg: {pipettor_cfg}')
         self.dplate.set_calib_pts(pipettor_cfg=pipettor_cfg)
         self.dplate.load_wells()
 

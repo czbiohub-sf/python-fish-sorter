@@ -102,11 +102,21 @@ class nmm:
         self.dw.setWidget(self.wrap_widget)
 
         self.img_tools.btn.clicked.connect(self.run)
-        self.img_tools.dummy.clicked.connect(self.dummy_func)
+        self.img_tools.class_btn.clicked.connect(self.run_class)
 
-    def dummy_func(self):
-        """TESTER BUTTON DUMMY FUNCTION from mosaic widget do something button
+    def run_class(self):
+        """Classification GUI startup from image widget class_btn
         """
+
+        # TODO are any images open, if so close prior to loading mosaics
+        for layer in self.v.layers:
+            if layer.name == 'preview':
+                self.v.layers.remove(layer)
+            elif '\u271B' in layer.name:
+                self.v.layers.remove(layer)
+            elif self.expt_prefix in layer.name:
+                self.v.layers.remove(layer) 
+
         logging.info('Start Classification')
         self.classify = Classify(self.cfg_dir, self.img_array, self.core, self.mda, self.pick_type, self.expt_prefix, self.expt_path, self.v)
 
@@ -182,12 +192,9 @@ class nmm:
         sequence = self.mda.value()
         img_arr = self.main_window._core_link._mda_handler._tmp_arrays
         self.stitch = self.mosaic.stitch_mosaic(sequence, img_arr)
-        
         mosaic_metadata = self.mosaic.get_mosaic_metadata(sequence)
-
         num_chan, chan_names = mosaic_metadata[3], mosaic_metadata[4]
 
-        # TODO are any images open, if so close prior to loading mosaic
         for chan, chan_name in zip(range(num_chan), chan_names):
             mosaic = self.stitch[chan, :, :]
             if chan_name == 'GFP':
