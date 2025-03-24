@@ -135,16 +135,16 @@ class Mapping:
         return self.wells['names'].index(well_name)
 
     def get_abs_um_from_well_name(self, well_name: str):
-        return self.wells['calib_abs_um'][self.get_well_id(well_name)]
+        return self.wells['actual_abs_um'][self.get_well_id(well_name)]
 
     def get_px_from_well_name(self, well_name: str):
-        return self.wells['calib_px'][self.get_well_id(well_name)]
+        return self.wells['actual_px'][self.get_well_id(well_name)]
 
     def _get_well_pos(self, well: str, offset):
         if well not in self.wells['names']:
             return
 
-        pos = self.wells['calib_abs_um'][self.get_well_id(well_name)]
+        pos = self.wells['actual_abs_um'][self.get_well_id(well_name)]
         x = pos[0] + offset[0]
         y = pos[1] + offset[1]
 

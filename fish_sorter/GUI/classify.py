@@ -180,7 +180,7 @@ class Classify():
         :rtype: numpy array
         """
 
-        well_coords = self.iplate.wells["calib_px"]
+        well_coords = self.iplate.wells["actual_px"]
         points_coords = np.array(well_coords).reshape(-1,2)
         points_coords = points_coords[:, ::-1]
 
