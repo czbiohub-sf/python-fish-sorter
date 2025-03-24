@@ -69,7 +69,7 @@ class Mapping:
         vector_expected = np.max(all_wells, axis=0)
         theta_expected = np.arctan(vector_expected[1] / vector_expected[0])
 
-        theta_diff = theta_actual - theta_expected                
+        theta_diff = theta_expected - theta_actual        
         theta_transform = np.array(
             [
                 [np.cos(theta_diff), np.sin(theta_diff)],
