@@ -267,12 +267,16 @@ class PickingPipette():
         :type pos: str
         """
 
+        logging.info('Moving pipette')
         if pos == 'pick':
-            self.zc.move_arm('p', self.pick_h)
+            logging.info(f'{self.pick_h}')
+            self.zc.move_arm(arm='p', dist=self.pick_h)
         elif pos == 'dispense':
-            self.zc.move_arm('p', self.disp_h)
+            logging.info(f'{self.disp_h}')
+            self.zc.move_arm(arm='p', dist=self.disp_h)
         else:
-            self.zc.move_arm('p', self.hardware_data['picker_config']['pipette']['stage'][pos]['p'])
+            logging.info(f'{pos}')
+            self.zc.move_arm(arm='p', dist=self.hardware_data['picker_config']['pipette']['stage'][pos]['p'])
         logging.info(f'Moved pipette to: {pos}')
 
     def move_pipette_increment(self, dist: float, units: bool=True):

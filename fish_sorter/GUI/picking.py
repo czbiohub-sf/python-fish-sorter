@@ -74,28 +74,23 @@ class Pick():
 
         self.pp.disconnect()
 
-    def check_calib(self, calibrated: bool=False, pick: bool=True, well: Optional[str]=None):
+    def move_calib(self, pick: bool=True, well: Optional[str]=None):
         """Checks for calibration of pipette tip height
 
-        :param calibrated: check if pipette tip is calibrated
-        :type calibrated: bool
         :param pick: pick location is True
         :type pick: bool
         :param well: well ID
         :type well: str
         """
 
-        if not calibrated:
-            if pick:
-                logging.info('Calbrating Pick Height')
-                self.pp.move_for_calib(pick)
-            else:
-                logging.info('Calibrating Dispense Height')
-                dest_loc = self.get_dest_xy(well)
-                self.pp.move_for_calib(pick, dest_loc)
+        if pick:
+            logging.info('Move for Picking Calib Height')
+            self.pp.move_for_calib(pick)
         else:
-            logging.info('Already calibrated')
-        
+            logging.info('Move for Dispense Calib Height')
+            logging.info(f'well passed: {well}')
+            self.pp.move_for_calib(pick, well)
+
     def set_calib(self, pick: bool=True):
         """Sets pipette calibration once user acknowledges location
                 
@@ -125,19 +120,6 @@ class Pick():
 
         picked_filename = datetime.now().strftime('%Y%m%d_%H%M%S') + '_' + self.prefix + '_picked.csv'
         self.picked_file = os.path.normpath(os.path.join(self.pick_dir, picked_filename))
-    
-    def get_dest_xy(self, well: str) -> Tuple[float, float]:
-        """"Uses the Mapping class to get the well x, y coordinates from the well ID
-
-        :param well: well ID
-        :type well: str
-
-        :return: The coordinates for the specific well ID location: (x, y)
-        :rtype: Tuple[float, float]
-        """
-
-        # MK TODO ensure array formats are compatible
-        return self.pp.dplate.get_abs_um_from_well_name(well)
 
     def pick_me(self):
         """Performs all actions to pick from the source plate to the destination plate using

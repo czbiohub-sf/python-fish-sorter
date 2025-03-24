@@ -50,14 +50,13 @@ class Picking(QWidget):
         calib_disp = PipetteDispCalibWidget(self)
         move2pick = Pipette2PickWidget(self)
         move2disp = Pipette2DispWidget(self)
+        move2clear = Pipette2ClearWidget(self)
         img = ImageWidget(self)
         home = HomeWidget(self)
         move_pipette = MovePipette(self)
         pw = PickWidget(self)
         disconnect = DisconnectWidget(self)
         
-        #TODO do these still need to be here
-        #Could they live in a service hardware picker GUI 
         draw = PipetteDrawWidget(self)
         expel = PipetteExpelWidget(self)
         ppp = PipettePressureWidget(self)
@@ -68,6 +67,7 @@ class Picking(QWidget):
         layout.addWidget(calib_disp, 1, 1)
         layout.addWidget(move2pick, 2, 0)
         layout.addWidget(move2disp, 2, 1)
+        layout.addWidget(move2clear, 2, 2)
         layout.addWidget(move_pipette, 3, 0)
         layout.addWidget(img, 4, 0)
         layout.addWidget(home, 4, 1)
@@ -101,7 +101,6 @@ class PipettePickCalibWidget(QPushButton):
     def _pick_calib(self)->None:
         
         logging.info('Calibrate pick height into array')
-        self.picking.pick.check_calib(self.picking.pick_calib)
         self.picking.pick.set_calib(pick=True)
         self.picking.pick_calib = True
 
@@ -129,8 +128,6 @@ class PipetteDispCalibWidget(QPushButton):
     def _disp_calib(self)->None:
 
         logging.info('Calibrate dispense height into destination plate')
-        
-        self.picking.pick.check_calib(self.picking.disp_calib, pick=False, well='A01')
         self.picking.pick.set_calib(pick=False)
         self.picking.disp_calib = True              
 
@@ -159,7 +156,7 @@ class Pipette2PickWidget(QPushButton):
 
     def _pick_pos(self)->None:
         
-        self.picking.pick.pp.dest_home()
+        self.picking.pick.move_calib(pick=True)
         self.picking.pick.pp.move_pipette(pos='pick')
 
 class Pipette2DispWidget(QPushButton):
@@ -187,8 +184,35 @@ class Pipette2DispWidget(QPushButton):
 
     def _disp_pos(self)->None:
         
-        self.picking.pick.pp.dest_home()
+        self.picking.pick.move_calib(pick=False, well='A01')
         self.picking.pick.pp.move_pipette(pos='dispense')
+
+class Pipette2ClearWidget(QPushButton):
+    """A push button widget to connect to the pipette widget move the pipette to the clearance position 
+
+    This is linked to the [hardware][picking_pipette] method
+    """
+    
+    def __init__(self, picking, parent: QWidget | None=None):
+        
+        super().__init__(parent=parent)
+
+        self.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        )
+
+        self.picking = picking
+        self._mmc = CMMCorePlus.instance()
+        self._create_button()
+
+    def _create_button(self)->None:
+        
+        self.setText("Move to Clearance Position")
+        self.clicked.connect(self._clear_pos)
+
+    def _clear_pos(self)->None:
+        
+        self.picking.pick.pp.move_pipette(pos='clearance')
 
 class MovePipette(QWidget):
     """A widget to move the pipette a user-defined distance"""
