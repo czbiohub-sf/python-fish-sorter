@@ -16,7 +16,12 @@ import types
 from pathlib import Path
 from pymmcore_plus import DeviceType
 from pymmcore_widgets import StageWidget
-from qtpy.QtWidgets import QGroupBox, QHBoxLayout
+from qtpy.QtWidgets import (
+    QGroupBox,
+    QHBoxLayout,
+    QVBoxLayout,
+    QWidget
+)
 from typing import overload
 from useq import GridFromEdges, MDASequence
 
@@ -24,7 +29,7 @@ from fish_sorter.GUI.classify import Classify
 from fish_sorter.GUI.picking import Pick
 from fish_sorter.GUI.picking_gui import Picking
 from fish_sorter.GUI.setup_gui import SetupWidget
-from fish_sorter.GUI.mosaic_gui import MosaicWidget
+from fish_sorter.GUI.image_gui import ImageWidget
 from fish_sorter.helpers.mosaic import Mosaic
 
 # For simulation
@@ -45,7 +50,7 @@ class nmm:
         self.expt_parent_dir = Path("D:/fishpicker_expts/")
         self.cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
         self.v = napari.Viewer()
-        dw, self.main_window = self.v.window.add_plugin_dock_widget("napari-micromanager")
+        self.dw, self.main_window = self.v.window.add_plugin_dock_widget("napari-micromanager")
         
         self.core = self.main_window._mmc
 
@@ -86,16 +91,32 @@ class nmm:
         self.v.window.add_dock_widget(self.setup, name = 'Setup', area='right')
         self.setup.pick_setup.clicked.connect(self.setup_picker)
 
-        # Stitch Mosaic
-        self.stitch = MosaicWidget()
-        self.v.window.add_dock_widget(self.stitch, name='Stitch Mosaic', area='right')
-        self.stitch.btn.clicked.connect(self.run)
-        self.stitch.dummy.clicked.connect(self.dummy_func)
-        
+        # Image Manipulation Widget
+        self.img_tools = ImageWidget(self.v)
 
-    def dummy_func(self):
-        """TESTER BUTTON DUMMY FUNCTION from mosaic widget do something button
+        self.wrap_widget = QWidget()
+        self.ww_layout = QVBoxLayout()
+        self.wrap_widget.setLayout(self.ww_layout)
+        self.ww_layout.addWidget(self.main_window)
+        self.ww_layout.addWidget(self.img_tools)
+        self.dw.setWidget(self.wrap_widget)
+
+        self.img_tools.btn.clicked.connect(self.run)
+        self.img_tools.class_btn.clicked.connect(self.run_class)
+
+    def run_class(self):
+        """Classification GUI startup from image widget class_btn
         """
+
+        # TODO are any images open, if so close prior to loading mosaics
+        for layer in self.v.layers:
+            if layer.name == 'preview':
+                self.v.layers.remove(layer)
+            elif '\u271B' in layer.name:
+                self.v.layers.remove(layer)
+            elif self.expt_prefix in layer.name:
+                self.v.layers.remove(layer) 
+
         logging.info('Start Classification')
         self.classify = Classify(self.cfg_dir, self.img_array, self.core, self.mda, self.pick_type, self.expt_prefix, self.expt_path, self.v)
 
@@ -171,12 +192,9 @@ class nmm:
         sequence = self.mda.value()
         img_arr = self.main_window._core_link._mda_handler._tmp_arrays
         self.stitch = self.mosaic.stitch_mosaic(sequence, img_arr)
-        
         mosaic_metadata = self.mosaic.get_mosaic_metadata(sequence)
-
         num_chan, chan_names = mosaic_metadata[3], mosaic_metadata[4]
 
-        # TODO are any images open, if so close prior to loading mosaic
         for chan, chan_name in zip(range(num_chan), chan_names):
             mosaic = self.stitch[chan, :, :]
             if chan_name == 'GFP':

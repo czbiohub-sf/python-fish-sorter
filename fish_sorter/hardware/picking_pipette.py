@@ -15,13 +15,11 @@ class PickingPipette():
         It uses the ZaberController and ValveController classes
     """
 
-    def __init__(self, parent_dir, mmc, array_file, zc=None):
+    def __init__(self, parent_dir, array_file, zc=None):
         """Runs pipette hardware setup and passes config parameters to each hardware
         
         :param parent_dir: parent directory for config files
         :type parent_dir: path
-        :param mmc: pymmcore-plus core 
-        :type mmc: pymmcore-plus core instance
         :param array_file: path to dispense plate pick type array in config folder
         :type: path
         :param zc: zaber controller class 
@@ -57,11 +55,8 @@ class PickingPipette():
         else:
             self.zc = zc
 
-        logging.info('past hardware connection')
-        self.dplate = DispensePlate(mmc, self.zc, array_file)
-        logging.info('initialized dispense plate')
+        self.dplate = DispensePlate(self.zc, array_file)
         pipettor_cfg = hardware_dir / 'picker_config.json'
-        logging.info(f'pipettor cfg: {pipettor_cfg}')
         self.dplate.set_calib_pts(pipettor_cfg=pipettor_cfg)
         self.dplate.load_wells()
 
@@ -260,6 +255,7 @@ class PickingPipette():
         """Convenience function to move destination plate to home position
         """
 
+        self.zc.move_arm('p', self.hardware_data['picker_config']['pipette']['stage']['clearance']['p'])
         self.zc.move_arm('x', self.hardware_data['zaber_config']['home']['x'])
         self.zc.move_arm('y', self.hardware_data['zaber_config']['home']['y'])
         logging.info('Moved destination plate to home')
@@ -291,6 +287,7 @@ class PickingPipette():
         if units is False:
             dist =  dist / 1000
         self.zc.move_arm('p', dist, is_relative=True)
+        logging.info(f'Moved pipette {dist} mm')
 
     def move_fluor_img(self):
         """Moves the destination stages to image with fluorescent channels

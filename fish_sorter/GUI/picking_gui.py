@@ -51,7 +51,7 @@ class Picking(QWidget):
         img = ImageWidget(self)
         home = HomeWidget(self)
         move_pipette = MovePipette(self)
-        picking = PickWidget(self)
+        pw = PickWidget(self)
         disconnect = DisconnectWidget(self)
         
         #TODO do these still need to be here
@@ -70,9 +70,8 @@ class Picking(QWidget):
         layout.addWidget(ddd, 4, 0)
         layout.addWidget(vvv, 4, 1)
         layout.addWidget(ppp, 4, 2)
-        layout.addWidget(picking, 5, 0)
+        layout.addWidget(pw, 5, 0)
         layout.addWidget(disconnect, 5, 1)
-
      
 class PipettePickCalibWidget(QPushButton):
     """A push button widget to calibrate the pick position for the pipette
@@ -162,7 +161,6 @@ class MovePipette(QWidget):
         self.move_button = QPushButton('Move Pipette')
         self.move_button.clicked.connect(self._move_pipette)
         layout.addWidget(self.move_button, 1, 2)
-
 
     def _move_pipette(self):
 
