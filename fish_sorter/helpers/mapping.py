@@ -60,7 +60,7 @@ class Mapping:
 
         self.um_center_to_corner_offset = self.um_TL[0:2]
 
-        # User needs to previously set home in TL slot and navigate to BR corner before pressing "calibrate"
+        # User needs to previously set TL and BR corners
         vector_actual = self.um_BR[0:2] - self.um_TL[0:2]
         theta_actual = np.arctan(vector_actual[1] / vector_actual[0])
 
@@ -93,36 +93,40 @@ class Mapping:
         # Get transformation matrix and corresponding angle
         return self.transform_exp2actual
 
-    def apply_transform(self, pos):
+    def exp_to_actual(self, pos):
         # Assume input is a np array, with each position as a row array [[x1; y1], [x2, y2], ...] 
 
         # Ideally, user has previously set transform
         # TODO: Add user prompt if not
         return np.matmul(pos, self.transform_exp2actual)
 
+    def actual_to_exp(self, pos):
+        return np.matmul(pos, np.linalg.inv(self.transform_exp2actual))
+
     def load_wells(self):
-        # User needs to previously set home in TL slot and set transform
-        # TODO: Add user prompt
+
+
+        self.calc_transform()
 
         # Load metadata
-        # TODO redo file compatibility
         well_names = self.plate_data['wells']['well_names']
         unformatted_well_pos = np.array(self.plate_data['wells']['well_coordinates'])
 
         # Format well positions
         well_count = int(self.plate_data['array_design']['rows']) * int(self.plate_data['array_design']['columns'])
-        well_pos = unformatted_well_pos.reshape(well_count, 2)
+        exp_rel_um = unformatted_well_pos.reshape(well_count, 2)
 
         # Transform wells
-        rel_um_pos = self.apply_transform(well_pos)
-        px_pos = self.rel_um_to_px(rel_um_pos)
+        actual_rel_um = self.exp_to_actual(well_pos)
+        actual_abs_um = self.rel_um_to_abs_um(actual_rel_um)
+        px_pos = self.rel_um_to_px(actual_rel_um)
 
         # Load sequence
         self.wells = {
             'array_design' : self.plate_data['array_design'],
             'names': well_names,
-            'exp_rel_um' : well_pos,
-            "actual_rel_um": rel_um_pos,
+            'exp_rel_um' : exp_rel_um,
+            "actual_abs_um": actual_abs_um,
             "actual_px": px_pos, # NOTE px is unused for dispense plate
         }
         logging.info(f'wells {self.wells}')
