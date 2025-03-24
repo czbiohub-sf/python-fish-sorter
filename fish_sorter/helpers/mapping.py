@@ -117,7 +117,7 @@ class Mapping:
         exp_rel_um = unformatted_well_pos.reshape(well_count, 2)
 
         # Transform wells
-        actual_rel_um = self.exp_to_actual(well_pos)
+        actual_rel_um = self.exp_to_actual(exp_rel_um)
         actual_abs_um = self.rel_um_to_abs_um(actual_rel_um)
         px_pos = self.rel_um_to_px(actual_rel_um)
 
