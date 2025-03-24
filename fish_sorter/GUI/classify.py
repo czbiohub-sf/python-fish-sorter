@@ -35,6 +35,7 @@ from tifffile import imread
 from typing import List, Optional, Tuple, Callable
 
 from fish_sorter.hardware.imaging_plate import ImagingPlate
+from fish_sorter.constants import PIXEL_SIZE_UM
 
 class Classify():
     """Add points layer of the well locations to the image mosaic in napari.
@@ -347,8 +348,8 @@ class Classify():
         :type padding: int
         """
 
-        width = int(round(self.iplate.wells["array_design"]["slot_length"] / self.iplate.px2um))
-        height = int(round(self.iplate.wells["array_design"]["slot_width"] / self.iplate.px2um))
+        width = int(round(self.iplate.wells["array_design"]["slot_length"] / PIXEL_SIZE_UM))
+        height = int(round(self.iplate.wells["array_design"]["slot_width"] / PIXEL_SIZE_UM))
 
         padded_height = height + 2 * padding
         padded_width = width + 2 * padding
