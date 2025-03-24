@@ -107,16 +107,14 @@ class nmm:
     def run_class(self):
         """Classification GUI startup from image widget class_btn
         """
-
-        # TODO are any images open, if so close prior to loading mosaics
+        
+        remove_layers = []
         for layer in self.v.layers:
-            if layer.name == 'preview':
-                self.v.layers.remove(layer)
-            elif '\u271B' in layer.name:
-                self.v.layers.remove(layer)
-            elif self.expt_prefix in layer.name:
-                self.v.layers.remove(layer) 
-
+            if layer.name == 'preview' or layer.name == 'crosshairs' or self.expt_prefix in layer.name:
+                remove_layers.append(layer)
+        for layer in remove_layers:
+            self.v.layers.remove(layer)
+            
         logging.info('Start Classification')
         self.classify = Classify(self.cfg_dir, self.img_array, self.core, self.mda, self.pick_type, self.expt_prefix, self.expt_path, self.v)
 
@@ -143,14 +141,6 @@ class nmm:
         logging.info('Loading picking hardware')
         self.pick = Pick(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.core, self.mda, self.img_array, self.dp_array)
         self.picking = Picking(self.pick)
-
-        
-
-        # TODO
-        # Move destination plate for fluorescence imaging with pipette tip
-        # Needs to happen before imaging or is this in the run function?
-
-        self.pick.pp.move_for_calib(pick=False)
         self.v.window.add_dock_widget(self.picking, name='Picking')
 
     def setup_MDA(self):

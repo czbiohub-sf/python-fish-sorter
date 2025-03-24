@@ -29,9 +29,9 @@ class ImageWidget(QWidget):
 
         self.btn = QPushButton("Stitch mosaic")
         self.class_btn = QPushButton("Classify")
-        self.cross_btn = QPushButton('\u271B')
+        self.cross_btn = QPushButton('Crosshairs')
        
-        self.crosshair_layer = '\u271B'
+        self.crosshair_layer = 'crosshairs'
         self.cross_btn.setToolTip('Toggle crosshairs')
         self.cross_btn.clicked.connect(self._toggle_crosshairs)
 
