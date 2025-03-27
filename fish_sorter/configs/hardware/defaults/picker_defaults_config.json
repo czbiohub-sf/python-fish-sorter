@@ -12,15 +12,15 @@
                     "description": "The pipette height to pick"
                 },    
                 "clearance": {
-                    "p": 25,
+                    "p": 7.5,
                     "description": "The pipette height to clear the destination plate"
                 },
                 "dispense": {
-                    "p": 30,
+                    "p": 20,
                     "description": "The pipette height to dispense"
                 },
                 "pipette_swing": {
-                    "p": 37.5,
+                    "p": 52,
                     "description": "The height to move pipette in order to rotate it in/out from the microscope"
                 }
             }  
@@ -28,14 +28,15 @@
         "description": "Default settings to use for reset and archive"
     },
     "dispense_plate": {
-        "TL_corner": {
-            "x": 100,
-            "y": 100
+       "TL_corner": {
+            "x": 135500.0,
+            "y": 85750.0,
+            "description": "The stage positions of well A01, in um"
         },
-        "TR_corner": {
-            "x": 400,
-            "y": 100
+        "BR_corner": {
+            "x": 57500.0,
+            "y": 120850.0,
+            "description": "The stage positions of the highest well, in um"
         }
-
     }
 }

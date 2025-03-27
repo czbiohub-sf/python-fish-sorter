@@ -30,7 +30,7 @@ class Pick():
         :param prefix: prefix name details
         :type prefix: str
         :param offset: offset value from center points for picking
-        :type offset: float
+        :type offset: np array
         :param mmc: pymmcore-plus core
         :type mmc: pymmcore-plus  core instance
         :param mda: pymmcore-plus multidimensial acquisition engine
@@ -61,6 +61,7 @@ class Pick():
         
         self.matches = None
         self.pick_offset = offset
+        logging.info(f'Config offset to use: {offset}')
 
     def connect_hardware(self):
         """Connects to hardware
@@ -89,6 +90,7 @@ class Pick():
         else:
             logging.info('Move for Dispense Calib Height')
             logging.info(f'well passed: {well}')
+            logging.info(f'pick is {pick}')
             self.pp.move_for_calib(pick, well)
 
     def set_calib(self, pick: bool=True):
@@ -115,11 +117,16 @@ class Pick():
                     elif 'pickable.csv' in filename:
                         self.pick_param_file = pd.read_csv(file_path)
                         logging.info('Loaded {}'.format(filename))
+                        logging.info(f'{self.pick_param_file}')
                 except FileNotFoundError:
                     logging.critical("File not found")
 
         picked_filename = datetime.now().strftime('%Y%m%d_%H%M%S') + '_' + self.prefix + '_picked.csv'
         self.picked_file = os.path.normpath(os.path.join(self.pick_dir, picked_filename))
+
+        logging.info('Load image plate calibration and wells')
+        self.iplate.set_calib_pts()
+        self.iplate.load_wells()
 
     def pick_me(self):
         """Performs all actions to pick from the source plate to the destination plate using
@@ -133,14 +140,17 @@ class Pick():
         
         for match in self.matches.index:
             if self.matches['lHead'][match]:
-                offset = - self.offset
+                offset = np.array([-self.pick_offset[0], self.pick_offset[1]])
+                logging.info(f'Offset left head:{offset}')
             else:
-                offset = self.offset
+                offset = self.pick_offset
+                logging.info(f'Offset right head:{offset}')
             
             self.iplate.go_to_well(self.matches['slotName'][match], offset)
             self.pp.move_pipette('pick')
             sleep(1)
             self.pp.draw()
+            sleep(1)
             self.pp.move_pipette('clearance')
             
             self.pp.dplate.go_to_well(self.matches['dispenseWell'][match])
@@ -148,11 +158,14 @@ class Pick():
             self.pp.expel()
             sleep(1)
             self.pp.expel()
+            sleep(1)
             self.pp.move_pipette('clearance')
             self.pp.dest_home()
             logging.info('Picked fish in {} to {}'.format(self.matches['slotName'][match], self.matches['dispenseWell'][match]))
             pd.DataFrame([self.matches.drop(columns=['lHead']).iloc[match].values], columns=self.matches.drop(columns=['lHead']).columns)\
                 .to_csv(self.picked_file, mode='a', header=False, index=False)
+
+        logging.info('Finished Picking!')
 
         #TODO how to more elegantly handle lHead, rightHead, none, etc
         #call to mapping?
@@ -169,7 +182,7 @@ class Pick():
         pick_param_drop = self.pick_param_file.reset_index(drop=True)
         matching = class_drop.columns.intersection(pick_param_drop.columns).difference(['slotName', 'dispenseWell'])
         merge = pd.merge(class_drop, pick_param_drop, on=list(matching), how='inner')
-        merge_sorted = pd.merge(pick_param_file[['dispenseWell']], merged, on='dispenseWell', how='inner')
+        merge_sorted = pd.merge(self.pick_param_file[['dispenseWell']], merge, on='dispenseWell', how='inner')
         self.matches = pd.DataFrame({'slotName': merge_sorted['slotName'], 'dispenseWell': merge_sorted['dispenseWell'], 'lHead': merge_sorted['lHead']})
         logging.info('Created pick list')
 

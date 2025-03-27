@@ -1,5 +1,6 @@
 import json
 import logging
+import numpy as np
 import os
 import sys
 from pathlib import Path
@@ -155,14 +156,15 @@ class SetupWidget(QWidget):
         Returns user input of the selected option for the pick type
 
         :returns: pick type selection, offset
-        :rtype: str, float
+        :rtype: str, np array
         """
 
         for button in self.pick_type_grp.buttons():
             if button.isChecked():
-                offset = self.pick_type[button.text()]['picker']['offset']
+                offset = np.array([self.pick_type[button.text()]['picker']['length_offset'], 
+                        self.pick_type[button.text()]['picker']['width_offset']])
                 return button.text(), offset
-        return "default_pick_type", 0.0
+        return "default_pick_type", np.array([0.0, 0.0])
 
     def get_expt_path(self):
         """

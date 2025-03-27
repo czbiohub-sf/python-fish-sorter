@@ -4,12 +4,15 @@ import logging
 import numpy as np
 from typing import Optional
 
+from pymmcore_plus import CMMCorePlus
+
 from fish_sorter.helpers.mapping import Mapping
 
 # NOTE calibrate by setting positions in UI. Replace with dialogs? 
 class ImagingPlate(Mapping):
     def __init__(self, mmc, mda, array_file):
         self.mda = mda
+        self.mmc = mmc
         super().__init__(array_file)
 
     def set_calib_pts(self, pipettor_cfg=None):
@@ -25,4 +28,6 @@ class ImagingPlate(Mapping):
         if well is not None:
             x, y = self._get_well_pos(well, offset)
             # Move z pos too?
-            self.mmc.run_mda(Position(x=x, y=y, name=well))
+            self.mmc.setXYPosition(x, y)
+            self.mmc.waitForDevice(self.mmc.getXYStageDevice())
+            logging.info(f'Moved stage to {well}, at [{x}, {y}]')

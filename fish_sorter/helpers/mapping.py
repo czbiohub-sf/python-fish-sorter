@@ -140,8 +140,8 @@ class Mapping:
     def get_px_from_well_name(self, well_name: str):
         return self.wells['actual_px'][self.get_well_id(well_name)]
 
-    def _get_well_pos(self, well: str, offset):
-        if well not in self.wells['names']:
+    def _get_well_pos(self, well_name: str, offset):
+        if well_name not in self.wells['names']:
             return
 
         pos = self.wells['actual_abs_um'][self.get_well_id(well_name)]

@@ -183,7 +183,6 @@ class Pipette2DispWidget(QPushButton):
         self.clicked.connect(self._disp_pos)
 
     def _disp_pos(self)->None:
-        
         self.picking.pick.move_calib(pick=False, well='A01')
         self.picking.pick.pp.move_pipette(pos='dispense')
 

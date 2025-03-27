@@ -1,7 +1,8 @@
 {
     "larvae": {
         "picker": {
-            "offset": 700.0,
+            "length_offset": 700.0,
+            "width_offset": 0.0,
             "description": "Pick offset distance from well center in um"
         },
         "well_class": {
@@ -90,7 +91,8 @@
     },
     "embryo": {
         "picker": {
-            "offset": 0.0,
+            "length_offset": 0.0,
+            "width_offset": 0.0,
             "description": "Pick offset distance from well center in um"
         }
     }

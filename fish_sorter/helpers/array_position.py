@@ -3,7 +3,7 @@ import sys
 import os
 from datetime import datetime
 from pathlib import Path
-from PyQt5.QtWidgets import QApplication, QWidget, QComboBox, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QPushButton, QMessageBox
+from qtpy.QtWidgets import QApplication, QWidget, QComboBox, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QPushButton, QMessageBox
 
 class GenerateArray(QWidget):
     def __init__(self):
@@ -83,7 +83,7 @@ class GenerateArray(QWidget):
 
             date_stamp = datetime.now().strftime("%Y%m%d")
             array_file = f"{num_wells}{shape}{date_stamp}.json"
-            array_dir = Path().absolute().parent / "configs/arrays"
+            array_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays"
             array_path = os.path.join(array_dir, array_file)
 
             with open(array_path, 'w') as json_file:
