@@ -55,13 +55,18 @@ class Mapping:
     def go_to_well(self, well, offset):
         pass
 
-    def calc_transform(self):
+    def calc_transform(self, xflip):
         # Compute transformation from expected rel pos [mm] to actual rel pos [mm]
 
         self.um_center_to_corner_offset = self.um_TL[0:2]
 
         # User needs to previously set TL and BR corners
-        vector_actual = self.um_BR[0:2] - self.um_TL[0:2]
+        if xflip:
+            BR = np.matmul(self.um_BR[0:2], np.array([[-1,0], [0,1]]))
+        else:
+            BR = self.um_BR[0:2]
+
+        vector_actual = BR - self.um_TL[0:2]
         theta_actual = np.arctan(vector_actual[1] / vector_actual[0])
 
         # User needs to previously load wells
@@ -103,8 +108,7 @@ class Mapping:
     def actual_to_exp(self, pos):
         return np.matmul(pos, np.linalg.inv(self.transform_exp2actual))
 
-    def load_wells(self):
-
+    def load_wells(self, xflip=False):
 
         self.calc_transform()
 
