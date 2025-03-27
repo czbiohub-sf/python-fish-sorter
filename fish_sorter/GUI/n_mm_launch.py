@@ -116,7 +116,7 @@ class nmm:
             self.v.layers.remove(layer)
             
         logging.info('Start Classification')
-        self.classify = Classify(self.cfg_dir, self.img_array, self.core, self.mda, self.pick_type, self.expt_prefix, self.expt_path, self.v)
+        self.classify = Classify(self.cfg_dir, self.img_array, self.core, self.mda, self.pick_type, self.expt_prefix, self.expt_path, self.mosaic.grid_list, self.v)
 
     def setup_picker(self):
         """After collecting required setup information, setup the picker
@@ -181,7 +181,7 @@ class nmm:
 
         sequence = self.mda.value()
         img_arr = self.main_window._core_link._mda_handler._tmp_arrays
-        self.stitch, self.mosaic_grid = self.mosaic.stitch_mosaic(sequence, img_arr)
+        self.stitch = self.mosaic.stitch_mosaic(sequence, img_arr)
         mosaic_metadata = self.mosaic.get_mosaic_metadata(sequence)
         num_chan, chan_names = mosaic_metadata[2], mosaic_metadata[3]
 

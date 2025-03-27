@@ -24,7 +24,6 @@ class Mapping:
         self.um_BR = None
 
         # self.px2um = self.mmc.getPixelSizeUm() # Automatically load pixel size
-        self.um_center_to_corner_offset = np.array([0.0, 0.0])
         self.px_center_to_corner_offset = np.array(
                 [
                     IMG_X_PX / 2,
@@ -57,8 +56,6 @@ class Mapping:
 
     def calc_transform(self, xflip):
         # Compute transformation from expected rel pos [mm] to actual rel pos [mm]
-
-        self.um_center_to_corner_offset = self.um_TL[0:2]
 
         # User needs to previously set TL and BR corners
         if xflip:
@@ -108,7 +105,11 @@ class Mapping:
     def actual_to_exp(self, pos):
         return np.matmul(pos, np.linalg.inv(self.transform_exp2actual))
 
-    def load_wells(self, xflip=False):
+    def load_wells(self, grid_list=None, xflip=False):
+
+        if grid_list:
+            um_TL_array_to_TL_mosaic = self.um_TL - grid_list[0, 0, 1:3]
+            self.px_center_to_corner_offset += (um_TL_array_to_TL_mosaic * PIXEL_SIZE_UM) 
 
         self.calc_transform()
 
@@ -164,11 +165,11 @@ class Mapping:
 
     def rel_um_to_abs_um(self, rel_um_pos):
         # Wellplate coords to stage coords
-        return rel_um_pos + self.um_center_to_corner_offset
+        return rel_um_pos + self.um_TL
 
     def abs_um_to_rel_um(self, abs_um_pos):
         # Stage coords to wellplate coords
-        return abs_um_pos - self.um_center_to_corner_offset
+        return abs_um_pos - self.um_TL
 
     def px_to_abs_um(self, px_pos):
         # Image coords to stage coords
