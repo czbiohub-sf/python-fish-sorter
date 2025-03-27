@@ -58,7 +58,7 @@ class PickingPipette():
         self.dplate = DispensePlate(self.zc, array_file)
         pipettor_cfg = hardware_dir / 'picker_config.json'
         self.dplate.set_calib_pts(pipettor_cfg=pipettor_cfg)
-        self.dplate.load_wells()
+        self.dplate.load_wells(xflip=True)
 
     def connect(self, env='prod'):
         """Connect to hardware
