@@ -181,9 +181,9 @@ class nmm:
 
         sequence = self.mda.value()
         img_arr = self.main_window._core_link._mda_handler._tmp_arrays
-        self.stitch = self.mosaic.stitch_mosaic(sequence, img_arr)
+        self.stitch, self.mosaic_grid = self.mosaic.stitch_mosaic(sequence, img_arr)
         mosaic_metadata = self.mosaic.get_mosaic_metadata(sequence)
-        num_chan, chan_names = mosaic_metadata[3], mosaic_metadata[4]
+        num_chan, chan_names = mosaic_metadata[2], mosaic_metadata[3]
 
         for chan, chan_name in zip(range(num_chan), chan_names):
             mosaic = self.stitch[chan, :, :]

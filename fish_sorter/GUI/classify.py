@@ -41,7 +41,7 @@ class Classify():
     """Add points layer of the well locations to the image mosaic in napari.
     """
     
-    def __init__(self, cfg_dir, array_cfg, mmc, mda, pick_type, prefix, expt_dir, viewer=None):
+    def __init__(self, cfg_dir, array_cfg, mmc, mda, pick_type, prefix, expt_dir, mosaic_grid, viewer=None):
         """Load pymmcore-plus core, acquisition engine and napari viewer, and load classification features
         
         :param cfg_dir: parent path directory for all of the config files
@@ -70,7 +70,7 @@ class Classify():
         logging.info(f'Imgaing array file path {img_array}')
         self.iplate = ImagingPlate(mmc, mda, img_array)
         self.iplate.set_calib_pts()
-        self.iplate.load_wells()
+        self.iplate.load_wells(mosaic_grid)
         self.total_wells = self.iplate.wells["array_design"]["rows"] * self.iplate.wells["array_design"]["columns"]
         
         feat_dir = cfg_dir / "pick"

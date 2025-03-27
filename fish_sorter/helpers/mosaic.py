@@ -26,6 +26,7 @@ DEFAULT_NAME = "Exp"
 class Mosaic:
     def __init__(self, viewer):
         self.viewer = viewer
+        self.grid_list = None
 
     def init_pos(self):
 
@@ -98,15 +99,15 @@ class Mosaic:
         num_cols = len(np.unique(pos_list[:,1]))
 
         # Save order of positions
-        grid_list = np.zeros((num_cols, num_rows, 3), dtype=int)
+        self.grid_list = np.zeros((num_cols, num_rows, 3), dtype=int)
         for grid_pos, y_id, x_id in zip(pos_list, y_ids, x_ids):
-            grid_list[x_id, y_id] = grid_pos
+            self.grid_list[x_id, y_id] = grid_pos
 
-        return grid_list, num_rows, num_cols, num_chan, chan_names, overlap
+        return num_rows, num_cols, num_chan, chan_names, overlap
 
-    def get_img(self, zarr, row, col, grid_list):
+    def get_img(self, zarr, row, col):
         """Get img for a given row and column"""
-        idx = int(grid_list[col, row, 0])
+        idx = int(self.grid_list[col, row, 0])
         return zarr[0, idx, :, :, :]
 
     def stitch_mosaic(self, sequence : MDASequence, img_arr):
@@ -117,7 +118,7 @@ class Mosaic:
         """
         # Get metadata
         dir = self.get_dir(sequence)
-        grid_list, num_rows, num_cols, num_channels, chan_names, overlap = self.get_mosaic_metadata(sequence)
+        num_rows, num_cols, num_channels, chan_names, overlap = self.get_mosaic_metadata(sequence)
 
         # Compute key distances
         x_overlap = int(IMG_X_PX * overlap[0] / 100.0)
@@ -147,7 +148,7 @@ class Mosaic:
             for col in tqdm(range(num_cols), desc="Column"):
                 x_start = int(col * x_translation)
                 mirrored_col = (num_cols - 1) - col
-                mosaic[:, y_start : y_start + IMG_Y_PX, x_start : x_start + IMG_X_PX] += self.get_img(arr_data, row, mirrored_col, grid_list)
+                mosaic[:, y_start : y_start + IMG_Y_PX, x_start : x_start + IMG_X_PX] += self.get_img(arr_data, row, mirrored_col, self.grid_list)
 
         # Take average of overlapping areas
         logging.info("Taking average of overlapping areas")
