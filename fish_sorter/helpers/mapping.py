@@ -65,11 +65,11 @@ class Mapping:
 
         theta_expected = np.arctan(vector_expected[1] / vector_expected[0])
 
-        theta_diff = theta_expected - theta_actual        
+        theta_diff = theta_actual - theta_expected
         theta_transform = np.array(
             [
-                [np.cos(-theta_diff), np.sin(-theta_diff)],
-                [-np.sin(-theta_diff), np.cos(-theta_diff)]
+                [np.cos(theta_diff), np.sin(theta_diff)],
+                [-np.sin(theta_diff), np.cos(theta_diff)]
             ]
         )
 
