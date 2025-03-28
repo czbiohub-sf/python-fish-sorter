@@ -110,7 +110,7 @@ class Mapping:
         # Format well positions
         exp_rel_um = unformatted_well_pos.reshape(-1, 2)
         if xflip:
-            vector_expected = np.matmul(exp_rel_um, np.array([[-1,0], [0,1]]))
+            exp_rel_um = np.matmul(exp_rel_um, np.array([[-1,0], [0,1]]))
 
         self.calc_transform(exp_rel_um)
 
