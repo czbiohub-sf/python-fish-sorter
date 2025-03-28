@@ -55,7 +55,7 @@ class Mapping:
     def go_to_well(self, well, offset):
         pass
 
-    def calc_transform(self, exp_rel_um):
+    def calc_transform(self, vector_expected):
         # Compute transformation from expected rel pos [mm] to actual rel pos [mm]
 
         self.um_center_to_corner_offset = self.um_TL[0:2]
@@ -63,8 +63,6 @@ class Mapping:
         vector_actual = self.um_BR[0:2] - self.um_TL[0:2]
         theta_actual = np.arctan(vector_actual[1] / vector_actual[0])
 
-        # User needs to previously load wells
-        vector_expected = np.max(exp_rel_um, axis=0)
         theta_expected = np.arctan(vector_expected[1] / vector_expected[0])
 
         theta_diff = theta_expected - theta_actual        
@@ -109,10 +107,12 @@ class Mapping:
 
         # Format well positions
         exp_rel_um = unformatted_well_pos.reshape(-1, 2)
+        vector_expected = np.max(exp_rel_um, axis=0)
         if xflip:
             exp_rel_um = np.matmul(exp_rel_um, np.array([[-1,0], [0,1]]))
+            vector_expected = np.matmul(vector_expected, np.array([[-1,0], [0,1]]))
 
-        self.calc_transform(exp_rel_um)
+        self.calc_transform(vector_expected)
 
         # Transform wells
         actual_rel_um = self.exp_to_actual(exp_rel_um)
