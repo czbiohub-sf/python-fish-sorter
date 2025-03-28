@@ -55,30 +55,23 @@ class Mapping:
     def go_to_well(self, well, offset):
         pass
 
-    def calc_transform(self, xflip):
+    def calc_transform(self, exp_rel_um):
         # Compute transformation from expected rel pos [mm] to actual rel pos [mm]
 
         self.um_center_to_corner_offset = self.um_TL[0:2]
 
-        # User needs to previously set TL and BR corners
-        if xflip:
-            BR = np.matmul(self.um_BR[0:2], np.array([[-1,0], [0,1]]))
-        else:
-            BR = self.um_BR[0:2]
-
-        vector_actual = BR - self.um_TL[0:2]
+        vector_actual = self.um_BR[0:2] - self.um_TL[0:2]
         theta_actual = np.arctan(vector_actual[1] / vector_actual[0])
 
         # User needs to previously load wells
-        all_wells = np.reshape(np.array(self.plate_data['wells']['well_coordinates']), (-1, 2))
-        vector_expected = np.max(all_wells, axis=0)
+        vector_expected = np.max(exp_rel_um, axis=0)
         theta_expected = np.arctan(vector_expected[1] / vector_expected[0])
 
         theta_diff = theta_expected - theta_actual        
         theta_transform = np.array(
             [
-                [np.cos(theta_diff), np.sin(theta_diff)],
-                [-np.sin(theta_diff), np.cos(theta_diff)]
+                [np.cos(-theta_diff), np.sin(-theta_diff)],
+                [-np.sin(-theta_diff), np.cos(-theta_diff)]
             ]
         )
 
@@ -110,15 +103,16 @@ class Mapping:
 
     def load_wells(self, xflip=False):
 
-        self.calc_transform(xflip)
-
         # Load metadata
         well_names = self.plate_data['wells']['well_names']
         unformatted_well_pos = np.array(self.plate_data['wells']['well_coordinates'])
 
         # Format well positions
-        well_count = int(self.plate_data['array_design']['rows']) * int(self.plate_data['array_design']['columns'])
-        exp_rel_um = unformatted_well_pos.reshape(well_count, 2)
+        exp_rel_um = unformatted_well_pos.reshape(-1, 2)
+        if xflip:
+            vector_expected = np.matmul(exp_rel_um, np.array([[-1,0], [0,1]]))
+
+        self.calc_transform(exp_rel_um)
 
         # Transform wells
         actual_rel_um = self.exp_to_actual(exp_rel_um)
