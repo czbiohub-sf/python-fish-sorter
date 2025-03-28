@@ -110,7 +110,7 @@ class Mapping:
 
     def load_wells(self, xflip=False):
 
-        self.calc_transform()
+        self.calc_transform(xflip)
 
         # Load metadata
         well_names = self.plate_data['wells']['well_names']
