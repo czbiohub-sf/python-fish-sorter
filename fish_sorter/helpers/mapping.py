@@ -25,6 +25,7 @@ class Mapping:
 
         # self.px2um = self.mmc.getPixelSizeUm() # Automatically load pixel size
         self.um_center_to_corner_offset = np.array([0.0, 0.0])
+        # NOTE: Actually loads from BL corner
         self.px_center_to_corner_offset = np.array(
                 [
                     IMG_X_PX / 2,
