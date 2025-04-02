@@ -111,8 +111,9 @@ class Mapping:
 
         xI = -1 if xflip else 1
         yI = -1 if yflip else 1
-        exp_rel_um = np.matmul(exp_rel_um, np.array([[xflip,0], [0,yflip]]))
-        vector_expected = np.matmul(vector_expected, np.array([[xflip,0], [0,yflip]]))
+        arrI = np.array([[xI,0], [0,yI]])
+        exp_rel_um = np.matmul(exp_rel_um, arrI)
+        vector_expected = np.matmul(vector_expected, arrI)
 
         self.calc_transform(vector_expected)
 
