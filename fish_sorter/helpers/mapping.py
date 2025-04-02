@@ -100,7 +100,7 @@ class Mapping:
     def actual_to_exp(self, pos):
         return np.matmul(pos, np.linalg.inv(self.transform_exp2actual))
 
-    def load_wells(self, xflip=False):
+    def load_wells(self, xflip=False, yflip=False):
 
         # Load metadata
         well_names = self.plate_data['wells']['well_names']
@@ -109,9 +109,11 @@ class Mapping:
         # Format well positions
         exp_rel_um = unformatted_well_pos.reshape(-1, 2)
         vector_expected = np.max(exp_rel_um, axis=0)
-        if xflip:
-            exp_rel_um = np.matmul(exp_rel_um, np.array([[-1,0], [0,1]]))
-            vector_expected = np.matmul(vector_expected, np.array([[-1,0], [0,1]]))
+
+        xI = -1 if xflip else 1
+        yI = -1 if yflip else 1
+        exp_rel_um = np.matmul(exp_rel_um, np.array([[xflip,0], [0,yflip]]))
+        vector_expected = np.matmul(vector_expected, np.array([[xflip,0], [0,yflip]]))
 
         self.calc_transform(vector_expected)
 

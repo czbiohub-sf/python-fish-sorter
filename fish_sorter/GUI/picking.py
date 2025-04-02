@@ -126,7 +126,7 @@ class Pick():
 
         logging.info('Load image plate calibration and wells')
         self.iplate.set_calib_pts()
-        self.iplate.load_wells()
+        self.iplate.load_wells(yflip=True)
 
     def pick_me(self):
         """Performs all actions to pick from the source plate to the destination plate using
