@@ -54,24 +54,17 @@ class Mapping:
     def go_to_well(self, well, offset):
         pass
 
-    def calc_transform(self, xflip):
+    def calc_transform(self, vector_expected):
         # Compute transformation from expected rel pos [mm] to actual rel pos [mm]
 
-        # User needs to previously set TL and BR corners
-        if xflip:
-            BR = np.matmul(self.um_BR[0:2], np.array([[-1,0], [0,1]]))
-        else:
-            BR = self.um_BR[0:2]
+        self.um_center_to_corner_offset = self.um_TL[0:2]
 
-        vector_actual = BR - self.um_TL[0:2]
+        vector_actual = self.um_BR[0:2] - self.um_TL[0:2]
         theta_actual = np.arctan(vector_actual[1] / vector_actual[0])
 
-        # User needs to previously load wells
-        all_wells = np.reshape(np.array(self.plate_data['wells']['well_coordinates']), (-1, 2))
-        vector_expected = np.max(all_wells, axis=0)
         theta_expected = np.arctan(vector_expected[1] / vector_expected[0])
 
-        theta_diff = theta_expected - theta_actual        
+        theta_diff = theta_actual - theta_expected
         theta_transform = np.array(
             [
                 [np.cos(theta_diff), np.sin(theta_diff)],
@@ -105,7 +98,7 @@ class Mapping:
     def actual_to_exp(self, pos):
         return np.matmul(pos, np.linalg.inv(self.transform_exp2actual))
 
-    def load_wells(self, grid_list=None, xflip=False):
+    def load_wells(self, grid_list=None, xflip=False, yflip=False):
 
         if grid_list:
             um_TL_array_to_TL_mosaic = self.um_TL - grid_list[0, 0, 1:3]
@@ -118,8 +111,16 @@ class Mapping:
         unformatted_well_pos = np.array(self.plate_data['wells']['well_coordinates'])
 
         # Format well positions
-        well_count = int(self.plate_data['array_design']['rows']) * int(self.plate_data['array_design']['columns'])
-        exp_rel_um = unformatted_well_pos.reshape(well_count, 2)
+        exp_rel_um = unformatted_well_pos.reshape(-1, 2)
+        vector_expected = np.max(exp_rel_um, axis=0)
+
+        xI = -1 if xflip else 1
+        yI = -1 if yflip else 1
+        arrI = np.array([[xI,0], [0,yI]])
+        exp_rel_um = np.matmul(exp_rel_um, arrI)
+        vector_expected = np.matmul(vector_expected, arrI)
+
+        self.calc_transform(vector_expected)
 
         # Transform wells
         actual_rel_um = self.exp_to_actual(exp_rel_um)
