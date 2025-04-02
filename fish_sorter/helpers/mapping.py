@@ -104,8 +104,6 @@ class Mapping:
             um_TL_array_to_TL_mosaic = self.um_TL - grid_list[0, 0, 1:3]
             self.px_center_to_corner_offset += (um_TL_array_to_TL_mosaic * PIXEL_SIZE_UM) 
 
-        self.calc_transform()
-
         # Load metadata
         well_names = self.plate_data['wells']['well_names']
         unformatted_well_pos = np.array(self.plate_data['wells']['well_coordinates'])
