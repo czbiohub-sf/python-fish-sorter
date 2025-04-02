@@ -70,7 +70,7 @@ class Classify():
         logging.info(f'Imgaing array file path {img_array}')
         self.iplate = ImagingPlate(mmc, mda, img_array)
         self.iplate.set_calib_pts()
-        self.iplate.load_wells(yflip=True)
+        self.iplate.load_wells()
         self.total_wells = self.iplate.wells["array_design"]["rows"] * self.iplate.wells["array_design"]["columns"]
         
         feat_dir = cfg_dir / "pick"
