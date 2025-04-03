@@ -105,7 +105,7 @@ class Mapping:
             um_TL_array_to_TL_mosaic = self.um_TL - grid_list[0, 0, 1:3]
             logging.info(f'OFFSET DIFF from {grid_list[0, 0, 1:3]} to {self.um_TL} = {um_TL_array_to_TL_mosaic}')
             logging.info(f'INITIAL CENTER TO CORNER OFFSET = {self.px_center_to_corner_offset}')
-            self.px_center_to_corner_offset = (um_TL_array_to_TL_mosaic / PIXEL_SIZE_UM)
+            self.px_center_to_corner_offset += (um_TL_array_to_TL_mosaic / PIXEL_SIZE_UM)
             logging.info(f'DIFF IN PX = {(um_TL_array_to_TL_mosaic / PIXEL_SIZE_UM)}')
             logging.info(f'TOTAL CENTER TO CORNER OFFSET = {self.px_center_to_corner_offset}')
 
