@@ -148,7 +148,7 @@ class Mosaic:
             for col in tqdm(range(num_cols), desc="Column"):
                 x_start = int(col * x_translation)
                 mirrored_col = (num_cols - 1) - col
-                mosaic[:, y_start : y_start + IMG_Y_PX, x_start : x_start + IMG_X_PX] += self.get_img(arr_data, row, mirrored_col, self.grid_list)
+                mosaic[:, y_start : y_start + IMG_Y_PX, x_start : x_start + IMG_X_PX] += self.get_img(arr_data, row, mirrored_col)
 
         # Take average of overlapping areas
         logging.info("Taking average of overlapping areas")
