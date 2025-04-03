@@ -70,6 +70,7 @@ class Classify():
         logging.info(f'Imgaing array file path {img_array}')
         self.iplate = ImagingPlate(mmc, mda, img_array)
         self.iplate.set_calib_pts()
+        logging.info(f'{grid_list}')
         self.iplate.load_wells(grid_list=grid_list)
         self.total_wells = self.iplate.wells["array_design"]["rows"] * self.iplate.wells["array_design"]["columns"]
         

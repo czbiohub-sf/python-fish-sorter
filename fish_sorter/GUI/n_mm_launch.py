@@ -116,6 +116,10 @@ class nmm:
             self.v.layers.remove(layer)
             
         logging.info('Start Classification')
+
+        sequence = self.mda.value()
+        mosaic_metadata = self.mosaic.get_mosaic_metadata(sequence)
+
         self.classify = Classify(self.cfg_dir, self.img_array, self.core, self.mda, self.pick_type, self.expt_prefix, self.expt_path, self.mosaic.grid_list, self.v)
 
     def setup_picker(self):
