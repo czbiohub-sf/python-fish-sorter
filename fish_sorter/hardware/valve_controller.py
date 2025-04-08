@@ -1,12 +1,6 @@
 import json
 import logging
-import pymodbus.client as ModbusClient
-from pymodbus import (
-    ExceptionResponse,
-    FramerType,
-    ModbusException,
-    pymodbus_apply_logging_config,
-)
+from pymodbus.client import ModbusTcpClient
 
 class ValveController():
     """Communicate with Wago valve controller to actuate the pressure and vacuum valves
@@ -37,70 +31,64 @@ class ValveController():
         :raises ConnectionError: Logs critical if the connection fails
         """
 
-        framer = FramerType.SOCKET
-        pymodbus_apply_logging_config("DEBUG")
+        host = self.config['connect']['host']
+        port = self.config['connect']['port']
 
-        self.valve = ModbusClient.ModbusTcpClient(
-            host=self.config['connect']['host'],
-            port=self.config['connect']['port'],
-            framer=framer,
-            # timeout=10,
-            # retries=3,
-            # retry_on_empty=False,
-            # source_address=("localhost", 0),
+        self.valve = ModbusTcpClient(
+            host=host,
+            port=port,
+            timeout=5,
+            retries=3,
         )
+        logging.info(f'{self.valve}')
         try:
-
-#TODO fix the check on whether connected
-
             self.valve.connect()
-            
-        #     if not self.valve.connected():
-        #         raise ConnectionError('Failed to connect TCP device')
-        #     else:
-        #         logging.info(f'Connected to Wago valve controller {self.valve}')
-        except ConnectionError as e:
+            logging.info('Valve modbus client connected')
+        except Exception as e:
             logging.critical('Could not make connection to Wago valve controller')
             raise
+
+    def _check_connect(self):
+        """Reconnects to modbus client if the socket is not open"""
+
+        if not self.valve.is_socket_open():
+            logging.warning('Valve modbus socket closed. Reconnecting...')
+            self.valve.close()
+            self._connect()
 
     def disconnect(self):
         """Closes the TCP Connection
         """
+        if self.valve:
+            self.valve.close()
+            logging.info('Closed valve controller connection')
 
-        self.valve.close()
-        logging.info('Closed valve controller connection')
-
-    def read_register(self, add_offset: int):
+    def read_register(self, add_offset: int, count: int=1):
         """Reads the state of register specified by the function code
 
-        :add_offset: register address offset from the start_address
+        :param add_offset: register address offset from the start_address
         :type add_offset: int
+        :param count: state controller function code or setting
+        :type count: int
 
         :raises ModbusException: Logs critical if the connection fails
         :raise ValueError: Logs critical if the response contains an error in the Modbus library 
         :raises ExceptionResponse: Logs critical if Modbus protocol exception response
         """
 
-        try:
-            rr = self.valve.read_holding_registers(self.config['register']['start_address'] + add_offset, count=1)
-            logging.info(f'Reading register {rr}')
-            logging.info(f'Register state: {rr.registers[0]:016b}')
+        self._check_connect()
+        address = self.config['register']['start_address'] + add_offset
 
-        except ModbusException as exc:
-            logging.critical(f"Received ModbusException({exc}) from library")  
-            raise ModbusException(f"Received ModbusException({exc}) from library")
-        if rr.isError():
-            logging.critical(f"Received Modbus library error({rr})") 
-            raise ValueError(f"Received Modbus library error({rr})")
-        if isinstance(rr, ExceptionResponse):
-            # THIS IS NOT A PYTHON EXCEPTION, but a valid modbus message
-            logging.critical(f"Received Modbus library exception ({rr})")
-            raise ExceptionResponse
+        try:
+            return self.valve.read_holding_registers(address=address, count=count)
+        except Exception as e:
+            logging.exception(f"Received exception {e}")  
+            raise 
     
     def write_register(self, add_offset: int, value: int):
         """Writes to the register specified by the function code
 
-        :add_offset: register address offset from the start_address
+        :param add_offset: register address offset from the start_address
         :type add_offset: int
 
         :param value: state controller function code or setting
@@ -111,17 +99,14 @@ class ValveController():
         :raises ExceptionResponse: Logs critical if Modbus protocol exception response
         """
 
+        self._check_connect()
+        address = self.config['register']['start_address'] + add_offset
         try:
-            wr = self.valve.write_register(self.config['register']['start_address'] + add_offset, value)
-            logging.info(f'Writing register {wr}')
-
-        except ModbusException as exc:
-            logging.critical(f"Received ModbusException({exc}) from library")
-            raise ModbusException(f"Received ModbusException({exc}) from library")
-        if wr.isError():
-            logging.critical(f"Received Modbus library error({wr})")
-            raise ValueError(f"Received Modbus library error({wr})")
-        if isinstance(wr, ExceptionResponse):
-            # THIS IS NOT A PYTHON EXCEPTION, but a valid modbus message
-            logging.critical(f"Received Modbus library exception ({wr})")
-            raise ExceptionResponse
+            logging.info(f'Writing {value} to register {address}')
+            write = self.valve.write_register(address=address, value=value)
+            return write
+        except Exception as e:
+            logging.exception('Valve modbus write failed. Attempting one reconnect.')
+            self.valve.close()
+            self._connect()
+            return self.valve.write_register(address, value)

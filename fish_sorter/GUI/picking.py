@@ -20,7 +20,7 @@ class Pick():
     It uses the PickingPipette class and the Mapping class
     """
 
-    def __init__(self, cfg_dir, pick_dir, prefix, offset, mmc, mda, img_array, dp_array):
+    def __init__(self, cfg_dir, pick_dir, prefix, offset, iplate, dp_array):
         """Loads the files for classification and initializes PickingPipette class
         
         :param cfg_dir: parent path directory for all of the config files
@@ -31,12 +31,8 @@ class Pick():
         :type prefix: str
         :param offset: offset value from center points for picking
         :type offset: np array
-        :param mmc: pymmcore-plus core
-        :type mmc: pymmcore-plus  core instance
-        :param mda: pymmcore-plus multidimensial acquisition engine
-        :type mda: pymmcore-plus mda instance
-        :param img_array: path to image plate array in config folder
-        :type: path
+        :param iplate: image plate class
+        :type: image plate class instance
         :param dp_file: path to dispense plate array in config folder
         :type: path
 
@@ -55,9 +51,7 @@ class Pick():
         self.class_file = None
         self.pick_param_file = None
 
-        array = cfg_dir / 'arrays' / img_array
-
-        self.iplate = ImagingPlate(mmc, mda, array)
+        self.iplate = iplate
         
         self.matches = None
         self.pick_offset = offset
@@ -125,8 +119,6 @@ class Pick():
         self.picked_file = os.path.normpath(os.path.join(self.pick_dir, picked_filename))
 
         logging.info('Load image plate calibration and wells')
-        self.iplate.set_calib_pts()
-        self.iplate.load_wells()
 
     def pick_me(self):
         """Performs all actions to pick from the source plate to the destination plate using

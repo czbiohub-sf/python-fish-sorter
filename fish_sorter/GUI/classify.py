@@ -41,17 +41,11 @@ class Classify():
     """Add points layer of the well locations to the image mosaic in napari.
     """
     
-    def __init__(self, cfg_dir, array_cfg, mmc, mda, pick_type, prefix, expt_dir, grid_list, viewer=None):
+    def __init__(self, cfg_dir, pick_type, prefix, expt_dir, iplate, viewer=None):
         """Load pymmcore-plus core, acquisition engine and napari viewer, and load classification features
         
         :param cfg_dir: parent path directory for all of the config files
         :type cfg_dir: Path
-        :param array_cfg: array config file
-        :type array_cfg: filename with path
-        :param mmc: pymmcore-plus core
-        :type mmc: pymmcore-plus  core instance
-        :param mda: pymmcore-plus multidimensial acquisition engine
-        :type mda: pymmcore-plus mda instance
         :param pick_type: user-input pick type from pick type config options
         :type pick_type: str
         :param prefix: experiment name prefix
@@ -65,13 +59,10 @@ class Classify():
         """
 
         #TODO will need to add in loading previous classifications
-        
-        img_array = cfg_dir / 'arrays' / array_cfg
-        logging.info(f'Imgaing array file path {img_array}')
-        self.iplate = ImagingPlate(mmc, mda, img_array)
-        self.iplate.set_calib_pts()
-        logging.info(f'{grid_list}')
-        self.iplate.load_wells(grid_list=grid_list)
+
+        CMMCorePlus.instance()
+
+        self.iplate = iplate
         self.total_wells = self.iplate.wells["array_design"]["rows"] * self.iplate.wells["array_design"]["columns"]
         
         feat_dir = cfg_dir / "pick"

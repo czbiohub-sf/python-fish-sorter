@@ -99,7 +99,6 @@ class ZaberController():
         :raises: Any Zaber exception requires restart and reinitialization of Zaber connection
         """
 
-        logging.info('enter home arm')
         home = ['p','x','y'] if arm == None else arm
         for h in home:
             try:
@@ -121,7 +120,6 @@ class ZaberController():
         :raises ConnectionFailedException: Logs if the zaber connection fails
         """
 
-        logging.info('enter move_arm')
         for key, value in self.stage_alias.items():
             if value == arm:
                 device_arm = key

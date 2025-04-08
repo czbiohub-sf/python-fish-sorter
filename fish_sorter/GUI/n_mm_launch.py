@@ -30,6 +30,7 @@ from fish_sorter.GUI.picking import Pick
 from fish_sorter.GUI.picking_gui import Picking
 from fish_sorter.GUI.setup_gui import SetupWidget
 from fish_sorter.GUI.image_gui import ImageWidget
+from fish_sorter.hardware.imaging_plate import ImagingPlate
 from fish_sorter.helpers.mosaic import Mosaic
 
 # For simulation
@@ -120,7 +121,11 @@ class nmm:
         sequence = self.mda.value()
         mosaic_metadata = self.mosaic.get_mosaic_metadata(sequence)
 
-        self.classify = Classify(self.cfg_dir, self.img_array, self.core, self.mda, self.pick_type, self.expt_prefix, self.expt_path, self.mosaic.grid_list, self.v)
+        self.iplate.set_calib_pts()
+        logging.info(f'{self.mosaic.grid_list}')
+        self.iplate.load_wells(grid_list=self.mosaic.grid_list)
+
+        self.classify = Classify(self.cfg_dir, self.pick_type, self.expt_prefix, self.expt_path, self.iplate, self.v)
 
     def setup_picker(self):
         """After collecting required setup information, setup the picker
@@ -141,9 +146,10 @@ class nmm:
         logging.info(f'Pick offset: {self.offset}')
 
         self.setup_MDA()
+        self.setup_iplate()
 
         logging.info('Loading picking hardware')
-        self.pick = Pick(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.core, self.mda, self.img_array, self.dp_array)
+        self.pick = Pick(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.iplate, self.dp_array)
         self.picking = Picking(self.pick)
         self.v.window.add_dock_widget(self.picking, name='Picking')
 
@@ -178,6 +184,15 @@ class nmm:
         self.v.window._qt_viewer.console.push(
             {"main_window": self.main_window, "mmc": self.core, "sequence": final_seq, "np": np}
         )
+
+    def setup_iplate(self):
+        """Setup image plate instance to pass to Pick and Classify classes
+        """
+
+        array = self.cfg_dir / 'arrays' / self.img_array
+        logging.info(f'{array}')
+        self.iplate = ImagingPlate(self.core, self.mda, array)
+        logging.info('Loaded imate plate')
 
     def run(self):
         """Runs the mosaic processing, dispay and setup of classification

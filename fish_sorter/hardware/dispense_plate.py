@@ -57,12 +57,9 @@ class DispensePlate(Mapping):
 
     # MK TODO do we need mm to um conversion? (See MM_TO_UM refs)
     def go_to_well(self, well: Optional[str], offset=np.array([0,0])):
-        logging.info(f'move to well {well}')
+
         if well is not None:
             x, y = self._get_well_pos(well, offset)
-            logging.info(f'{x}')
-            logging.info(f'{x / MM_TO_UM}')
-            logging.info(f'{y}')
-            logging.info(f'{y / MM_TO_UM}')
             self.zc.move_arm('x', x / MM_TO_UM, is_relative=False)
             self.zc.move_arm('y', y / MM_TO_UM, is_relative=False)
+            logging.info(f'Moved dispense plate to well {well}')

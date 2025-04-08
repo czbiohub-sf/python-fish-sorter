@@ -267,15 +267,11 @@ class PickingPipette():
         :type pos: str
         """
 
-        logging.info('Moving pipette')
         if pos == 'pick':
-            logging.info(f'{self.pick_h}')
             self.zc.move_arm(arm='p', dist=self.pick_h)
         elif pos == 'dispense':
-            logging.info(f'{self.disp_h}')
             self.zc.move_arm(arm='p', dist=self.disp_h)
         else:
-            logging.info(f'{pos}')
             self.zc.move_arm(arm='p', dist=self.hardware_data['picker_config']['pipette']['stage'][pos]['p'])
         logging.info(f'Moved pipette to: {pos}')
 
@@ -299,7 +295,7 @@ class PickingPipette():
         off of the pipette tip
         """
 
-        logging.info('Move for fluorecent imaging')
         self.zc.move_arm('p', self.hardware_data['picker_config']['fluor_img']['stage']['p'])
         self.zc.move_arm('y', self.hardware_data['picker_config']['fluor_img']['stage']['y'])
         self.zc.move_arm('x', self.hardware_data['picker_config']['fluor_img']['stage']['x'])
+        logging.info('Move for fluorecent imaging')
