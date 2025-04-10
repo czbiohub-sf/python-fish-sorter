@@ -7,7 +7,7 @@
         },
         "stage": {
             "pick": {
-                "p": 60,
+                "p": 69,
                 "description": "The pipette height to pick, in mm"
             },    
             "clearance": {
@@ -19,7 +19,7 @@
                 "description": "The pipette height to dispense, in mm"
             },
             "pipette_swing": {
-                "p": 52,
+                "p": 50,
                 "description": "The height to move pipette in order to rotate it in/out from the microscope, in mm"
             }
         }
