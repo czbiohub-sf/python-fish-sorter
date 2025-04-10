@@ -92,16 +92,6 @@ class Classify():
             self.viewer = viewer
         self.viewer.window._qt_window.setFocusPolicy(Qt.StrongFocus)
 
-
-        #Temporary for testing
-        # FITC_path = '/Users/diane.wiener/Documents/fish-sorter-data/2024-02-15-cldnb-mScarlet_she-GFP/51hpf-pick1_FITC_2.5x_mosaic.tif'
-        # FITC_mosaic = np.array(imread(FITC_path))
-        # TXR_path = '/Users/diane.wiener/Documents/fish-sorter-data/2024-02-15-cldnb-mScarlet_she-GFP/51hpf-pick1_TXR_2.5x_mosaic.tif'
-        # TXR_mosaic = np.array(imread(TXR_path))
-
-        # self.viewer.add_image(FITC_mosaic, colormap='green', opacity=0.5, name='FITC')
-        # self.viewer.add_image(TXR_mosaic, colormap='red', opacity=0.5, name='TXR')
-
         self.contrast_callbacks = {}
         self.contrast_widget = ContrastWidget(self.viewer)
         self.viewer.window.add_dock_widget(self.contrast_widget, name= 'Contrast', area='left')

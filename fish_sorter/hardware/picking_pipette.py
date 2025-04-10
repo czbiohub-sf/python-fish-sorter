@@ -49,7 +49,7 @@ class PickingPipette():
         self.exp_t = self.hardware_data['picker_config']['pipette']['time']['expel']
         self.pick_h = self.hardware_data['picker_config']['pipette']['stage']['pick']['p']
         self.disp_h = self.hardware_data['picker_config']['pipette']['stage']['dispense']['p']
-        
+
         if zc is None:
             self.connect()
         else:
@@ -83,8 +83,7 @@ class PickingPipette():
 
         logging.info("Homing stage arms and turning off pressure and vacuum")
         self.zc.home_arm(['p','x','y'])
-        self.pressure()
-        self.vacuum()
+        self._valve_cmd(self.hardware_data['pneumatic_config']['register']['func_idle_type'], self.hardware_data['pneumatic_config']['function_codes']['idle_atm'])
         self.zc.disconnect()
         logging.info('Closed stage connnection')
         self.vc.disconnect()

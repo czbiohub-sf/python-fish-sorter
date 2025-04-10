@@ -35,6 +35,7 @@ class PipetteWidget(QWidget):
         ddd = PipetteDrawWidget()
         vvv = PipetteExpelWidget()
         ppp = PipettePressureWidget()
+        vac = PipetteVacuumWidget()
 
         layout = QGridLayout(self)
         layout.addWidget(xyz, 1, 0)
@@ -43,6 +44,7 @@ class PipetteWidget(QWidget):
         layout.addWidget(ddd, 2, 0)
         layout.addWidget(vvv, 2, 1)
         layout.addWidget(ppp, 2, 2)
+        layout.addWidget(vac, 2, 3)
 
 class ZaberImageWidget(QPushButton):
     """A push button widget to move the Zaber stages to image.
@@ -250,9 +252,9 @@ class PipetteDrawWidget(QPushButton):
     def _draw(self)->None:
         # Initialize and connect to hardware controller
         cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
-        array_file = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays/6well_plate20240822.json"
+        array_file = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays/6well_plate20250325.json"
         try:
-            pp = PickingPipette(cfg_dir, self._mmc, array_file)
+            pp = PickingPipette(cfg_dir, array_file)
         except Exception as e:
             logging.info("Could not initialize and connect hardware controller")
 
@@ -285,9 +287,9 @@ class PipetteExpelWidget(QPushButton):
     def _expel(self)->None:
         # Initialize and connect to hardware controller
         cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
-        array_file = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays/6well_plate20240822.json"
+        array_file = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays/6well_plate20250325.json"
         try:
-            pp = PickingPipette(cfg_dir, self._mmc, array_file)
+            pp = PickingPipette(cfg_dir, array_file)
         except Exception as e:
             logging.critical("Could not initialize and connect hardware controller")
 
@@ -321,13 +323,50 @@ class PipettePressureWidget(QPushButton):
     def _pressure(self)->None:
         # Initialize and connect to hardware controller
         cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/" 
-        array_file = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays/6well_plate20240822.json"
+        array_file = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays/6well_plate20250325.json"
         try:
-            pp = PickingPipette(cfg_dir, self._mmc, array_file)
+            pp = PickingPipette(cfg_dir, array_file)
         except Exception as e:
             logging.critical("Could not initialize and connect hardware controller")
 
         logging.info(f'Toggle Pressure Valve: {self.pressure_state}')
         self.pressure_state = not self.pressure_state
         pp.pressure(self.pressure_state)
+        pp.disconnect()
+
+class PipetteVacuumWidget(QPushButton):
+    """A push button widget to connect to the valve controller to toggle the vacuum
+
+    This is linked to the [hardware][picking_pipette] method
+    """
+    
+    def __init__(self, parent: QWidget | None=None):
+        
+        super().__init__(parent=parent)
+
+        self.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        )
+
+        self._mmc = CMMCorePlus.instance()
+        self._create_button()
+        self.vacuum_state = False
+
+    def _create_button(self)->None:
+        
+        self.setText("Toggle Vacuum Valve")
+        self.clicked.connect(self._vacuum)
+
+    def _vacuum(self)->None:
+        # Initialize and connect to hardware controller
+        cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/" 
+        array_file = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays/6well_plate20250325.json"
+        try:
+            pp = PickingPipette(cfg_dir, array_file)
+        except Exception as e:
+            logging.critical("Could not initialize and connect hardware controller")
+
+        logging.info(f'Toggle Vacuum Valve: {self.vacuum_state}')
+        self.vacuum_state = not self.vacuum_state
+        pp.vacuum(self.vacuum_state)
         pp.disconnect()
