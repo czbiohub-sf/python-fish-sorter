@@ -51,6 +51,7 @@ class Picking(QWidget):
         move2pick = Pipette2PickWidget(self)
         move2disp = Pipette2DispWidget(self)
         move2clear = Pipette2ClearWidget(self)
+        move2swing = Pipette2SwingWidget(self)
         img = ImageWidget(self)
         home = HomeWidget(self)
         move_pipette = MovePipette(self)
@@ -65,6 +66,7 @@ class Picking(QWidget):
         layout = QGridLayout(self)
         layout.addWidget(calib_pick, 1, 0)
         layout.addWidget(calib_disp, 1, 1)
+        layout.addWidget(move2swing, 1, 2)
         layout.addWidget(move2pick, 2, 0)
         layout.addWidget(move2disp, 2, 1)
         layout.addWidget(move2clear, 2, 2)
@@ -212,6 +214,33 @@ class Pipette2ClearWidget(QPushButton):
     def _clear_pos(self)->None:
         
         self.picking.pick.pp.move_pipette(pos='clearance')
+
+class Pipette2SwingWidget(QPushButton):
+    """A push button widget to connect to the pipette widget move the pipette to the swing position 
+
+    This is linked to the [hardware][picking_pipette] method
+    """
+    
+    def __init__(self, picking, parent: QWidget | None=None):
+        
+        super().__init__(parent=parent)
+
+        self.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        )
+
+        self.picking = picking
+        self._mmc = CMMCorePlus.instance()
+        self._create_button()
+
+    def _create_button(self)->None:
+        
+        self.setText("Move to Swing Position")
+        self.clicked.connect(self._swing_pos)
+
+    def _swing_pos(self)->None:
+        
+        self.picking.pick.pp.move_pipette(pos='pipette_swing')
 
 class MovePipette(QWidget):
     """A widget to move the pipette a user-defined distance"""

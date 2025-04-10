@@ -79,16 +79,14 @@ class nmm:
         # Load sequence and Mosaic class
         self.mosaic = Mosaic(self.v)
         self.assign_widgets()
+        self.setup_MDA()
 
         napari.run()
 
     def assign_widgets(self):
         
         # Setup
-        #TODO delete logging steps if desired
-        logging.info(f'Config Dir: {self.cfg_dir}')
-        logging.info(f'Parent Expt Path: {self.expt_parent_dir}')
-        self.setup = SetupWidget(self.cfg_dir, self.expt_parent_dir)
+        self.setup = SetupWidget(self.cfg_dir)
         self.v.window.add_dock_widget(self.setup, name = 'Setup', area='right')
         self.setup.pick_setup.clicked.connect(self.setup_picker)
 
@@ -131,8 +129,9 @@ class nmm:
         """After collecting required setup information, setup the picker
         """
 
-        self.expt_path = self.setup.get_expt_path().strip()
-        self.expt_prefix = self.setup.get_expt_prefix()
+        sequence = self.mda.value()
+        self.expt_path = sequence.metadata['pymmcore_widgets']['save_dir'].strip()
+        self.expt_prefix = sequence.metadata['pymmcore_widgets']['save_name']
         self.img_array = self.setup.get_img_array()
         self.dp_array = self.setup.get_dp_array()
         self.pick_type, self.offset = self.setup.get_pick_type()
@@ -145,13 +144,12 @@ class nmm:
         logging.info(f'cfg dir: {self.cfg_dir}')
         logging.info(f'Pick offset: {self.offset}')
 
-        self.setup_MDA()
         self.setup_iplate()
 
         logging.info('Loading picking hardware')
         self.pick = Pick(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.iplate, self.dp_array)
         self.picking = Picking(self.pick)
-        self.v.window.add_dock_widget(self.picking, name='Picking')
+        self.v.window.add_dock_widget(self.picking, name='Picking', area='right', tabify=True)
 
     def setup_MDA(self):
         """Setup the MDA from Picker setup information and the starting configuration
@@ -168,8 +166,7 @@ class nmm:
             channels=seq.channels,
             metadata={
                 "pymmcore_widgets": {
-                "save_dir": self.expt_path.strip(),
-                "save_name": self.expt_prefix.strip(),
+                "save_dir": str(self.expt_parent_dir),
                 "should_save": True,
                 },
                 "napari_micromanager": {

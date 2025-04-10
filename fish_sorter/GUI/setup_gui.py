@@ -34,7 +34,7 @@ class SetupWidget(QWidget):
     and the pick type
     """
 
-    def __init__(self, cfg_path, expt_parent_dir, parent: QWidget | None=None):
+    def __init__(self, cfg_path, parent: QWidget | None=None):
         """
         Initialization for widgets to return user inputs
 
@@ -49,40 +49,27 @@ class SetupWidget(QWidget):
         self.layout.setSpacing(10)
         
         self.config = Path(cfg_path)
-        self.expt_parent_dir = Path(expt_parent_dir)
-
-        self.expt_path_label = QLabel("Selected Path: None")
-        self.expt_path_button = QPushButton("Select Mosaic Image Filepath")
-        self.expt_path_button.clicked.connect(self.select_expt_path)
-        self.layout.addWidget(self.expt_path_label, 0, 0, 1, 2)
-        self.layout.addWidget(self.expt_path_button, 0, 2)
-
-        self.prefix_label = QLabel("Experiment Prefix:")
-        self.prefix_input = QLineEdit()
-        self.prefix_input.setPlaceholderText("Enter prefix for experiment")
-        self.layout.addWidget(self.prefix_label, 1, 0)
-        self.layout.addWidget(self.prefix_input, 1, 1, 1, 2)
 
         self.img_array_label = QLabel("Select Imaging Plate Array:")
         self.img_array_dropdown = QComboBox()
-        self.layout.addWidget(self.img_array_label, 2, 0)
-        self.layout.addWidget(self.img_array_dropdown, 2, 1, 1, 2)
+        self.layout.addWidget(self.img_array_label, 0, 0)
+        self.layout.addWidget(self.img_array_dropdown, 0, 1, 1, 2)
 
         self.dp_array_label = QLabel("Select Dispense Plate Array:")
         self.dp_array_dropdown = QComboBox()
-        self.layout.addWidget(self.dp_array_label, 3, 0)
-        self.layout.addWidget(self.dp_array_dropdown, 3, 1, 1, 2)
+        self.layout.addWidget(self.dp_array_label, 1, 0)
+        self.layout.addWidget(self.dp_array_dropdown, 1, 1, 1, 2)
         
         self.refresh_list()
 
         self.pick_type = self.load_config("pick", "pick_type_config.json")
         self.pick_type_label = QLabel("Select Pick Type:")
-        self.layout.addWidget(self.pick_type_label, 4, 0, 1, 3)
+        self.layout.addWidget(self.pick_type_label, 2, 0, 1, 3)
         self.pick_type_grp = QButtonGroup(self)
         self.populate_options()
 
         self.pick_setup = QPushButton("Setup Picker")
-        self.layout.addWidget(self.pick_setup, 6, 0)
+        self.layout.addWidget(self.pick_setup, 4, 0)
 
     def load_config(self, cfg_folder, cfg_file):
         """
@@ -105,20 +92,6 @@ class SetupWidget(QWidget):
         except FileNotFoundError:
             logging.critical("Config file not found")
             return {}
-
-    def select_expt_path(self):
-        """
-        Selects the filepath directory for the experiment
-        """
- 
-        if os.path.exists(self.expt_parent_dir):
-            default_path = self.expt_parent_dir
-        else:
-            default_path = os.path.expanduser("~")        
-
-        filepath = QFileDialog.getExistingDirectory(self, "Select Directory", str(default_path))
-        if filepath:
-            self.expt_path_label.setText(f"Selected Path: {filepath}")
 
     def refresh_list(self):
         """
@@ -165,28 +138,6 @@ class SetupWidget(QWidget):
                         self.pick_type[button.text()]['picker']['width_offset']])
                 return button.text(), offset
         return "default_pick_type", np.array([0.0, 0.0])
-
-    def get_expt_path(self):
-        """
-        Returns the user input for the experiment folder path to
-        save the experiment data
-
-        :returns: experiment folder path
-        :rtype: str
-        """
-
-        return self.expt_path_label.text().replace("Selected Path:", "")
-
-    def get_expt_prefix(self):
-        """
-        Returns the user input of the experiment prefix to use when saving
-        experiment data
-
-        :returns: experiment prefix
-        :rtype: str
-        """
-
-        return self.prefix_input.text()
     
     def get_img_array(self):
         """

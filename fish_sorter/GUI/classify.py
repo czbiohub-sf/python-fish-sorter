@@ -114,7 +114,7 @@ class Classify():
     
         self.current_well = 0
         self.classify_widget = self._create_classify()
-        self.viewer.window.add_dock_widget(self.classify_widget, name= 'Classification')
+        self.viewer.window.add_dock_widget(self.classify_widget, name= 'Classification', area='right', tabify = True)
         self.viewer.bind_key("Right", self._next_well)
         self.viewer.bind_key("Left", self._previous_well)
 
@@ -237,7 +237,7 @@ class Classify():
         layout = QGridLayout(container_widget)  
         layout.addWidget(self.class_btn, 1, 0)
     
-        self.viewer.window.add_dock_widget(container_widget, area='right')
+        self.viewer.window.add_dock_widget(container_widget, name= 'Save', area='left', tabify=True)
 
         def _save_it():
             """Saves the classification data from the points layer to csv on button press
@@ -318,8 +318,7 @@ class Classify():
         :param points: x, y coords for center location defining the well locations in the points layer
         :type points: numpy points
         """
-
-        #TODO make sure padding makes sense for fish detection / viewing for classification
+        
         self._well_mask()
         self.well_extract = self._extract_wells(points)
 
