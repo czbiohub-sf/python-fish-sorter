@@ -3,7 +3,19 @@ import sys
 import os
 from datetime import datetime
 from pathlib import Path
-from qtpy.QtWidgets import QApplication, QWidget, QComboBox, QVBoxLayout, QFormLayout, QLabel, QLineEdit, QPushButton, QMessageBox
+from qtpy.QtWidgets import (
+    QApplication,  
+    QComboBox,
+    QDoubleSpinBox,
+    QFormLayout, 
+    QLabel, 
+    QLineEdit, 
+    QMessageBox,
+    QPushButton, 
+    QSpinBox,
+    QVBoxLayout,
+    QWidget
+)
 
 class GenerateArray(QWidget):
     def __init__(self):
@@ -16,12 +28,16 @@ class GenerateArray(QWidget):
         # Form layout for input fields
         form_layout = QFormLayout()
 
-        self.rows_input = QLineEdit()
-        self.columns_input = QLineEdit()
-        self.row_spacing_input = QLineEdit()
-        self.column_spacing_input = QLineEdit()
-        self.length_input = QLineEdit()
-        self.width_input = QLineEdit()
+        self.rows_input = QSpinBox()
+        self.columns_input = QSpinBox()
+        self.row_spacing_input = QDoubleSpinBox()
+        self.set_spinbox(self.row_spacing_input)
+        self.column_spacing_input = QDoubleSpinBox()
+        self.set_spinbox(self.column_spacing_input)
+        self.length_input = QDoubleSpinBox()
+        self.set_spinbox(self.length_input)
+        self.width_input = QDoubleSpinBox()
+        self.set_spinbox(self.width_input)
         self.shape_input = QComboBox()
         self.shape_input.addItems(["circular_array", "rectangular_array", "well_plate"])
 
@@ -43,18 +59,28 @@ class GenerateArray(QWidget):
         self.setLayout(layout)
         self.setWindowTitle('Define Agarose Array')
 
+    def set_spinbox(self, spinbox):
+        """
+        Used to set the SpinBox parameters
+
+        :param spinbox: Qt spinbox to update
+        :type spinbox: QDoubleSpinBox
+        """
+
+        spinbox.setRange(0, 150000.00)
+        spinbox.setSingleStep(0.05)
+        spinbox.setDecimals(2)
+        spinbox.setSuffix(" um")
+    
     def define_wells(self):
         try:
-            rows = int(self.rows_input.text())
-            columns = int(self.columns_input.text())
-            row_spacing = float(self.row_spacing_input.text())
-            column_spacing = float(self.column_spacing_input.text())
-            length = float(self.length_input.text())
-            width = float(self.width_input.text())
+            rows = self.rows_input.value()
+            columns = self.columns_input.value()
+            row_spacing = self.row_spacing_input.value()
+            column_spacing = self.column_spacing_input.value()
+            length = self.length_input.value()
+            width = self.width_input.value()
             shape = self.shape_input.currentText()
-
-            if any(value <= 0 for value in [rows, columns, row_spacing, column_spacing, length, width]):
-                raise ValueError
 
             array_design = {
                 'rows': rows,
@@ -90,8 +116,6 @@ class GenerateArray(QWidget):
                 json.dump(data, json_file, indent=4)
 
             QMessageBox.information(self, 'Success', f'Values are valid and have been saved to {array_path}')
-        except ValueError:
-            QMessageBox.critical(self, 'Error', 'Please enter valid numbers greater than 0 for all fields.')
         except Exception as e:
             QMessageBox.critical(self, 'Error', f'An error occurred: {str(e)}')
 
