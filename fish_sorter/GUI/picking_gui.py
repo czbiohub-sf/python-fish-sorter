@@ -260,7 +260,7 @@ class MovePipette(QWidget):
         layout.addWidget(label, 0, 0)
 
         self.distance_spinbox = QDoubleSpinBox()
-        self.distance_spinbox.setRange(-1000.00, 1000.00)
+        self.distance_spinbox.setRange(0.00, 1000.00)
         self.distance_spinbox.setSingleStep(0.05)
         self.distance_spinbox.setDecimals(2)
         self.distance_spinbox.setSuffix(" ")
@@ -270,11 +270,24 @@ class MovePipette(QWidget):
         self.units_dropdown.addItems(['mm', 'um'])
         layout.addWidget(self.units_dropdown, 1, 1)
 
-        self.move_button = QPushButton('Move Pipette')
-        self.move_button.clicked.connect(self._move_pipette)
-        layout.addWidget(self.move_button, 1, 2)
+        self.move_up_button = QPushButton('Pipette Up')
+        self.move_up_button.clicked.connect(self._move_pipette_up)
+        layout.addWidget(self.move_up_button, 1, 2)
 
-    def _move_pipette(self):
+        self.move_down_button = QPushButton('Pipette Down')
+        self.move_down_button.clicked.connect(self._move_pipette_down)
+        layout.addWidget(self.move_downbutton, 1, 3)
+
+    def _move_pipette_up(self):
+
+        dist = -self.distance_spinbox.value()
+        units = self.units_dropdown.currentText()
+        unit_bool = units == 'mm'
+
+        logging.info(f'Moving pipette by {dist} {units}')
+        self.picking.pick.pp.move_pipette_increment(dist, unit_bool)
+
+    def _move_pipette_down(self):
 
         dist = self.distance_spinbox.value()
         units = self.units_dropdown.currentText()
