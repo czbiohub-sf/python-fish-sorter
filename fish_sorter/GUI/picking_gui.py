@@ -15,6 +15,7 @@ from qtpy.QtWidgets import (
     QPushButton, 
     QSizePolicy, 
     QDoubleSpinBox, 
+    QSpinBox,
     QVBoxLayout, 
     QWidget
 )
@@ -62,7 +63,8 @@ class Picking(QWidget):
         expel = PipetteExpelWidget(self)
         ppp = PipettePressureWidget(self)
         
-        
+        time = ChangeTimeWidget(self)
+
         layout = QGridLayout(self)
         layout.addWidget(calib_pick, 1, 0)
         layout.addWidget(calib_disp, 1, 1)
@@ -71,13 +73,14 @@ class Picking(QWidget):
         layout.addWidget(move2disp, 2, 1)
         layout.addWidget(move2clear, 2, 2)
         layout.addWidget(move_pipette, 3, 0)
-        layout.addWidget(img, 4, 0)
-        layout.addWidget(home, 4, 1)
-        layout.addWidget(draw, 5, 0)
-        layout.addWidget(expel, 5, 1)
-        layout.addWidget(ppp, 5, 2)
-        layout.addWidget(pw, 6, 0)
-        layout.addWidget(disconnect, 6, 1)
+        layout.addWidget(time, 4, 0)
+        layout.addWidget(img, 5, 0)
+        layout.addWidget(home, 5, 1)
+        layout.addWidget(draw, 6, 0)
+        layout.addWidget(expel, 6, 1)
+        layout.addWidget(ppp, 7, 2)
+        layout.addWidget(pw, 8, 0)
+        layout.addWidget(disconnect, 8, 1)
      
 class PipettePickCalibWidget(QPushButton):
     """A push button widget to calibrate the pick position for the pipette
@@ -260,7 +263,7 @@ class MovePipette(QWidget):
         layout.addWidget(label, 0, 0)
 
         self.distance_spinbox = QDoubleSpinBox()
-        self.distance_spinbox.setRange(-1000.00, 1000.00)
+        self.distance_spinbox.setRange(0.00, 1000.00)
         self.distance_spinbox.setSingleStep(0.05)
         self.distance_spinbox.setDecimals(2)
         self.distance_spinbox.setSuffix(" ")
@@ -270,11 +273,24 @@ class MovePipette(QWidget):
         self.units_dropdown.addItems(['mm', 'um'])
         layout.addWidget(self.units_dropdown, 1, 1)
 
-        self.move_button = QPushButton('Move Pipette')
-        self.move_button.clicked.connect(self._move_pipette)
-        layout.addWidget(self.move_button, 1, 2)
+        self.move_up_button = QPushButton('Pipette Up')
+        self.move_up_button.clicked.connect(self._move_pipette_up)
+        layout.addWidget(self.move_up_button, 1, 2)
 
-    def _move_pipette(self):
+        self.move_down_button = QPushButton('Pipette Down')
+        self.move_down_button.clicked.connect(self._move_pipette_down)
+        layout.addWidget(self.move_down_button, 1, 3)
+
+    def _move_pipette_up(self):
+
+        dist = -self.distance_spinbox.value()
+        units = self.units_dropdown.currentText()
+        unit_bool = units == 'mm'
+
+        logging.info(f'Moving pipette by {dist} {units}')
+        self.picking.pick.pp.move_pipette_increment(dist, unit_bool)
+
+    def _move_pipette_down(self):
 
         dist = self.distance_spinbox.value()
         units = self.units_dropdown.currentText()
@@ -282,6 +298,48 @@ class MovePipette(QWidget):
 
         logging.info(f'Moving pipette by {dist} {units}')
         self.picking.pick.pp.move_pipette_increment(dist, unit_bool)
+
+class ChangeTimeWidget(QWidget):
+    """A widget to change the draw and expel times"""
+
+    def __init__(self, picking, parent: QWidget | None=None):
+        
+        super().__init__(parent=parent)
+
+        self.picking = picking
+        self._mmc = CMMCorePlus.instance()
+        self._create_gui()
+
+    def _create_gui(self):
+
+        layout = QGridLayout(self)
+        label = QLabel('Change Time')
+        layout.addWidget(label, 0, 0)
+
+        self.time_spinbox = QSpinBox()
+        self.time_spinbox.setRange(0, 1000)
+        self.time_spinbox.setSuffix(" ms")
+        layout.addWidget(self.time_spinbox, 1, 0)
+
+        self.change_draw_button = QPushButton('Change Draw Time')
+        self.change_draw_button.clicked.connect(self._change_draw)
+        layout.addWidget(self.change_draw_button, 1, 2)
+
+        self.change_expel_button = QPushButton('Change Expel Time')
+        self.change_expel_button.clicked.connect(self._change_expel)
+        layout.addWidget(self.change_expel_button, 1, 3)
+
+    def _change_draw(self):
+
+        time = self.time_spinbox.value()
+        logging.info(f'Change Draw time to {time} ms')
+        self.picking.pick.pp.draw_time(time)
+
+    def _change_expel(self):
+
+        time = self.time_spinbox.value()
+        logging.info(f'Change Expel time to {time} ms')
+        self.picking.pick.pp.expel_time(time)
         
 class PipetteDrawWidget(QPushButton):
     """A push button widget to connect to the valve controller to actuate the draw function
