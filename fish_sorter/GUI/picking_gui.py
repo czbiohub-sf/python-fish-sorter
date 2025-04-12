@@ -15,6 +15,7 @@ from qtpy.QtWidgets import (
     QPushButton, 
     QSizePolicy, 
     QDoubleSpinBox, 
+    QSpinBox,
     QVBoxLayout, 
     QWidget
 )
@@ -318,7 +319,7 @@ class ChangeTimeWidget(QWidget):
         self.time_spinbox = QSpinBox()
         self.time_spinbox.setRange(0, 1000)
         self.time_spinbox.setSuffix(" ms")
-        layout.addWidget(self.timee_spinbox, 1, 0)
+        layout.addWidget(self.time_spinbox, 1, 0)
 
         self.change_draw_button = QPushButton('Change Draw Time')
         self.change_draw_button.clicked.connect(self._change_draw)
