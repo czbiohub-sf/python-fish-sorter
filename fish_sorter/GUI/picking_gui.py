@@ -446,6 +446,8 @@ class PickWidget(QPushButton):
         self.clicked.connect(self._start_picking) 
     
     def _start_picking(self):
+
+        self._mmc.setLiveMode(True)
         
         if self.picking.pick_calib and self.picking.disp_calib:
             logging.info('Opening classifications')

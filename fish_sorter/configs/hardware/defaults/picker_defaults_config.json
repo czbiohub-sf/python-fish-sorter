@@ -8,7 +8,7 @@
             },
             "stage": {
                 "pick": {
-                    "p": 60,
+                    "p": 69,
                     "description": "The pipette height to pick"
                 },    
                 "clearance": {
@@ -20,15 +20,23 @@
                     "description": "The pipette height to dispense"
                 },
                 "pipette_swing": {
-                    "p": 52,
+                    "p": 50,
                     "description": "The height to move pipette in order to rotate it in/out from the microscope"
                 }
             }  
         },
         "description": "Default settings to use for reset and archive"
     },
+    "fluor_img": {
+        "stage": {
+            "p": 7.5,    
+            "x": 100.0,
+            "y": 100.0,
+            "description": "The stage positions to image with fluorescence, in mm"
+        }
+    },
     "dispense_plate": {
-       "TL_corner": {
+        "TL_corner": {
             "x": 135500.0,
             "y": 85750.0,
             "description": "The stage positions of well A01, in um"

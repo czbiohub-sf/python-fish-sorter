@@ -106,16 +106,8 @@ class nmm:
     def run_class(self):
         """Classification GUI startup from image widget class_btn
         """
-        
-        remove_layers = []
-        for layer in self.v.layers:
-            if layer.name == 'preview' or layer.name == 'crosshairs' or self.expt_prefix in layer.name:
-                remove_layers.append(layer)
-        for layer in remove_layers:
-            self.v.layers.remove(layer)
             
         logging.info('Start Classification')
-
         sequence = self.mda.value()
         mosaic_metadata = self.mosaic.get_mosaic_metadata(sequence)
 
@@ -181,6 +173,7 @@ class nmm:
         self.v.window._qt_viewer.console.push(
             {"main_window": self.main_window, "mmc": self.core, "sequence": final_seq, "np": np}
         )
+        self.v.reset_view()
 
     def setup_iplate(self):
         """Setup image plate instance to pass to Pick and Classify classes
@@ -210,6 +203,20 @@ class nmm:
             else:
                 color = 'grey'
             self.v.add_image(mosaic, colormap=color, opacity=0.5, name=chan_name)
+
+        logging.info('Remove unncessary layers')
+        remove_layers = []
+        for layer in self.v.layers:
+            if layer.name == 'preview' or layer.name == 'crosshairs' or layer.name == 'ome.zarr' or self.expt_prefix in layer.name:
+                remove_layers.append(layer)
+        for layer in remove_layers:
+            self.v.layers.remove(layer)
+
+        logging.info('Saving mosaic layers')
+        for layer in self.v.layers:
+            self.v.layers.save(path = self.expt_path)
+
+        self.v.reset_view()
 
 
 if __name__ == "__main__":

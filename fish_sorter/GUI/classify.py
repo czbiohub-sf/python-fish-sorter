@@ -653,7 +653,8 @@ class Classify():
                     masked_region,
                     colormap=color,
                     contrast_limits=contrast_limits,
-                    name=f'{layer_name}'
+                    name=f'{layer_name}',
+                    scale = 2.0
                 )
                 container_layout.addWidget(qt_viewer)
                 container.setLayout(container_layout)

@@ -56,8 +56,8 @@ class PickingPipette():
             self.zc = zc
 
         self.dplate = DispensePlate(self.zc, array_file)
-        pipettor_cfg = hardware_dir / 'picker_config.json'
-        self.dplate.set_calib_pts(pipettor_cfg=pipettor_cfg)
+        self.pipettor_cfg = hardware_dir / 'picker_config.json'
+        self.dplate.set_calib_pts(pipettor_cfg=self.pipettor_cfg)
         self.dplate.load_wells(xflip=True)
 
     def connect(self, env='prod'):
@@ -237,7 +237,7 @@ class PickingPipette():
             self.dplate.go_to_well(well)
 
     def set_calib(self, pick: bool=True):
-        """Sets pipette calibration location
+        """Sets pipette calibration location and saves it to the config
 
         :param pick: pick or dispense location
         :type pick: bool
@@ -250,6 +250,25 @@ class PickingPipette():
             self.disp_h = self.zc.get_pos('p')
             logging.info(f'Set dispense height to: {self.disp_h}')
 
+        self.save_calib()
+
+    def save_calib(self):
+        """Saves the calibration for the pipette
+        """
+
+        logging.info('Updating picker config file with pipette calibration')
+
+        with open(self.pipettor_cfg, 'r') as pc:
+            pick_cfg = json.load(pc)
+            pick_cfg['pipette']['stage']['pick']['p'] = self.pick_h
+            pick_cfg['pipette']['stage']['dispense']['p'] = self.disp_h
+            pick_cfg.close()
+        with open(self.pipettor_cfg, 'w') as pc:
+            pick_update = json.dump(pick_cfg, pc, indent = 4, separators= (',',': '))
+            pc.close()
+
+        logging.info('Saved picker_config.json with updated values')
+        
     def dest_home(self):
         """Convenience function to move destination plate to home position
         """
