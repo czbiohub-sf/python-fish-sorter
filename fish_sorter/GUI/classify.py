@@ -322,35 +322,41 @@ class Classify():
         self._well_mask()
         self.well_extract = self._extract_wells(points)
 
-    def _well_mask(self, padding: int=100):
+    def _well_mask(self, padding: int=500):
         """Create a mask of the well shape
 
         :param padding: extra pixels from the edge around the well shape to include in the mask
         :type padding: int
         """
 
+        # TODO figure out padding
+
         width = int(round(self.iplate.wells["array_design"]["slot_length"] / PIXEL_SIZE_UM))
         height = int(round(self.iplate.wells["array_design"]["slot_width"] / PIXEL_SIZE_UM))
+        logging.info(f'Original well width x height (px): {width} x {height}')
 
-        padded_height = height + 2 * padding
         padded_width = width + 2 * padding
+        padded_height = height + 2 * padding
+        logging.info(f'Padded mask size (px): {padded_width} x {padded_height}')
+        
         self.mask = np.zeros((padded_height, padded_width), dtype=bool)
         
         if self.iplate.wells["array_design"]["well_shape"] == "rectangular_array":
             start_row, start_col = padding, padding
-            rr, cc = draw.rectangle(start=(start_row, start_col), extent=(height, width))
+            rr, cc = draw.rectangle(start=(start_row, start_col), extent=(height, width), shape=self.mask.shape)
         else:
             center = (padded_height // 2, padded_width // 2)
             radius = min(height, width) // 2  
-            rr, cc = draw.disk(center, radius)
+            rr, cc = draw.disk(center, radius, shape=self.mask.shape)
 
         self.mask[rr, cc] = True
+        logging.info(f'Mask created with shape {self.mask.shape}')
     
     def _extract_wells(self, points, img_flag: bool=True, mask_layer: str=None, sigma: float=0.25) -> dict:
         """Cuts a well centered around the points in the points layer of the image
         of the size defined in the array and displays the image layer
 
-        :param points: x, y coordinates for center location points defining the well locations
+        :param points: array of (y, x) coordinates (row, col) for well centers
         :type points: numpy points
 
         :param img_flag: option whether to use the image layers or to create the binary image mask 
@@ -368,7 +374,10 @@ class Classify():
         """
 
         mask_height, mask_width = self.mask.shape
+        logging.info(f'Extract well shape {self.mask.shape}')
+
         half_mask_height, half_mask_width = mask_height // 2, mask_width // 2
+
 
         if img_flag:
             image_layers = [{'data': layer.data, 'name': layer.name} for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)]
@@ -653,9 +662,11 @@ class Classify():
                     masked_region,
                     colormap=color,
                     contrast_limits=contrast_limits,
-                    name=f'{layer_name}',
-                    scale = 2.0
+                    name=f'{layer_name}'
                 )
+
+                # TODO make sure the zoom is correct
+                viewer_model.camera.zoom = 1
                 container_layout.addWidget(qt_viewer)
                 container.setLayout(container_layout)
                 splitter.addWidget(container)
@@ -861,9 +872,9 @@ class FishFinderWidget(QWidget):
         self.sigma_label = QLabel('Sigma')
         self.sigma_spin = QDoubleSpinBox()
         self.sigma_spin.setMinimum(0.1)
-        self.sigma_spin.setMaximum(10)
+        self.sigma_spin.setMaximum(100)
         self.sigma_spin.setSingleStep(0.1)
-        self.sigma_spin.setValue(0.25)
+        self.sigma_spin.setValue(15)
         layout.addWidget(self.sigma_label)
         layout.addWidget(self.sigma_spin)
         self.run_button = QPushButton('Find Fish')
@@ -909,7 +920,7 @@ class ContrastWidget(QWidget):
             if isinstance(layer, napari.layers.Image):
                 self.add_layer_control(layer)
 
-    def add_layer_control(self, layer, setpoint=30.0, scale=100.0):
+    def add_layer_control(self, layer, setpoint=20.0, scale=100.0):
         layer_layout = QHBoxLayout()
         label = QLabel(f'{layer.name} sigma:')
         slider = QSlider(Qt.Horizontal)

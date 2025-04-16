@@ -10,7 +10,8 @@ from qtpy.QtCore import QSize, Qt
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QComboBox, 
-    QGridLayout, 
+    QGridLayout,
+    QHBoxLayout, 
     QLabel, 
     QPushButton, 
     QSizePolicy, 
@@ -78,7 +79,7 @@ class Picking(QWidget):
         layout.addWidget(home, 5, 1)
         layout.addWidget(draw, 6, 0)
         layout.addWidget(expel, 6, 1)
-        layout.addWidget(ppp, 7, 2)
+        layout.addWidget(ppp, 6, 2)
         layout.addWidget(pw, 8, 0)
         layout.addWidget(disconnect, 8, 1)
      
@@ -318,8 +319,9 @@ class ChangeTimeWidget(QWidget):
 
         self.time_spinbox = QSpinBox()
         self.time_spinbox.setRange(0, 1000)
-        self.time_spinbox.setSuffix(" ms")
         layout.addWidget(self.time_spinbox, 1, 0)
+        unit_label = QLabel('ms')
+        layout.addWidget(unit_label, 1, 1)
 
         self.change_draw_button = QPushButton('Change Draw Time')
         self.change_draw_button.clicked.connect(self._change_draw)

@@ -41,8 +41,8 @@ class Mosaic:
                 "fov_height": FOV_HEIGHT,
             },
             channels = [
-                {"config": "GFP","exposure": 100}, 
-                {"config": "TXR", "exposure": 100}
+                {"config": "GFP","exposure": 300}, 
+                {"config": "TXR", "exposure": 300}
             ],
             axis_order = "gc",
         )

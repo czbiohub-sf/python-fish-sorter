@@ -262,7 +262,7 @@ class PickingPipette():
             pick_cfg = json.load(pc)
             pick_cfg['pipette']['stage']['pick']['p'] = self.pick_h
             pick_cfg['pipette']['stage']['dispense']['p'] = self.disp_h
-            pick_cfg.close()
+            pc.close()
         with open(self.pipettor_cfg, 'w') as pc:
             pick_update = json.dump(pick_cfg, pc, indent = 4, separators= (',',': '))
             pc.close()

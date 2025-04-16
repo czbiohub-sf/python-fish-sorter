@@ -206,17 +206,23 @@ class nmm:
 
         logging.info('Remove unncessary layers')
         remove_layers = []
+        save_layers = []
         for layer in self.v.layers:
             if layer.name == 'preview' or layer.name == 'crosshairs' or layer.name == 'ome.zarr' or self.expt_prefix in layer.name:
                 remove_layers.append(layer)
+            else:
+                save_layers.append(layer)
         for layer in remove_layers:
             self.v.layers.remove(layer)
 
-        logging.info('Saving mosaic layers')
-        for layer in self.v.layers:
-            self.v.layers.save(path = self.expt_path)
-
         self.v.reset_view()
+        logging.info('Saving mosaic layers')
+        # self.v.layers.save(path = self.expt_path)
+
+        for layer in save_layers:
+            save_path = Path(self.expt_path) / f"{layer.name}.tif"
+            layer.save(str(save_path))
+        logging.info('Ready to classify')
 
 
 if __name__ == "__main__":
