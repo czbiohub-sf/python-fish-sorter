@@ -156,14 +156,21 @@ class Pick():
             logging.info('Picked fish in {} to {}'.format(self.matches['slotName'][match], self.matches['dispenseWell'][match]))
             pd.DataFrame([self.matches.drop(columns=['lHead']).iloc[match].values], columns=self.matches.drop(columns=['lHead']).columns)\
                 .to_csv(self.picked_file, mode='a', header=False, index=False)
-
-        logging.info('Finished Picking!')
-
+        
         #TODO how to more elegantly handle lHead, rightHead, none, etc
         #call to mapping?
         #call mapping for the dest plate at init?      
         #Better handle 'lHead' column in csv??? or rather abstract at some point to also include embryos
         #Use pick_type_config.json better to determine what columns are needed
+
+
+        self.done()
+
+    def done(self):
+        """Helper to call when picking is complete
+        """
+
+        logging.info('Finished Picking!')
 
 
     def match_pick(self):
