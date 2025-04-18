@@ -7,6 +7,7 @@ import os
 import pandas as pd
 import sys
 from datetime import datetime
+import matplotlib.pyplot as plt
 from napari.components.viewer_model import ViewerModel
 from napari.layers import Image
 from napari.qt import QtViewer
@@ -108,9 +109,6 @@ class Classify():
         self.feature_widget = None
         self.extract_fish(pts)
         self._find_fish_widget(pts)
-
-        if self.picking == 'larvae':
-            self.find_orientation()
     
         self.current_well = 0
         self.classify_widget = self._create_classify()
@@ -322,7 +320,7 @@ class Classify():
         self._well_mask()
         self.well_extract = self._extract_wells(points)
 
-    def _well_mask(self, padding: int=500):
+    def _well_mask(self, padding: int=100):
         """Create a mask of the well shape
 
         :param padding: extra pixels from the edge around the well shape to include in the mask
@@ -501,6 +499,10 @@ class Classify():
         self.points_layer.mode = 'select'
         self.current_wells = singlets_idxs[0]
 
+        if self.picking == 'larvae':
+            logging.info('Determining fish orientation for picking larvae')
+            self.find_orientation()
+
     def find_orientation(self):
         """Determines orientation to select side of well for picking
         """
@@ -510,14 +512,13 @@ class Classify():
 
         for fish in single:
 
+            logging.info(f'Fish {fish}')
             if fish >= len(self.well_extract):
+                logging.info(f'Skipping fish {fish}: out of bounds for well extraction')
                 continue
             well_data = self.well_extract[fish]
             channels = list(well_data.values())
-
-            #TODO figure out right datatype
-            
-            well_total = np.zeros_like(channels[0], dtype=np.uint16)
+            well_total = np.zeros_like(channels[0], dtype=np.float32)
             for channel in channels:
                 well_total += channel
             well_total /= len(channels)
@@ -526,9 +527,50 @@ class Classify():
             half_width = width // 2
             left = well_total[:height, :half_width]
             right = well_total[:height, half_width:width]
-            orientation[fish] = np.sum(left) >= np.sum(right)    
+
+            left_sum = np.sum(left)
+            right_sum = np.sum(right)
+
+            orientation[fish] = left_sum >= right_sum
+            logging.info(f'Fish {fish} - Left sum: {left_sum:.1f}, Right sum {right_sum:.1f}, Orientation: {'left' if orientation[fish] else 'right'}')    
 
         self._update_orientation(orientation)
+        # self.plot_crop() #Toggle for crop debugging
+    
+    def plot_crop(self):
+        """Plots the cropped images for debugging
+        """
+
+        single = [i for i, val in enumerate(self.points_layer.features['singlet']) if val]
+
+        for idx in single:
+            if idx >= len(self.well_extract):
+                continue
+            well_data = self.well_extract[idx]
+            channels = list(well_data.values())
+
+            if not channels:
+                continue
+
+            avg_img = np.mean(np.stack(channels), axis=0)
+            height, width = avg_img.shape
+            half_width = width //2
+            left = avg_img[:, :half_width]
+            right = avg_img[:, half_width:]
+
+            fig, axs = plt.subplots(1, 3, figsize=(12,4))
+            fig.suptitle(f'Well #{idx}')
+
+            axs[0].imshow(avg_img, cmap='gray')
+            axs[0].set_title('Avg well image')
+            axs[1].imshow(left, cmap='grey')
+            axs[1].set_title('Left half')
+            axs[2].imshow(right, cmap='grey')
+            axs[2].set_title('Right half')
+
+            for ax in axs:
+                ax.axis('off')
+            plt.show()
     
     def _update_orientation(self, orientation=List[int]):
         """Updates the feature classification for the found fish and orientation

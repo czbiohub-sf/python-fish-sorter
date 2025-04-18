@@ -134,6 +134,7 @@ class nmm:
         logging.info(f'Image array: {self.img_array}')
         logging.info(f'Dispense array: {self.dp_array}')
         logging.info(f'cfg dir: {self.cfg_dir}')
+        logging.info(f'Pick tyep: {self.pick_type}')
         logging.info(f'Pick offset: {self.offset}')
 
         self.setup_iplate()
