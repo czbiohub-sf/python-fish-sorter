@@ -123,7 +123,7 @@ class nmm:
 
         sequence = self.mda.value()
         self.expt_path = sequence.metadata['pymmcore_widgets']['save_dir'].strip()
-        self.expt_prefix = sequence.metadata['pymmcore_widgets']['save_name']
+        self.expt_prefix = sequence.metadata['pymmcore_widgets']['save_name'].removesuffix('.ome.zarr')
         self.img_array = self.setup.get_img_array()
         self.dp_array = self.setup.get_dp_array()
         self.pick_type, self.offset = self.setup.get_pick_type()
@@ -134,7 +134,7 @@ class nmm:
         logging.info(f'Image array: {self.img_array}')
         logging.info(f'Dispense array: {self.dp_array}')
         logging.info(f'cfg dir: {self.cfg_dir}')
-        logging.info(f'Pick tyep: {self.pick_type}')
+        logging.info(f'Pick type: {self.pick_type}')
         logging.info(f'Pick offset: {self.offset}')
 
         self.setup_iplate()
@@ -209,7 +209,7 @@ class nmm:
         remove_layers = []
         save_layers = []
         for layer in self.v.layers:
-            if layer.name == 'preview' or layer.name == 'crosshairs' or layer.name == 'ome.zarr' or self.expt_prefix in layer.name:
+            if layer.name == 'preview' or layer.name == 'crosshairs' or 'ome.zarr' in layer.name or self.expt_prefix in layer.name:
                 remove_layers.append(layer)
             else:
                 save_layers.append(layer)

@@ -50,16 +50,15 @@ class PickingPipette():
         self.pick_h = self.hardware_data['picker_config']['pipette']['stage']['pick']['p']
         self.disp_h = self.hardware_data['picker_config']['pipette']['stage']['dispense']['p']
 
+        self.dplate_array = array_file
+
         if zc is None:
             self.connect()
         else:
             self.zc = zc
 
-        self.dplate = DispensePlate(self.zc, array_file)
-        self.pipettor_cfg = hardware_dir / 'picker_config.json'
-        self.dplate.set_calib_pts(pipettor_cfg=self.pipettor_cfg)
-        self.dplate.load_wells(xflip=True)
-
+        self._define_dp()
+    
     def connect(self, env='prod'):
         """Connect to hardware
         
@@ -82,7 +81,9 @@ class PickingPipette():
         """
 
         logging.info("Homing stage arms and turning off pressure and vacuum")
-        self.zc.home_arm(['p','x','y'])
+
+        self.move_pipette(pos='pipette_swing')
+        self.zc.home_arm(['x','y'])
         self._valve_cmd(self.hardware_data['pneumatic_config']['register']['func_idle_type'], self.hardware_data['pneumatic_config']['function_codes']['idle_atm'])
         self.zc.disconnect()
         logging.info('Closed stage connnection')
@@ -95,7 +96,18 @@ class PickingPipette():
 
         self.disconnect()
         self.connect()
+        self._define_dp()
 
+    def _define_dp(self):
+        """Define the dispense plate and create an instance of the
+        Dispense plate class
+        """
+
+        self.dplate = DispensePlate(self.zc, array_file)
+        self.pipettor_cfg = hardware_dir / 'picker_config.json'
+        self.dplate.set_calib_pts(pipettor_cfg=self.pipettor_cfg)
+        self.dplate.load_wells(xflip=True)
+    
     def draw(self):
         """Sends Draw function command to valve controller
         This is use to aspirate with pipette

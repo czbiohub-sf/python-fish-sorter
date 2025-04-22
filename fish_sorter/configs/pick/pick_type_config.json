@@ -32,7 +32,7 @@
                 "description": "Indicates multiple fish in a well"
             },
             "singlet": {
-                "key": "f",
+                "key": "s",
                 "preset": false,
                 "description": "Indicates a single fish. This will be used to select those for feature classification"
             },
