@@ -7,6 +7,7 @@ import os
 import pandas as pd
 import sys
 from datetime import datetime
+import matplotlib.pyplot as plt
 from napari.components.viewer_model import ViewerModel
 from napari.layers import Image
 from napari.qt import QtViewer
@@ -108,9 +109,6 @@ class Classify():
         self.feature_widget = None
         self.extract_fish(pts)
         self._find_fish_widget(pts)
-
-        if self.picking == 'larvae':
-            self.find_orientation()
     
         self.current_well = 0
         self.classify_widget = self._create_classify()
@@ -329,28 +327,34 @@ class Classify():
         :type padding: int
         """
 
+        # TODO figure out padding
+
         width = int(round(self.iplate.wells["array_design"]["slot_length"] / PIXEL_SIZE_UM))
         height = int(round(self.iplate.wells["array_design"]["slot_width"] / PIXEL_SIZE_UM))
+        logging.info(f'Original well width x height (px): {width} x {height}')
 
-        padded_height = height + 2 * padding
         padded_width = width + 2 * padding
+        padded_height = height + 2 * padding
+        logging.info(f'Padded mask size (px): {padded_width} x {padded_height}')
+        
         self.mask = np.zeros((padded_height, padded_width), dtype=bool)
         
         if self.iplate.wells["array_design"]["well_shape"] == "rectangular_array":
             start_row, start_col = padding, padding
-            rr, cc = draw.rectangle(start=(start_row, start_col), extent=(height, width))
+            rr, cc = draw.rectangle(start=(start_row, start_col), extent=(height, width), shape=self.mask.shape)
         else:
             center = (padded_height // 2, padded_width // 2)
             radius = min(height, width) // 2  
-            rr, cc = draw.disk(center, radius)
+            rr, cc = draw.disk(center, radius, shape=self.mask.shape)
 
         self.mask[rr, cc] = True
+        logging.info(f'Mask created with shape {self.mask.shape}')
     
     def _extract_wells(self, points, img_flag: bool=True, mask_layer: str=None, sigma: float=0.25) -> dict:
         """Cuts a well centered around the points in the points layer of the image
         of the size defined in the array and displays the image layer
 
-        :param points: x, y coordinates for center location points defining the well locations
+        :param points: array of (y, x) coordinates (row, col) for well centers
         :type points: numpy points
 
         :param img_flag: option whether to use the image layers or to create the binary image mask 
@@ -368,7 +372,10 @@ class Classify():
         """
 
         mask_height, mask_width = self.mask.shape
+        logging.info(f'Extract well shape {self.mask.shape}')
+
         half_mask_height, half_mask_width = mask_height // 2, mask_width // 2
+
 
         if img_flag:
             image_layers = [{'data': layer.data, 'name': layer.name} for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)]
@@ -492,6 +499,10 @@ class Classify():
         self.points_layer.mode = 'select'
         self.current_wells = singlets_idxs[0]
 
+        if self.picking == 'larvae':
+            logging.info('Determining fish orientation for picking larvae')
+            self.find_orientation()
+
     def find_orientation(self):
         """Determines orientation to select side of well for picking
         """
@@ -501,14 +512,13 @@ class Classify():
 
         for fish in single:
 
+            logging.info(f'Fish {fish}')
             if fish >= len(self.well_extract):
+                logging.info(f'Skipping fish {fish}: out of bounds for well extraction')
                 continue
             well_data = self.well_extract[fish]
             channels = list(well_data.values())
-
-            #TODO figure out right datatype
-            
-            well_total = np.zeros_like(channels[0], dtype=np.uint16)
+            well_total = np.zeros_like(channels[0], dtype=np.float32)
             for channel in channels:
                 well_total += channel
             well_total /= len(channels)
@@ -517,9 +527,50 @@ class Classify():
             half_width = width // 2
             left = well_total[:height, :half_width]
             right = well_total[:height, half_width:width]
-            orientation[fish] = np.sum(left) >= np.sum(right)    
+
+            left_sum = np.sum(left)
+            right_sum = np.sum(right)
+
+            orientation[fish] = left_sum >= right_sum
+            logging.info(f'Fish {fish} - Left sum: {left_sum:.1f}, Right sum {right_sum:.1f}, Orientation: {'left' if orientation[fish] else 'right'}')    
 
         self._update_orientation(orientation)
+        # self.plot_crop() #Toggle for crop debugging
+    
+    def plot_crop(self):
+        """Plots the cropped images for debugging
+        """
+
+        single = [i for i, val in enumerate(self.points_layer.features['singlet']) if val]
+
+        for idx in single:
+            if idx >= len(self.well_extract):
+                continue
+            well_data = self.well_extract[idx]
+            channels = list(well_data.values())
+
+            if not channels:
+                continue
+
+            avg_img = np.mean(np.stack(channels), axis=0)
+            height, width = avg_img.shape
+            half_width = width //2
+            left = avg_img[:, :half_width]
+            right = avg_img[:, half_width:]
+
+            fig, axs = plt.subplots(1, 3, figsize=(12,4))
+            fig.suptitle(f'Well #{idx}')
+
+            axs[0].imshow(avg_img, cmap='gray')
+            axs[0].set_title('Avg well image')
+            axs[1].imshow(left, cmap='grey')
+            axs[1].set_title('Left half')
+            axs[2].imshow(right, cmap='grey')
+            axs[2].set_title('Right half')
+
+            for ax in axs:
+                ax.axis('off')
+            plt.show()
     
     def _update_orientation(self, orientation=List[int]):
         """Updates the feature classification for the found fish and orientation
@@ -655,6 +706,9 @@ class Classify():
                     contrast_limits=contrast_limits,
                     name=f'{layer_name}'
                 )
+
+                # TODO make sure the zoom is correct
+                viewer_model.camera.zoom = 1
                 container_layout.addWidget(qt_viewer)
                 container.setLayout(container_layout)
                 splitter.addWidget(container)
@@ -860,9 +914,9 @@ class FishFinderWidget(QWidget):
         self.sigma_label = QLabel('Sigma')
         self.sigma_spin = QDoubleSpinBox()
         self.sigma_spin.setMinimum(0.1)
-        self.sigma_spin.setMaximum(10)
+        self.sigma_spin.setMaximum(100)
         self.sigma_spin.setSingleStep(0.1)
-        self.sigma_spin.setValue(0.25)
+        self.sigma_spin.setValue(15)
         layout.addWidget(self.sigma_label)
         layout.addWidget(self.sigma_spin)
         self.run_button = QPushButton('Find Fish')
@@ -908,7 +962,7 @@ class ContrastWidget(QWidget):
             if isinstance(layer, napari.layers.Image):
                 self.add_layer_control(layer)
 
-    def add_layer_control(self, layer, setpoint=30.0, scale=100.0):
+    def add_layer_control(self, layer, setpoint=20.0, scale=100.0):
         layer_layout = QHBoxLayout()
         label = QLabel(f'{layer.name} sigma:')
         slider = QSlider(Qt.Horizontal)

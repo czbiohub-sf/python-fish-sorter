@@ -6,11 +6,19 @@ from time import sleep
 from typing import List, Optional, Union
 
 from pymmcore_plus import CMMCorePlus
-from qtpy.QtCore import QSize, Qt
+from qtpy.QtCore import (
+    QSize,
+    Qt
+)
+from PyQt6.QtCore import (
+    pyqtSignal,
+    QThread
+)
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QComboBox, 
-    QGridLayout, 
+    QGridLayout,
+    QHBoxLayout, 
     QLabel, 
     QPushButton, 
     QSizePolicy, 
@@ -78,7 +86,7 @@ class Picking(QWidget):
         layout.addWidget(home, 5, 1)
         layout.addWidget(draw, 6, 0)
         layout.addWidget(expel, 6, 1)
-        layout.addWidget(ppp, 7, 2)
+        layout.addWidget(ppp, 6, 2)
         layout.addWidget(pw, 8, 0)
         layout.addWidget(disconnect, 8, 1)
      
@@ -318,8 +326,9 @@ class ChangeTimeWidget(QWidget):
 
         self.time_spinbox = QSpinBox()
         self.time_spinbox.setRange(0, 1000)
-        self.time_spinbox.setSuffix(" ms")
         layout.addWidget(self.time_spinbox, 1, 0)
+        unit_label = QLabel('ms')
+        layout.addWidget(unit_label, 1, 1)
 
         self.change_draw_button = QPushButton('Change Draw Time')
         self.change_draw_button.clicked.connect(self._change_draw)
@@ -424,6 +433,33 @@ class PipettePressureWidget(QPushButton):
         self.pressure_state = not self.pressure_state
         self.picking.pick.pp.pressure(self.pressure_state)
 
+class PickerThread(QThread):
+    """Thread picking so that live preview stay on
+    """
+
+    status_update = pyqtSignal(str)
+    picking_done = pyqtSignal()
+
+    def __init__(self, picking, parent = None):
+        super().__init__(parent=parent)
+        self.picking = picking
+    
+    def run(self):
+
+        try:
+            self.status_update.emit('Start Picking Thread')
+            self.picking.pick.get_classified()
+            self.status_update.emit('Matching to pick parameters')
+            self.picking.pick.match_pick()
+            self.status_update.emit('Start of picking')
+            self.picking.pick.pick_me()
+            self.status_update.emit('Picking complete!')
+        except Exception as e:
+            self.status_update.emit(f'Exepction {str(e)}')
+        finally:
+            self.picking_done.emit()
+
+
 class PickWidget(QPushButton):
     """A push button widget to start picking
     """
@@ -446,16 +482,29 @@ class PickWidget(QPushButton):
         self.clicked.connect(self._start_picking) 
     
     def _start_picking(self):
+
+        self._mmc.live_mode = True
         
         if self.picking.pick_calib and self.picking.disp_calib:
-            logging.info('Opening classifications')
-            self.picking.pick.get_classified()
-            logging.info('Matching to pick parameters')
-            self.picking.pick.match_pick()
-            logging.info('Start of picking')
-            self.picking.pick.pick_me()
+            self.thread = PickerThread(self.picking)
+            self.thread.status_update.connect(self._update_status)
+            self.thread.picking_done.connect(self._picking_finished)
+            self.thread.start()
         else:
             logging.info('Pipette not calibrated')
+
+    def _update_status(self, msg):
+        """Helper to update logging
+        """
+
+        logging.info(f'{msg}')
+
+    def _picking_finished(self):
+        """Helper to update logging on thread
+        """
+
+        logging.info('Picker thread finished')
+
 
 class DisconnectWidget(QPushButton):
     """A push button widget to disconnect hardware

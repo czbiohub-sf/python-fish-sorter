@@ -43,6 +43,7 @@ class ImageWidget(QWidget):
         
     def _create_crosshairs(self):
 
+        self.viewer.reset_view()
         preview_layer = None
         for layer in self.viewer.layers:
             if layer.name == 'preview':
