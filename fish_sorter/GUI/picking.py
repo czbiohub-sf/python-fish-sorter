@@ -118,14 +118,14 @@ class Pick():
                         self.class_file = pd.read_csv(file_path)
                         logging.info('Loaded {}'.format(filename))
                     elif 'pickable.csv' in filename:
-                        pickable_files.apped(file_path)
+                        pickable_files.append(file_path)
                 except FileNotFoundError:
                     logging.critical("File not found")
 
         if pickable_files:
             pickable_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
             latest_pickable_file = pickable_files[0]
-            self.pick_param_file.pd.read_csv(latest_pickable_file)
+            self.pick_param_file = pd.read_csv(latest_pickable_file)
             logging.info('Loaded latest pickable file: {os.path.basename(latest_pickable_file)}')
             logging.info(f'{self.pick_param_file}')
         else:

@@ -51,6 +51,7 @@ class PickingPipette():
         self.disp_h = self.hardware_data['picker_config']['pipette']['stage']['dispense']['p']
 
         self.dplate_array = array_file
+        self.pipettor_cfg = hardware_dir / 'picker_config.json'
 
         if zc is None:
             self.connect()
@@ -103,8 +104,7 @@ class PickingPipette():
         Dispense plate class
         """
 
-        self.dplate = DispensePlate(self.zc, array_file)
-        self.pipettor_cfg = hardware_dir / 'picker_config.json'
+        self.dplate = DispensePlate(self.zc, self.dplate_array)
         self.dplate.set_calib_pts(pipettor_cfg=self.pipettor_cfg)
         self.dplate.load_wells(xflip=True)
     

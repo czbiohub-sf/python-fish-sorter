@@ -82,17 +82,18 @@ class Picking(QWidget):
         layout.addWidget(move2pick, 2, 0)
         layout.addWidget(move2disp, 2, 1)
         layout.addWidget(move2clear, 2, 2)
-        layout.addWidget(move_pipette, 3, 0)
-        layout.addWidget(time, 4, 0)
-        layout.addWidget(img, 5, 0)
-        layout.addWidget(home, 5, 1)
+        layout.addWidget(img, 3, 0)
+        layout.addWidget(home, 3, 1)
+        layout.addWidget(move_pipette, 4, 0)
+
+        layout.addWidget(time, 5, 0)
         layout.addWidget(draw, 6, 0)
         layout.addWidget(expel, 6, 1)
         layout.addWidget(ppp, 6, 2)
         layout.addWidget(single, 7, 0)
         layout.addWidget(pw, 8, 0)
-        layout.addWidget(disconnect, 8, 0)
-        layout.addWidget(reset, 8, 2)
+        layout.addWidget(disconnect, 9, 0)
+        layout.addWidget(reset, 9, 1)
 
 
 class PipettePickCalibWidget(QPushButton):
@@ -609,6 +610,7 @@ class ImageWidget(QPushButton):
         self.setText("Move Stages to Image")
         self.clicked.connect(self.picking.pick.pp.move_fluor_img)
 
+
 class SinglePickThread(QThread):
     """Thread picking so that live preview stay on during a single pick
     """
@@ -617,22 +619,26 @@ class SinglePickThread(QThread):
     picking_done = pyqtSignal()
 
     def __init__(self, picking, parent = None):
+        """Thread for single picking
+
+        :param picking: picking gui class
+        :type picking: pick gui class instance
+        """
+
         super().__init__(parent=parent)
         self.picking = picking
     
-    def run(self, dtime):
+    def run(self):
         """Run the single pick thread
 
-        :param dtime: delay time passed by user input
-        :type dtime: float
         """
 
         try:
             self.status_update.emit('Start Single Pick Thread')
-            self.picking.single_pick(dtime)
+            self.picking.pick.single_pick(self.dtime)
             self.status_update.emit('Single Pick Complete!')
         except Exception as e:
-            self.status_update.emit(f'Exepction {str(e)}')
+            self.status_update.emit(f'Exception {str(e)}')
         finally:
             self.status_update.emit('Finished single pick')
 
@@ -655,17 +661,20 @@ class SinglePickWidget(QWidget):
         layout = QGridLayout(self)
         label = QLabel('Single Pick')
         layout.addWidget(label, 0, 0)
+        delay_label = QLabel('Delay Time')
+        layout.addWidget(delay_label, 1, 0)
 
         self.delay_time_spinbox = QDoubleSpinBox()
-        self.delay_time_spinbox.setRange(0.00, 10..)
+        self.delay_time_spinbox.setRange(0.00, 10.00)
         self.delay_time_spinbox.setSingleStep(0.05)
-        layout.addWidget(self.delay_time_spinbox, 1, 0)
+        self.delay_time_spinbox.setValue(1.00)
+        layout.addWidget(self.delay_time_spinbox, 2, 0)
         unit_label = QLabel('s')
-        layout.addWidget(unit_label, 1, 1)
+        layout.addWidget(unit_label, 2, 1)
 
         self.single_pick_button = QPushButton('Single Pick')
         self.single_pick_button.clicked.connect(self._start_pick)
-        layout.addWidget(self.single_pick_button, 2, 0)
+        layout.addWidget(self.single_pick_button, 3, 0)
 
     def _start_pick(self):
         """Runs the single pick thread
@@ -673,13 +682,12 @@ class SinglePickWidget(QWidget):
 
         self._mmc.live_mode = True
 
-        time = self.delay_time_spinbox.value()
-        logging.info(f'Delay time set to {time} s')
-
         if self.picking.pick_calib and self.picking.disp_calib:
-            self.thread = SinglePickThread(self.picking)
+            self.thread = SinglePickThread(picking = self.picking)
+            self.thread.dtime = self.delay_time_spinbox.value()
+            logging.info(f'Delay time set to {self.thread.dtime} s')
             self.thread.status_update.connect(self._update_status)
-            self.thread.start(dtime=time)
+            self.thread.start()
         else:
             logging.info('Pipette not calibrated')     
 

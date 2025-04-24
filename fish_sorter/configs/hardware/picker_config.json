@@ -1,21 +1,21 @@
 {
     "pipette": {
         "time": {
-            "draw": 25,
-            "expel": 125,
+            "draw": 50,
+            "expel": 150,
             "description": "Time in ms to aspirate or dispense / keep vacuum or pressure open"
         },
         "stage": {
             "pick": {
-                "p": 69,
+                "p": 74.803,
                 "description": "The pipette height to pick, in mm"
-            },    
+            },
             "clearance": {
                 "p": 7.5,
                 "description": "The pipette height to clear the destination plate, in mm"
             },
             "dispense": {
-                "p": 20,
+                "p": 25.671859374999997,
                 "description": "The pipette height to dispense, in mm"
             },
             "pipette_swing": {
@@ -26,7 +26,7 @@
     },
     "fluor_img": {
         "stage": {
-            "p": 7.5,    
+            "p": 7.5,
             "x": 100.0,
             "y": 100.0,
             "description": "The stage positions to image with fluorescence, in mm"

@@ -22,6 +22,8 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget
 )
+from qtpy.QtCore import QTimer
+from tifffile import imwrite
 from typing import overload
 from useq import GridFromEdges, MDASequence
 
@@ -209,20 +211,42 @@ class nmm:
         remove_layers = []
         save_layers = []
         for layer in self.v.layers:
+            logging.info(f'Layer {layer}')
             if layer.name == 'preview' or layer.name == 'crosshairs' or 'ome.zarr' in layer.name or self.expt_prefix in layer.name:
                 remove_layers.append(layer)
             else:
                 save_layers.append(layer)
-        for layer in remove_layers:
+        
+        logging.info(f'Remove Layer List: {remove_layers}')
+        logging.info(f'Save Layer List: {save_layers}')
+
+        self._remove_layers(remove_layers)
+        QTimer.singleShot(500, lambda: self._save_mosaic(save_layers))
+
+    def _remove_layers(self, layers):
+        """Safety remove layers to prevent QT crashes
+
+        :param layers: list of layers to save
+        :type layers: napari layers
+        """
+
+        for layer in layers:
             self.v.layers.remove(layer)
+            logging.info(f'Removed layer {layer}')        
 
-        self.v.reset_view()
+    def _save_mosaic(self, layers):
+        """Saves the mosaic layers safely to prevent QT crashes
+
+        :param layers: list of layers to save
+        :type layers: napari layers
+        """
+
         logging.info('Saving mosaic layers')
-        # self.v.layers.save(path = self.expt_path)
-
-        for layer in save_layers:
+        for layer in layers:
             save_path = Path(self.expt_path) / f"{layer.name}.tif"
-            layer.save(str(save_path))
+            imwrite(save_path, layer.data)
+            logging.info(f'Saved layer {layer}')
+
         logging.info('Ready to classify')
 
 

@@ -1,7 +1,7 @@
 {
     "larvae": {
         "picker": {
-            "length_offset": 700.0,
+            "length_offset": 1652.5,
             "width_offset": 0.0,
             "description": "Pick offset distance from well center in um"
         },
@@ -32,7 +32,7 @@
                 "description": "Indicates multiple fish in a well"
             },
             "singlet": {
-                "key": "s",
+                "key": "f",
                 "preset": false,
                 "description": "Indicates a single fish. This will be used to select those for feature classification"
             },
