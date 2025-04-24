@@ -69,6 +69,12 @@ class Pick():
 
         self.pp.disconnect()
 
+    def reset_hardware(self):
+        """Reset the hardware connection
+        """
+        
+        self.pp.reset()
+
     def move_calib(self, pick: bool=True, well: Optional[str]=None):
         """Checks for calibration of pipette tip height
 
@@ -101,6 +107,9 @@ class Pick():
         """
 
         logging.info('Load classification and picking files')
+
+        pickable_files = []
+
         for filename in os.listdir(self.pick_dir):
             if filename.endswith('.csv'):
                 file_path = os.path.join(self.pick_dir, filename)
@@ -109,20 +118,30 @@ class Pick():
                         self.class_file = pd.read_csv(file_path)
                         logging.info('Loaded {}'.format(filename))
                     elif 'pickable.csv' in filename:
-                        self.pick_param_file = pd.read_csv(file_path)
-                        logging.info('Loaded {}'.format(filename))
-                        logging.info(f'{self.pick_param_file}')
+                        pickable_files.append(file_path)
                 except FileNotFoundError:
                     logging.critical("File not found")
+
+        if pickable_files:
+            pickable_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
+            latest_pickable_file = pickable_files[0]
+            self.pick_param_file = pd.read_csv(latest_pickable_file)
+            logging.info('Loaded latest pickable file: {os.path.basename(latest_pickable_file)}')
+            logging.info(f'{self.pick_param_file}')
+        else:
+            logging.info('No Pickable files founds')
 
         picked_filename = datetime.now().strftime('%Y%m%d_%H%M%S') + '_' + self.prefix + '_picked.csv'
         self.picked_file = os.path.normpath(os.path.join(self.pick_dir, picked_filename))
 
         logging.info('Load image plate calibration and wells')
 
-    def pick_me(self):
+    def pick_me(self, dtime: float=1.00):
         """Performs all actions to pick from the source plate to the destination plate using
         the match list created by match_pick
+
+        :param dtime: delay time in seconds between pipette stage movement and valve control function calls
+        :type dtime: float
         """
 
         logging.info('Begin iterating through pick list')
@@ -140,17 +159,17 @@ class Pick():
             
             self.iplate.go_to_well(self.matches['slotName'][match], offset)
             self.pp.move_pipette('pick')
-            sleep(1)
+            sleep(dtime)
             self.pp.draw()
-            sleep(1)
+            sleep(dtime)
             self.pp.move_pipette('clearance')
             
             self.pp.dplate.go_to_well(self.matches['dispenseWell'][match])
             self.pp.move_pipette('dispense')
             self.pp.expel()
-            sleep(1)
+            sleep(dtime)
             self.pp.expel()
-            sleep(1)
+            sleep(dtime)
             self.pp.move_pipette('clearance')
             self.pp.dest_home()
             logging.info('Picked fish in {} to {}'.format(self.matches['slotName'][match], self.matches['dispenseWell'][match]))
@@ -172,7 +191,6 @@ class Pick():
 
         logging.info('Finished Picking!')
 
-
     def match_pick(self):
         """Matches the desired pick parameters to the classification
         """
@@ -186,3 +204,31 @@ class Pick():
         logging.info('Created pick list')
 
         #TODO future feature: save time and snake through position list?
+
+    def single_pick(self, dtime: float=1.00):
+        """Perform a single pick at the current position
+
+        :param dtime: delay time in seconds between pipette stage movement and valve control function calls
+        :type dtime: float
+        """
+
+        logging.info(f'Begin single pick with delay time {dtime} seconds')
+        self.pp.move_pipette('clearance')
+        self.pp.dest_home()
+        
+        self.pp.move_pipette('pick')
+        sleep(dtime)
+        self.pp.draw()
+        sleep(dtime)
+        self.pp.move_pipette('clearance')
+            
+        self.pp.dplate.go_to_well(self.matches['dispenseWell'][match])
+        self.pp.move_pipette('dispense')
+        self.pp.expel()
+        sleep(dtime)
+        self.pp.expel()
+        sleep(dtime)
+
+        self.pp.move_pipette('clearance')
+        self.pp.dest_home()
+        logging.info('Finished Pick')

@@ -66,12 +66,14 @@ class Picking(QWidget):
         move_pipette = MovePipette(self)
         pw = PickWidget(self)
         disconnect = DisconnectWidget(self)
+        reset = ResetWidget(self)
         
         draw = PipetteDrawWidget(self)
         expel = PipetteExpelWidget(self)
         ppp = PipettePressureWidget(self)
         
         time = ChangeTimeWidget(self)
+        single = SinglePickWidget(self)
 
         layout = QGridLayout(self)
         layout.addWidget(calib_pick, 1, 0)
@@ -80,16 +82,20 @@ class Picking(QWidget):
         layout.addWidget(move2pick, 2, 0)
         layout.addWidget(move2disp, 2, 1)
         layout.addWidget(move2clear, 2, 2)
-        layout.addWidget(move_pipette, 3, 0)
-        layout.addWidget(time, 4, 0)
-        layout.addWidget(img, 5, 0)
-        layout.addWidget(home, 5, 1)
+        layout.addWidget(img, 3, 0)
+        layout.addWidget(home, 3, 1)
+        layout.addWidget(move_pipette, 4, 0)
+
+        layout.addWidget(time, 5, 0)
         layout.addWidget(draw, 6, 0)
         layout.addWidget(expel, 6, 1)
         layout.addWidget(ppp, 6, 2)
+        layout.addWidget(single, 7, 0)
         layout.addWidget(pw, 8, 0)
-        layout.addWidget(disconnect, 8, 1)
-     
+        layout.addWidget(disconnect, 9, 0)
+        layout.addWidget(reset, 9, 1)
+
+
 class PipettePickCalibWidget(QPushButton):
     """A push button widget to calibrate the pick position for the pipette
     """
@@ -117,6 +123,7 @@ class PipettePickCalibWidget(QPushButton):
         self.picking.pick.set_calib(pick=True)
         self.picking.pick_calib = True
 
+
 class PipetteDispCalibWidget(QPushButton):
     """A push button widget to calibrate the dispense position for the pipette
     """
@@ -143,6 +150,7 @@ class PipetteDispCalibWidget(QPushButton):
         logging.info('Calibrate dispense height into destination plate')
         self.picking.pick.set_calib(pick=False)
         self.picking.disp_calib = True              
+
 
 class Pipette2PickWidget(QPushButton):
     """A push button widget to connect to the pipette widget move the pipette to the pick position 
@@ -172,6 +180,7 @@ class Pipette2PickWidget(QPushButton):
         self.picking.pick.move_calib(pick=True)
         self.picking.pick.pp.move_pipette(pos='pick')
 
+
 class Pipette2DispWidget(QPushButton):
     """A push button widget to connect to the pipette widget move the pipette to the dispense position 
 
@@ -198,6 +207,7 @@ class Pipette2DispWidget(QPushButton):
     def _disp_pos(self)->None:
         self.picking.pick.move_calib(pick=False, well='A01')
         self.picking.pick.pp.move_pipette(pos='dispense')
+
 
 class Pipette2ClearWidget(QPushButton):
     """A push button widget to connect to the pipette widget move the pipette to the clearance position 
@@ -226,6 +236,7 @@ class Pipette2ClearWidget(QPushButton):
         
         self.picking.pick.pp.move_pipette(pos='clearance')
 
+
 class Pipette2SwingWidget(QPushButton):
     """A push button widget to connect to the pipette widget move the pipette to the swing position 
 
@@ -252,6 +263,7 @@ class Pipette2SwingWidget(QPushButton):
     def _swing_pos(self)->None:
         
         self.picking.pick.pp.move_pipette(pos='pipette_swing')
+
 
 class MovePipette(QWidget):
     """A widget to move the pipette a user-defined distance"""
@@ -307,6 +319,7 @@ class MovePipette(QWidget):
         logging.info(f'Moving pipette by {dist} {units}')
         self.picking.pick.pp.move_pipette_increment(dist, unit_bool)
 
+
 class ChangeTimeWidget(QWidget):
     """A widget to change the draw and expel times"""
 
@@ -349,7 +362,8 @@ class ChangeTimeWidget(QWidget):
         time = self.time_spinbox.value()
         logging.info(f'Change Expel time to {time} ms')
         self.picking.pick.pp.expel_time(time)
-        
+
+
 class PipetteDrawWidget(QPushButton):
     """A push button widget to connect to the valve controller to actuate the draw function
 
@@ -377,6 +391,7 @@ class PipetteDrawWidget(QPushButton):
         
         self.picking.pick.pp.draw()
 
+
 class PipetteExpelWidget(QPushButton):
     """A push button widget to connect to the valve controller to actuate the expel function
 
@@ -403,7 +418,8 @@ class PipetteExpelWidget(QPushButton):
     def _expel(self)->None:
         
         self.picking.pick.pp.expel()
-        
+
+
 class PipettePressureWidget(QPushButton):
     """A push button widget to connect to the valve controller to toggle the pressure
 
@@ -433,8 +449,9 @@ class PipettePressureWidget(QPushButton):
         self.pressure_state = not self.pressure_state
         self.picking.pick.pp.pressure(self.pressure_state)
 
+
 class PickerThread(QThread):
-    """Thread picking so that live preview stay on
+    """Thread picking so that live preview stay on during full picking
     """
 
     status_update = pyqtSignal(str)
@@ -478,10 +495,10 @@ class PickWidget(QPushButton):
 
     def _create_button(self)->None:
         
-        self.setText("Pick!")
-        self.clicked.connect(self._start_picking) 
+        self.setText("Full Pick!")
+        self.clicked.connect(self._start_full_picking) 
     
-    def _start_picking(self):
+    def _start_full_picking(self):
 
         self._mmc.live_mode = True
         
@@ -527,6 +544,29 @@ class DisconnectWidget(QPushButton):
         self.setText("Disconnect Hardware")
         self.clicked.connect(self.picking.pick.disconnect_hardware) 
 
+
+class ResetWidget(QPushButton):
+    """A push button widget to reset the hardware connection
+    """
+    
+    def __init__(self, picking, parent: QWidget | None=None):
+        
+        super().__init__(parent=parent)
+
+        self.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        )
+
+        self.picking = picking
+        self._mmc = CMMCorePlus.instance()
+        self._create_button()
+
+    def _create_button(self)->None:
+        
+        self.setText("Reset Hardware")
+        self.clicked.connect(self.picking.pick.reset_hardware) 
+
+
 class HomeWidget(QPushButton):
     """A push button widget to move the dispense stages to the home position
     """
@@ -548,6 +588,7 @@ class HomeWidget(QPushButton):
         self.setText("Move Dispense Stages to Home")
         self.clicked.connect(self.picking.pick.pp.dest_home)  
 
+
 class ImageWidget(QPushButton):
     """A push button widget to move the stages for fluorescence imaging
     """
@@ -567,4 +608,91 @@ class ImageWidget(QPushButton):
     def _create_button(self)->None:
         
         self.setText("Move Stages to Image")
-        self.clicked.connect(self.picking.pick.pp.move_fluor_img)  
+        self.clicked.connect(self.picking.pick.pp.move_fluor_img)
+
+
+class SinglePickThread(QThread):
+    """Thread picking so that live preview stay on during a single pick
+    """
+
+    status_update = pyqtSignal(str)
+    picking_done = pyqtSignal()
+
+    def __init__(self, picking, parent = None):
+        """Thread for single picking
+
+        :param picking: picking gui class
+        :type picking: pick gui class instance
+        """
+
+        super().__init__(parent=parent)
+        self.picking = picking
+    
+    def run(self):
+        """Run the single pick thread
+
+        """
+
+        try:
+            self.status_update.emit('Start Single Pick Thread')
+            self.picking.pick.single_pick(self.dtime)
+            self.status_update.emit('Single Pick Complete!')
+        except Exception as e:
+            self.status_update.emit(f'Exception {str(e)}')
+        finally:
+            self.status_update.emit('Finished single pick')
+
+
+class SinglePickWidget(QWidget):
+    """A widget to pick once with the automation at the current stage
+    position
+    """
+
+    def __init__(self, picking, parent: QWidget | None=None):
+        
+        super().__init__(parent=parent)
+
+        self.picking = picking
+        self._mmc = CMMCorePlus.instance()
+        self._create_gui()
+
+    def _create_gui(self):
+
+        layout = QGridLayout(self)
+        label = QLabel('Single Pick')
+        layout.addWidget(label, 0, 0)
+        delay_label = QLabel('Delay Time')
+        layout.addWidget(delay_label, 1, 0)
+
+        self.delay_time_spinbox = QDoubleSpinBox()
+        self.delay_time_spinbox.setRange(0.00, 10.00)
+        self.delay_time_spinbox.setSingleStep(0.05)
+        self.delay_time_spinbox.setValue(1.00)
+        layout.addWidget(self.delay_time_spinbox, 2, 0)
+        unit_label = QLabel('s')
+        layout.addWidget(unit_label, 2, 1)
+
+        self.single_pick_button = QPushButton('Single Pick')
+        self.single_pick_button.clicked.connect(self._start_pick)
+        layout.addWidget(self.single_pick_button, 3, 0)
+
+    def _start_pick(self):
+        """Runs the single pick thread
+        """
+
+        self._mmc.live_mode = True
+
+        if self.picking.pick_calib and self.picking.disp_calib:
+            self.thread = SinglePickThread(picking = self.picking)
+            self.thread.dtime = self.delay_time_spinbox.value()
+            logging.info(f'Delay time set to {self.thread.dtime} s')
+            self.thread.status_update.connect(self._update_status)
+            self.thread.start()
+        else:
+            logging.info('Pipette not calibrated')     
+
+    def _update_status(self, msg):
+        """Helper to update logging
+        """
+
+        logging.info(f'{msg}')

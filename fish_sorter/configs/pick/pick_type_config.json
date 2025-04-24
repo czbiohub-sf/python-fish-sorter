@@ -1,7 +1,7 @@
 {
     "larvae": {
         "picker": {
-            "length_offset": 700.0,
+            "length_offset": 1652.5,
             "width_offset": 0.0,
             "description": "Pick offset distance from well center in um"
         },
