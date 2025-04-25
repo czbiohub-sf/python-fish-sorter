@@ -12,9 +12,10 @@ import matplotlib.pyplot as plt
 from napari.components.viewer_model import ViewerModel
 from napari.layers import Image
 from napari.qt import QtViewer
+from napari.utils.colormaps import Colormap
 from pathlib import Path
 from pymmcore_plus import CMMCorePlus
-from qtpy.QtCore import QSize, Qt
+from qtpy.QtCore import QSize, Qt, QTimer, QThread, QCoreApplication
 from qtpy.QtGui import QColor, QScreen
 from qtpy.QtWidgets import (
     QApplication,
@@ -107,22 +108,21 @@ class Classify():
         for key, feature in self.key_feature_map.items():
             self.viewer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) #Note: set to overwriting standard shortkeys in napari
         
-        self._start_async_extraction()
-        self.extract_fish(pts)
-        self._find_fish_widget(pts)
-    
         self.well_viewers = {}
         self.well_display_layers = {}
         self.feature_labels = {}
         self.current_well = 0
+
+        self.extract_fish(pts)
+        self._find_fish_widget(pts)
+    
         self._create_classify()
-        self._update_well_display()
+        self._start_async_extraction()
+        self._well_disp()
 
         self.prefix = prefix
         self.expt_dir = expt_dir
         self.save_data()
-            
-        napari.run()
 
     def _feat(self):
         """Loads the feature list
@@ -178,7 +178,7 @@ class Classify():
             selected_idxs = list(selected_data)
             selected_idx = selected_idxs[0]
             self.current_well = selected_idx
-            self._update_well_display()
+            self._well_disp()
             self._update_feature_display(self.current_well)
 
     def _selected_current_pt(self):
@@ -212,7 +212,7 @@ class Classify():
             if len(selected_points) > 0:
                 feature_values = self.points_layer.features[feature_name]
                 feature_values[selected_points] = ~feature_values[selected_points]
-                self.points_layer.features[feature_name] = feature_values
+                self.points_layer.features.loc[:, feature_name] = feature_values
 
                 if feature_name in self.deselect_rules and feature_values[selected_points].iloc[0]:
                     for feat in self.deselect_rules[feature_name]:
@@ -221,6 +221,7 @@ class Classify():
                         self.points_layer.features[feat] = feature_values
                                             
             self.points_layer.refresh_colors(update_color_mapping=False)
+            self._update_feature_display(self.current_well)
             self.points_layer.mode = 'select'
 
         return _toggle_annotation
@@ -249,6 +250,8 @@ class Classify():
                 class_df.rename(columns={'Well': 'slotName'}, inplace=True)
 
             boolean_columns = class_df.select_dtypes(include='bool').columns
+            logging.info(f"Converting boolean columns to int: {list(boolean_columns)}")
+
             class_df[boolean_columns] = class_df[boolean_columns].astype(int)
 
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -303,7 +306,7 @@ class Classify():
         self._refreshing = True
 
         try:
-            new_data = self.points()
+            new_data = self._points()
             if not np.array_equal(self.points_layer.data, new_data):
                 self.points_layer.data = new_data
             self.points_layer.refresh_colors(update_color_mapping=False)
@@ -364,7 +367,7 @@ class Classify():
 
         try:
             self.well_extract = future.result()
-            self._update_well_display()
+            self._well_disp()
         except Exception as e:
             logging.error(f'Well extraction failed: {e}')
 
@@ -374,9 +377,9 @@ class Classify():
 
         points = self._points()
         self._well_mask()
-        return self._extract_wells(points, parallel = True, img_flag=True)
+        return self._extract_wells(points, img_flag=True, parallel=True)
     
-    def _extract_wells(self, points, img_flag: bool=True, mask_layer: str=None, sigma: float=0.25, parallel: bool=False) -> dict:
+    def _extract_wells(self, points, img_flag: bool=True, mask_layer: str=None, parallel: bool=False, sigma: float=0.25) -> dict:
         """Cuts a well centered around the points in the points layer of the image
         of the size defined in the array and displays the image layer
 
@@ -387,10 +390,10 @@ class Classify():
         :type img_flag: bool 
         :param mask_layer: layer to use to find fish, default None will use all layers
         :type layer_name: str
+        :param parallel: whether to use parallel processing
+        :type parallel: bool
         :param sigma: number of standard deviations from mean for thresholding the mask
         :type sigma: float
-        :parama parallel: whether to use parallel processing
-        :type parallel: bool
 
         :return: layer name, extracted region for each layer for each point
         :rtype: dict 
@@ -501,10 +504,10 @@ class Classify():
         if reset:
             empty = self.points_layer.features['empty']
             empty[:] = True
-            self.points_layer.features['empty'] = empty
+            self.points_layer.features.loc[:, 'empty'] = empty
             for feat in self.deselect_rules['empty']:
                 self.points_layer.features.loc[empty, feat] = False
-        img_data = self._extract_wells(points, img_flag=False, mask_layer=layer_name, sigma, parallel=True)
+        img_data = self._extract_wells(points, img_flag=False, mask_layer=layer_name, parallel=True, sigma=sigma)
         wells_data = [list(region.values())[0].mean() for region in img_data]
         well_mean = np.mean(wells_data)
         well_class = [region_mean > well_mean for region_mean in wells_data]
@@ -529,7 +532,7 @@ class Classify():
         singlets = self.points_layer.features['singlet']
         singlets[wells] = True
         singlets_idxs = np.where(singlets)[0]
-        self.points_layer.features['singlet'] = singlets
+        self.points_layer.features.loc[:, 'singlet'] = singlets
         for feat in self.deselect_rules['singlet']:
             self.points_layer.features.loc[singlets, feat] = False                                 
         self.refresh()
@@ -619,10 +622,11 @@ class Classify():
         :type orientation: List[int]
         """
 
-        for idx, orient in orientation.items():
-            self.points_layer.features['lHead'][idx] = orient
+        for idx, head in orientation.items():
+            self.points_layer.features.loc[idx, 'lHead'] = head
         self.refresh()
         self.points_layer.mode = 'select'
+        logging.info('Ready for individual fish classification')
 
     def _find_fish_widget(self, points):
         """Call back widget to use to detect wells with fish
@@ -650,6 +654,7 @@ class Classify():
         self.well_disp_layout = QVBoxLayout(self.well_disp_container) 
         self.classify_layout.addWidget(self.well_disp_container)
 
+        self.feature_widget = QWidget()
         feature_layout = QGridLayout()
         feature_layout.addWidget(QLabel('Feature'), 0, 0)
         feature_layout.addWidget(QLabel('Classification'), 0, 1)
@@ -664,7 +669,7 @@ class Classify():
             key_label = QLabel(key_map.get(feature_name, " "))
 
             feature_layout.addWidget(QLabel(feature_name), row, 0)
-            feature_layoue.addWidget(value_label, row, 1)
+            feature_layout.addWidget(value_label, row, 1)
             feature_layout.addWidget(key_label, row, 2)
 
             self.feature_labels[feature_name] = (value_label, key_label)
@@ -676,6 +681,49 @@ class Classify():
         self.viewer.bind_key("Right", self._next_well)
         self.viewer.bind_key("Left", self._previous_well)
     
+    def _create_viewer(self, layer_name, masked_region):
+        """Make side viewer on main thread
+
+        :param layer_name: name of layer
+        :type layer_name: str
+        :param masked_region: well region for display
+        :type masked_region: numpy array
+        """
+
+        logging.info(f"[Viewer CREATE] {layer_name}, shape={masked_region.shape}")
+
+        def _create():
+            
+            viewer_model = ViewerModel(title = layer_name)
+            viewer = QtViewerWrap(self.viewer, viewer_model)
+            color = self._get_color(layer_name)
+            well_layer = viewer_model.add_image(
+                masked_region,
+                colormap=color,
+                contrast_limits=(masked_region.min(), masked_region.max()),
+                name=layer_name,
+            )
+            main_layer = self._get_main_layer(layer_name)
+            if main_layer is not None:
+                def update_contrast(event, m=main_layer, w=well_layer):
+                    w.contrast_limits = m.contrast_limits
+                self.contrast_callbacks[layer_name] = update_contrast
+                main_layer.events.contrast_limits.connect(update_contrast)    
+            viewer_model.camera.zoom = 1
+            self.well_viewers[layer_name] = viewer
+            self.well_display_layers[layer_name] = well_layer
+            
+            container = QWidget()
+            container_layout = QVBoxLayout()
+            container_layout.addWidget(QLabel(layer_name))
+            container_layout.addWidget(viewer)
+            container.setLayout(container_layout)
+            self.well_disp_layout.addWidget(container)
+            
+            logging.info(f"[Viewer ADD] Added {layer_name} viewer to layout")
+
+        QTimer.singleShot(0, _create)
+
     def _get_color(self, layer):
         """Helper to select the color from the layer
 
@@ -683,12 +731,12 @@ class Classify():
         :type layer: str
         """
 
-        if layer_name == 'GFP':
-            color = 'green'
-        elif layer_name == 'TXR':
-            color = 'red'
+        if layer == 'GFP':
+            return Colormap([[0, 0, 0], [0, 1, 0]], name='GFP-green')
+        elif layer == 'TXR':
+            return Colormap([[0, 0, 0], [1, 0, 0]], name='TXR-red')
         else:
-            color = 'grey'
+            return Colormap([[0, 0, 0], [0.5, 0.5, 0.5]], name='gray')
     
     def _next_well(self, event=None):
         """Updates the viewer window with the next well when the right arrow key is pressed
@@ -714,7 +762,7 @@ class Classify():
                 next_idx = np.where(singlet_idxs == next_idxs[0])[0][0]
         
         self.current_well = singlet_idxs[next_idx]
-        self._update_well_display()
+        self._well_disp()
         self._refocus_viewer()
         self._select_current_point()
         self._update_feature_display(self.current_well)
@@ -743,18 +791,26 @@ class Classify():
             else:
                 prev_idx = np.where(singlet_idxs == prev_idxs[-1])[0][0]
         self.current_well = singlet_idxs[prev_idx]
-        self._update_well_display()
+        self._well_disp()
         self._refocus_viewer()
         self._select_current_point()
         self._update_feature_display(self.current_well)
         self._selected_current_pt()
-        
+
+    def _well_disp(self):
+        """Force _update_well_display to run on main thread
+        """
+
+        QTimer.singleShot(0, self._update_well_display)
+
     def _update_well_display(self):
         """Updates the side Classify viewer with a new well
         """
 
         if not hasattr(self, 'well_extract'):
             return
+
+        logging.info(f"UPDATE WELL DISPLAY MAIN THREAD: {QThread.currentThread() == QCoreApplication.instance().thread()}")
 
         point_region = self.well_extract[self.current_well]
 
@@ -770,38 +826,20 @@ class Classify():
                 continue
 
             if layer_name in self.well_display_layers:
-                well_layer = self.well_display_layers[layer_name]
+                well_layer = self.well_display_layers[layer_name] 
+                viewer = self.well_viewers[layer_name]
                 well_layer.data = masked_region
                 well_layer.refresh()
+                well_layer.events.data()
                 
-                if layer_name not in self.contrast_callbacks:
-                    main_layer = self._get_main_layer(layer_name)
-                    if main_layer is not None:
-                        def update_contrast(event, m=main_layer, w=well_layer):
-                            w.contrast_limits = m.contrast_limits
-                        self.contrast_callbacks[layer_name] = update_contrast
-                        main_layer.events.contrast_limits.connect(update_contrast)     
-                viewer = self.well_viewers[layer_name]           
+                container = QWidget()
+                container_layout = QVBoxLayout()
+                container_layout.addWidget(QLabel(layer_name))
+                container_layout.addWidget(viewer)
+                container.setLayout(container_layout)
+                self.well_disp_layout.addWidget(container)             
             else:
-                viewer_model = ViewerModel(title = layer_name)
-                viewer = QtViewerWrap(self.viewer, viewer_model)
-                color = self._get_color(layer_name)
-                well_layer = viewer_model.add_image(
-                    masked_region,
-                    colormap=color,
-                    contrast_limits=(masked_region.min(), masked_region.max()),
-                    name=layer_name,
-                )
-                viewer_model.camera.zoom = 1
-                self.well_viewers[layer_name] = viewer
-                self.well_display_layers[layer_name] = well_layer
-            
-            container = QWidget()
-            container_layout = QVBoxLayout()
-            container_layout.addWidget(QLabel(layer_name))
-            container_layout.addWidget(viewer)
-            container.setLayout(container_layout)
-            self.well_disp_layout.addWidget(container)
+                self._create_viewer(layer_name, masked_region)
 
         self._update_feature_display(self.current_well)
 
@@ -815,7 +853,7 @@ class Classify():
         :type well: int
         """
 
-        for feature_name, (value_label, ) in self.feature_labels.items():
+        for feature_name, (value_label, key_label) in self.feature_labels.items():
             feature_value = self.points_layer.features[feature_name][well]
             value_label.setText(str(feature_value))
             if isinstance(feature_value, (bool, np.bool_)):

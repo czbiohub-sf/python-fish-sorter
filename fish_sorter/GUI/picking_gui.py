@@ -56,7 +56,9 @@ class Picking(QWidget):
         self.disp_calib = False
         
         calib_pick = PipettePickCalibWidget(self)
+        self.pick_calib_status = QLabel('❌ Pick Not Calibrated')
         calib_disp = PipetteDispCalibWidget(self)
+        self.disp_calib_status = QLabel('❌ Disp Not Calibrated')
         move2pick = Pipette2PickWidget(self)
         move2disp = Pipette2DispWidget(self)
         move2clear = Pipette2ClearWidget(self)
@@ -77,6 +79,7 @@ class Picking(QWidget):
 
         layout = QGridLayout(self)
         layout.addWidget(calib_pick, 1, 0)
+        layout.addWidget(self.pick_calib_status, 1, 3)
         layout.addWidget(calib_disp, 1, 1)
         layout.addWidget(move2swing, 1, 2)
         layout.addWidget(move2pick, 2, 0)
@@ -84,16 +87,33 @@ class Picking(QWidget):
         layout.addWidget(move2clear, 2, 2)
         layout.addWidget(img, 3, 0)
         layout.addWidget(home, 3, 1)
-        layout.addWidget(move_pipette, 4, 0)
+        layout.addWidget(self.pick_calib_status, 4, 0)
+        layout.addWidget(self.disp_calib_status, 4, 1)
+        self._update_calib_status()
+        
+        layout.addWidget(move_pipette, 5, 0)
+        layout.addWidget(time, 6, 0)
+        layout.addWidget(draw, 7, 0)
+        layout.addWidget(expel, 7, 1)
+        layout.addWidget(ppp, 7, 2)
+        layout.addWidget(single, 8, 0)
+        layout.addWidget(pw, 9, 0)
+        layout.addWidget(disconnect, 10, 0)
+        layout.addWidget(reset, 10, 1)
 
-        layout.addWidget(time, 5, 0)
-        layout.addWidget(draw, 6, 0)
-        layout.addWidget(expel, 6, 1)
-        layout.addWidget(ppp, 6, 2)
-        layout.addWidget(single, 7, 0)
-        layout.addWidget(pw, 8, 0)
-        layout.addWidget(disconnect, 9, 0)
-        layout.addWidget(reset, 9, 1)
+    def _update_calib_status(self):
+        """Update the GUI that the pick and or dispense heights
+        are calibrated
+        """
+        
+        if self.pick_calib:
+            self.pick_calib_status.setText('✅ Pick Calibrated')
+        else:
+            self.pick_calib_status.setText('❌ Pick Not Calibrated')
+        if self.disp_calib:
+            self.disp_calib_status.setText('✅ Disp Calibrated')
+        else:
+            self.disp_calib_status.setText('❌ Disp Not Calibrated')
 
 
 class PipettePickCalibWidget(QPushButton):
@@ -122,6 +142,7 @@ class PipettePickCalibWidget(QPushButton):
         logging.info('Calibrate pick height into array')
         self.picking.pick.set_calib(pick=True)
         self.picking.pick_calib = True
+        self.picking._update_calib_status()
 
 
 class PipetteDispCalibWidget(QPushButton):
@@ -149,7 +170,8 @@ class PipetteDispCalibWidget(QPushButton):
 
         logging.info('Calibrate dispense height into destination plate')
         self.picking.pick.set_calib(pick=False)
-        self.picking.disp_calib = True              
+        self.picking.disp_calib = True         
+        self.picking._update_calib_status()     
 
 
 class Pipette2PickWidget(QPushButton):
