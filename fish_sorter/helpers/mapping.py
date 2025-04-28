@@ -42,8 +42,6 @@ class Mapping:
         with open(array_file) as f:
             self.plate_data = json.load(f)
 
-        logging.info(f'plate data: {self.plate_data}')
-
         # TODO save TL/BR locations in experiment savefile
 
     @abstractmethod
@@ -101,14 +99,9 @@ class Mapping:
     def load_wells(self, grid_list=None, xflip=False, yflip=False):
 
         if grid_list is not None:
-            logging.info(f'GRID LIST\n {grid_list}')
             um_TL_array_to_TL_mosaic = self.um_TL - grid_list[0, 0, 1:3]
-            logging.info(f'OFFSET DIFF from {grid_list[0, 0, 1:3]} to {self.um_TL} = {um_TL_array_to_TL_mosaic}')
-            logging.info(f'INITIAL CENTER TO CORNER OFFSET = {self.px_center_to_corner_offset}')
             self.px_center_to_corner_offset += (um_TL_array_to_TL_mosaic / PIXEL_SIZE_UM)
-            logging.info(f'DIFF IN PX = {(um_TL_array_to_TL_mosaic / PIXEL_SIZE_UM)}')
-            logging.info(f'TOTAL CENTER TO CORNER OFFSET = {self.px_center_to_corner_offset}')
-
+            
         # Load metadata
         well_names = self.plate_data['wells']['well_names']
         unformatted_well_pos = np.array(self.plate_data['wells']['well_coordinates'])
@@ -138,7 +131,6 @@ class Mapping:
             "actual_abs_um": actual_abs_um,
             "actual_px": px_pos, # NOTE px is unused for dispense plate
         }
-        logging.info(f'wells {self.wells}')
 
     def get_well_id(self, well_name: str):
         return self.wells['names'].index(well_name)

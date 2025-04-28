@@ -15,7 +15,7 @@ from napari.qt import QtViewer
 from napari.utils.colormaps import Colormap
 from pathlib import Path
 from pymmcore_plus import CMMCorePlus
-from qtpy.QtCore import QSize, Qt, QTimer, QThread, QCoreApplication
+from qtpy.QtCore import QSize, Qt, QThread, QTimer
 from qtpy.QtGui import QColor, QScreen
 from qtpy.QtWidgets import (
     QApplication,
@@ -215,13 +215,13 @@ class Classify():
             selected_points = list(self.points_layer.selected_data)
             if len(selected_points) > 0:
                 feature_values = self.points_layer.features[feature_name]
-                feature_values.loc[selected_points] = ~feature_values[selected_points]
+                feature_values.loc[selected_points] = ~feature_values.loc[selected_points]
                 self.points_layer.features.loc[:, feature_name] = feature_values
 
                 if feature_name in self.deselect_rules and feature_values[selected_points].iloc[0]:
                     for feat in self.deselect_rules[feature_name]:
                         feature_values = self.points_layer.features[feat]
-                        feature_values[selected_points] = False
+                        feature_values.loc[selected_points] = False
                         self.points_layer.features[feat] = feature_values
                                             
             self.points_layer.refresh_colors(update_color_mapping=False)
@@ -236,14 +236,13 @@ class Classify():
 
         self.class_btn = QPushButton("Save Classification")
 
-        save_widget = QWidget()
-        layout = QGridLayout(save_widget)  
+        self.save_widget = QWidget()
+        layout = QGridLayout(self.save_widget)  
         layout.addWidget(self.class_btn, 1, 0)
-    
-        self.save_widget = self.viewer.window.add_dock_widget(save_widget, name= 'Save', area='left', tabify=True)
+        self.viewer.window.add_dock_widget(self.save_widget, name= 'Save', area='left', tabify=True)
 
         if hasattr(self, 'fish_widget'):
-            self.fish_widget.raise_()
+            QTimer.singleShot(50, lambda: self.viewer.window._dock_widgets[self.fish_widget_name].raise_())
 
         def _save_it():
             """Saves the classification data from the points layer to csv on button press
@@ -257,8 +256,6 @@ class Classify():
                 class_df.rename(columns={'Well': 'slotName'}, inplace=True)
 
             boolean_columns = class_df.select_dtypes(include='bool').columns
-            logging.info(f"Converting boolean columns to int: {list(boolean_columns)}")
-
             class_df[boolean_columns] = class_df[boolean_columns].astype(int)
 
             timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
@@ -341,12 +338,9 @@ class Classify():
 
         width = int(round(self.iplate.wells["array_design"]["slot_length"] / PIXEL_SIZE_UM))
         height = int(round(self.iplate.wells["array_design"]["slot_width"] / PIXEL_SIZE_UM))
-        logging.info(f'Original well width x height (px): {width} x {height}')
 
         padded_width = width + 2 * padding
         padded_height = height + 2 * padding
-        logging.info(f'Padded mask size (px): {padded_width} x {padded_height}')
-        
         self.mask = np.zeros((padded_height, padded_width), dtype=bool)
         
         if self.iplate.wells["array_design"]["well_shape"] == "rectangular_array":
@@ -358,7 +352,6 @@ class Classify():
             rr, cc = draw.disk(center, radius, shape=self.mask.shape)
 
         self.mask[rr, cc] = True
-        logging.info(f'Mask created with shape {self.mask.shape}')
     
     def _start_async_extraction(self):
         """Thread for well extraction
@@ -422,9 +415,6 @@ class Classify():
                 layer_name = raw_layers[0].name
             else:
                 raw_layers = [layer for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)]
-               
-                #TODO figure out right datatype
-
                 raw_data = np.zeros_like(raw_layers[0].data, dtype=np.uint16)
                 for layer in raw_layers:
                     raw_data += layer.data
@@ -433,9 +423,6 @@ class Classify():
             mask_std = raw_data.std()
             thresh = mask_mean + sigma * mask_std
             binary_mask = raw_data > thresh
-            
-            #TODO figure out right datatype
-
             image_layers = [{'data': binary_mask.astype(np.uint8), 'name': layer_name}]
     
         def _extract_point(point):
@@ -560,7 +547,6 @@ class Classify():
             """Helper to parallelize orienataion computation
             """
 
-            logging.info(f'Fish {fish}')
             if fish >= len(self.well_extract):
                 logging.info(f'Skipping fish {fish}: out of bounds for well extraction')
                 return fish, None
@@ -644,8 +630,11 @@ class Classify():
 
         def find_fish_callback(layer_name: str, sigma: float):
             self.find_fish(points, layer_name, sigma, drop=False)
-        fish_widget = FishFinderWidget(self.viewer, find_fish_callback)
-        self.fish_widget = self.viewer.window.add_dock_widget(fish_widget, name= 'Finding Nemo', area='left')
+        self.fish_widget = FishFinderWidget(self.viewer, find_fish_callback)
+        self.fish_widget_name = 'Finding Nemo'
+        self.viewer.window.add_dock_widget(self.fish_widget, name=self.fish_widget_name, area='left')
+        minmax_wgt = self.viewer.window._dock_widgets['MinMax']
+        self.viewer.window._qt_window.tabifyDockWidget(self.viewer.window._dock_widgets[self.fish_widget_name], minmax_wgt)
     
     def _create_classify(self):
         """Classification side widget with key bindings and well viewer windows
@@ -697,8 +686,6 @@ class Classify():
         :type masked_region: numpy array
         """
 
-        logging.info(f"[Viewer CREATE] {layer_name}, shape={masked_region.shape}")
-
         def _create():
             
             viewer_model = ViewerModel(title = layer_name)
@@ -716,7 +703,7 @@ class Classify():
                     w.contrast_limits = m.contrast_limits
                 self.contrast_callbacks[layer_name] = update_contrast
                 main_layer.events.contrast_limits.connect(update_contrast)    
-            viewer_model.camera.zoom = 1
+            viewer_model.camera.zoom = 0.95
             self.well_viewers[layer_name] = viewer
             self.well_display_layers[layer_name] = well_layer
             
@@ -727,8 +714,6 @@ class Classify():
             container.setLayout(container_layout)
             self.well_disp_layout.addWidget(container)
             
-            logging.info(f"[Viewer ADD] Added {layer_name} viewer to layout")
-
         QTimer.singleShot(0, _create)
 
     def _get_color(self, layer):
@@ -817,8 +802,6 @@ class Classify():
         if not hasattr(self, 'well_extract'):
             return
 
-        logging.info(f"UPDATE WELL DISPLAY MAIN THREAD: {QThread.currentThread() == QCoreApplication.instance().thread()}")
-
         point_region = self.well_extract[self.current_well]
 
         for i in reversed(range(self.well_disp_layout.count())):
@@ -886,8 +869,6 @@ class Classify():
 class QtViewerWrap(QtViewer):
     
     def __init__(self, main_viewer, *args, **kwargs) -> None:
-
-        logging.info(f'QApplication in QtViewerWrap: {QApplication}')
         
         app = QApplication.instance()
         if not app:
