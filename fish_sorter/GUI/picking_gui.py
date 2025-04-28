@@ -56,7 +56,9 @@ class Picking(QWidget):
         self.disp_calib = False
         
         calib_pick = PipettePickCalibWidget(self)
+        self.pick_calib_status = QLabel('❌ Pick Not Calibrated')
         calib_disp = PipetteDispCalibWidget(self)
+        self.disp_calib_status = QLabel('❌ Disp Not Calibrated')
         move2pick = Pipette2PickWidget(self)
         move2disp = Pipette2DispWidget(self)
         move2clear = Pipette2ClearWidget(self)
@@ -77,6 +79,7 @@ class Picking(QWidget):
 
         layout = QGridLayout(self)
         layout.addWidget(calib_pick, 1, 0)
+        layout.addWidget(self.pick_calib_status, 1, 3)
         layout.addWidget(calib_disp, 1, 1)
         layout.addWidget(move2swing, 1, 2)
         layout.addWidget(move2pick, 2, 0)
@@ -84,16 +87,33 @@ class Picking(QWidget):
         layout.addWidget(move2clear, 2, 2)
         layout.addWidget(img, 3, 0)
         layout.addWidget(home, 3, 1)
-        layout.addWidget(move_pipette, 4, 0)
+        layout.addWidget(self.pick_calib_status, 4, 0)
+        layout.addWidget(self.disp_calib_status, 4, 1)
+        self._update_calib_status()
+        
+        layout.addWidget(move_pipette, 5, 0)
+        layout.addWidget(time, 6, 0)
+        layout.addWidget(draw, 7, 0)
+        layout.addWidget(expel, 7, 1)
+        layout.addWidget(ppp, 7, 2)
+        layout.addWidget(single, 8, 0)
+        layout.addWidget(pw, 9, 0)
+        layout.addWidget(disconnect, 10, 0)
+        layout.addWidget(reset, 10, 1)
 
-        layout.addWidget(time, 5, 0)
-        layout.addWidget(draw, 6, 0)
-        layout.addWidget(expel, 6, 1)
-        layout.addWidget(ppp, 6, 2)
-        layout.addWidget(single, 7, 0)
-        layout.addWidget(pw, 8, 0)
-        layout.addWidget(disconnect, 9, 0)
-        layout.addWidget(reset, 9, 1)
+    def _update_calib_status(self):
+        """Update the GUI that the pick and or dispense heights
+        are calibrated
+        """
+        
+        if self.pick_calib:
+            self.pick_calib_status.setText('✅ Pick Calibrated')
+        else:
+            self.pick_calib_status.setText('❌ Pick Not Calibrated')
+        if self.disp_calib:
+            self.disp_calib_status.setText('✅ Disp Calibrated')
+        else:
+            self.disp_calib_status.setText('❌ Disp Not Calibrated')
 
 
 class PipettePickCalibWidget(QPushButton):
@@ -122,6 +142,7 @@ class PipettePickCalibWidget(QPushButton):
         logging.info('Calibrate pick height into array')
         self.picking.pick.set_calib(pick=True)
         self.picking.pick_calib = True
+        self.picking._update_calib_status()
 
 
 class PipetteDispCalibWidget(QPushButton):
@@ -149,7 +170,8 @@ class PipetteDispCalibWidget(QPushButton):
 
         logging.info('Calibrate dispense height into destination plate')
         self.picking.pick.set_calib(pick=False)
-        self.picking.disp_calib = True              
+        self.picking.disp_calib = True         
+        self.picking._update_calib_status()     
 
 
 class Pipette2PickWidget(QPushButton):
@@ -503,10 +525,10 @@ class PickWidget(QPushButton):
         self._mmc.live_mode = True
         
         if self.picking.pick_calib and self.picking.disp_calib:
-            self.thread = PickerThread(self.picking)
-            self.thread.status_update.connect(self._update_status)
-            self.thread.picking_done.connect(self._picking_finished)
-            self.thread.start()
+            self.fp_thread = PickerThread(self.picking)
+            self.fp_thread.status_update.connect(self._update_status)
+            self.fp_thread.picking_done.connect(self._picking_finished)
+            self.fp_thread.start()
         else:
             logging.info('Pipette not calibrated')
 
@@ -672,9 +694,12 @@ class SinglePickWidget(QWidget):
         unit_label = QLabel('s')
         layout.addWidget(unit_label, 2, 1)
 
-        self.single_pick_button = QPushButton('Single Pick')
-        self.single_pick_button.clicked.connect(self._start_pick)
-        layout.addWidget(self.single_pick_button, 3, 0)
+        self.single_pick_btn = QPushButton('Single Pick')
+        self.single_pick_btn.clicked.connect(self._start_pick)
+        self.single_inject_btn = QPushButton('Single Inject')
+        self.single_inject_btn.clicked.connect(self._start_inject)
+        layout.addWidget(self.single_pick_btn, 3, 0)
+        layout.addWidget(self.single_inject_btn, 3, 1)
 
     def _start_pick(self):
         """Runs the single pick thread
@@ -683,16 +708,61 @@ class SinglePickWidget(QWidget):
         self._mmc.live_mode = True
 
         if self.picking.pick_calib and self.picking.disp_calib:
-            self.thread = SinglePickThread(picking = self.picking)
-            self.thread.dtime = self.delay_time_spinbox.value()
-            logging.info(f'Delay time set to {self.thread.dtime} s')
-            self.thread.status_update.connect(self._update_status)
-            self.thread.start()
+            self.sp_thread = SinglePickThread(picking = self.picking)
+            self.sp_thread.dtime = self.delay_time_spinbox.value()
+            logging.info(f'Delay time set to {self.sp_thread.dtime} s')
+            self.sp_thread.status_update.connect(self._update_status)
+            self.sp_thread.start()
         else:
-            logging.info('Pipette not calibrated')     
+            logging.info('Pipette not calibrated')
+
+    def _start_inject(self):
+        """Runs the single inject thread
+        """
+
+        self._mmc.live_mode = True
+
+        if self.picking.pick_calib and self.picking.disp_calib:
+            self.si_thread = SingleInjectThread(picking = self.picking)
+            self.si_thread.dtime = self.delay_time_spinbox.value()
+            logging.info(f'Delay time set to {self.si_thread.dtime} s')
+            self.si_thread.status_update.connect(self._update_status)
+            self.si_thread.start()
 
     def _update_status(self, msg):
         """Helper to update logging
         """
 
         logging.info(f'{msg}')
+
+
+class SingleInjectThread(QThread):
+    """Thread Injection so that live preview stay on during a single injection
+    """
+
+    status_update = pyqtSignal(str)
+    inject_done = pyqtSignal()
+
+    def __init__(self, picking, parent = None):
+        """Thread for single injection
+
+        :param picking: picking gui class
+        :type picking: pick gui class instance
+        """
+
+        super().__init__(parent=parent)
+        self.picking = picking
+    
+    def run(self):
+        """Run the single pick thread
+
+        """
+
+        try:
+            self.status_update.emit('Start Single Injection Thread')
+            self.picking.pick.single_inject(self.dtime)
+            self.status_update.emit('Single Inject Complete!')
+        except Exception as e:
+            self.status_update.emit(f'Exception {str(e)}')
+        finally:
+            self.status_update.emit('Finished single inject')

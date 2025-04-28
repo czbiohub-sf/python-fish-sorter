@@ -114,7 +114,6 @@ class nmm:
         mosaic_metadata = self.mosaic.get_mosaic_metadata(sequence)
 
         self.iplate.set_calib_pts()
-        logging.info(f'{self.mosaic.grid_list}')
         self.iplate.load_wells(grid_list=self.mosaic.grid_list)
 
         self.classify = Classify(self.cfg_dir, self.pick_type, self.expt_prefix, self.expt_path, self.iplate, self.v)

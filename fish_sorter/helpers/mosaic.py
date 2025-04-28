@@ -135,10 +135,6 @@ class Mosaic:
         # Initialize empty mosaic
         mosaic_x_dim = int((IMG_X_PX * num_cols) - (x_overlap * (num_cols - 1)))
         mosaic_y_dim = int((IMG_Y_PX * num_rows) - (y_overlap * (num_rows - 1)))
-
-        #TODO figure out right datatype
-
-
         mosaic = np.zeros((num_channels, mosaic_y_dim, mosaic_x_dim), dtype=np.uint16)
 
         # Assemble mosaic
@@ -158,9 +154,6 @@ class Mosaic:
                 mosaic[:, y_start : y_start - y_translation + IMG_Y_PX, :],
                 2
             ).astype(np.uint16)
-
-            #TODO figure out right datatype
-
         for col in tqdm(range(1, num_cols), desc="Column"):
             x_start = int(col * x_translation)
             mosaic[:, :, x_start : x_start - x_translation + IMG_X_PX] = np.floor_divide(
@@ -168,11 +161,7 @@ class Mosaic:
                 2
             ).astype(np.uint16)
 
-            #TODO figure out right datatype
-
-
         mosaic = np.flip(mosaic, axis=2)
-
         return mosaic.astype(dtype)
 
     def display_mosaic(self, mosaic):
