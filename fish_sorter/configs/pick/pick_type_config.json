@@ -32,7 +32,7 @@
                 "description": "Indicates multiple fish in a well"
             },
             "singlet": {
-                "key": "f",
+                "key": "s",
                 "preset": false,
                 "description": "Indicates a single fish. This will be used to select those for feature classification"
             },
@@ -48,42 +48,42 @@
         },
         "feature_class": {
             "gEye": {
-                "key": "g",
+                "key": "1",
                 "preset": false,
                 "description": "Fish with green eye feature"
             },
             "gHeart": {
-                "key": "6",
+                "key": "2",
                 "preset": false,
                 "description": "Fish with green heart feature"
             },
             "gBody": {
-                "key": "7",
+                "key": "3",
                 "preset": false,
                 "description": "Fish with green body feature"
             },
             "gSpeckles": {
-                "key": "8",
+                "key": "4",
                 "preset": false,
                 "description": "Fish with green speckle feature"
             },
             "rEye": {
-                "key": "r",
+                "key": "5",
                 "preset": false,
                 "description": "Fish with red eye feature"
             },
             "rHeart": {
-                "key": "9",
+                "key": "6",
                 "preset": false,
                 "description": "Fish with red heart feature"
             },
             "rSpeckles": {
-                "key": "0",
+                "key": "7",
                 "preset": false,
                 "description": "Fish with red speckle feature"
             },
             "lHead": {
-                "key": "l",
+                "key": "r",
                 "preset": true,
                 "description": "Orientation of fish head to left or right side of well"
             }
@@ -94,6 +94,69 @@
             "length_offset": 0.0,
             "width_offset": 0.0,
             "description": "Pick offset distance from well center in um"
+        },
+        "well_class": {
+            "empty": {
+                "key": "e",
+                "preset": true,
+                "description": "Indicates whether there is a fish in the well"
+            },
+            "deformed": {
+                "key": "d",
+                "preset": false,
+                "description": "Indicates if the fish is deformed"
+             },
+            "wrong_o": {
+                "key": "w",
+                "preset": false,
+                "description": "Indicates if fish oriented in a way to not detect features"
+            },
+            "unknown": {
+                "key": "u",
+                "preset": false,
+                "description": "Indicates fish where classification is not possible but not because of deformity or orientation"
+            },
+            "multiple": {
+                "key": "m",
+                "preset": false,
+                "description": "Indicates multiple fish in a well"
+            },
+            "singlet": {
+                "key": "s",
+                "preset": false,
+                "description": "Indicates a single fish. This will be used to select those for feature classification"
+            },
+            "deselect": {
+                "empty": ["deformed", "wrong_o", "unknown", "multiple", "singlet"],
+                "deformed": ["empty", "wrong_o", "unknown", "multiple", "singlet"],
+                "wrong_o": ["empty", "deformed", "unknown", "multiple", "singlet"],
+                "unknown": ["empty", "deformed", "wrong_o", "multiple", "singlet"],
+                "multiple": ["empty", "deformed", "wrong_o", "unknown","singlet"],
+                "singlet": ["empty", "deformed", "wrong_o", "unknown", "multiple"],
+                "description": "Rules to deselect options if one of the others is selected"
+            }
+        },
+        "feature_class": {
+            "gSomites": {
+                "key": "1",
+                "preset": false,
+                "description": "Embryos with green somites"
+            },
+            "rSomites": {
+                "key": "2",
+                "preset": false,
+                "description": "Embryos with red somites"
+            },
+            "green1dpf": {
+                "key": "3",
+                "preset": false,
+                "description": "Green 1 dpf embyros"
+            },
+            "red1dpf": {
+                "key": "4",
+                "preset": false,
+                "description": "Red 1 dpf embyros"
+            }
         }
     }
 }

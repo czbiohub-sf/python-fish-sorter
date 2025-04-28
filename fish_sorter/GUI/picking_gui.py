@@ -525,10 +525,10 @@ class PickWidget(QPushButton):
         self._mmc.live_mode = True
         
         if self.picking.pick_calib and self.picking.disp_calib:
-            self.thread = PickerThread(self.picking)
-            self.thread.status_update.connect(self._update_status)
-            self.thread.picking_done.connect(self._picking_finished)
-            self.thread.start()
+            self.fp_thread = PickerThread(self.picking)
+            self.fp_thread.status_update.connect(self._update_status)
+            self.fp_thread.picking_done.connect(self._picking_finished)
+            self.fp_thread.start()
         else:
             logging.info('Pipette not calibrated')
 
@@ -694,9 +694,12 @@ class SinglePickWidget(QWidget):
         unit_label = QLabel('s')
         layout.addWidget(unit_label, 2, 1)
 
-        self.single_pick_button = QPushButton('Single Pick')
-        self.single_pick_button.clicked.connect(self._start_pick)
-        layout.addWidget(self.single_pick_button, 3, 0)
+        self.single_pick_btn = QPushButton('Single Pick')
+        self.single_pick_btn.clicked.connect(self._start_pick)
+        self.single_inject_btn = QPushButton('Single Inject')
+        self.single_inject_btn.clicked.connect(self._start_inject)
+        layout.addWidget(self.single_pick_btn, 3, 0)
+        layout.addWidget(self.single_inject_btn, 3, 1)
 
     def _start_pick(self):
         """Runs the single pick thread
@@ -705,16 +708,61 @@ class SinglePickWidget(QWidget):
         self._mmc.live_mode = True
 
         if self.picking.pick_calib and self.picking.disp_calib:
-            self.thread = SinglePickThread(picking = self.picking)
-            self.thread.dtime = self.delay_time_spinbox.value()
-            logging.info(f'Delay time set to {self.thread.dtime} s')
-            self.thread.status_update.connect(self._update_status)
-            self.thread.start()
+            self.sp_thread = SinglePickThread(picking = self.picking)
+            self.sp_thread.dtime = self.delay_time_spinbox.value()
+            logging.info(f'Delay time set to {self.sp_thread.dtime} s')
+            self.sp_thread.status_update.connect(self._update_status)
+            self.sp_thread.start()
         else:
-            logging.info('Pipette not calibrated')     
+            logging.info('Pipette not calibrated')
+
+    def _start_inject(self):
+        """Runs the single inject thread
+        """
+
+        self._mmc.live_mode = True
+
+        if self.picking.pick_calib and self.picking.disp_calib:
+            self.si_thread = SingleInjectThread(picking = self.picking)
+            self.si_thread.dtime = self.delay_time_spinbox.value()
+            logging.info(f'Delay time set to {self.si_thread.dtime} s')
+            self.si_thread.status_update.connect(self._update_status)
+            self.si_thread.start()
 
     def _update_status(self, msg):
         """Helper to update logging
         """
 
         logging.info(f'{msg}')
+
+
+class SingleInjectThread(QThread):
+    """Thread Injection so that live preview stay on during a single injection
+    """
+
+    status_update = pyqtSignal(str)
+    inject_done = pyqtSignal()
+
+    def __init__(self, picking, parent = None):
+        """Thread for single injection
+
+        :param picking: picking gui class
+        :type picking: pick gui class instance
+        """
+
+        super().__init__(parent=parent)
+        self.picking = picking
+    
+    def run(self):
+        """Run the single pick thread
+
+        """
+
+        try:
+            self.status_update.emit('Start Single Injection Thread')
+            self.picking.pick.single_inject(self.dtime)
+            self.status_update.emit('Single Inject Complete!')
+        except Exception as e:
+            self.status_update.emit(f'Exception {str(e)}')
+        finally:
+            self.status_update.emit('Finished single inject')

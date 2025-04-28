@@ -96,8 +96,11 @@ class Classify():
         self.viewer.window._qt_window.setFocusPolicy(Qt.StrongFocus)
 
         self.contrast_callbacks = {}
-        self.contrast_widget = ContrastWidget(self.viewer)
-        self.viewer.window.add_dock_widget(self.contrast_widget, name= 'Contrast', area='left')
+
+        # Independent contrast control
+        # Because users are more comfortable using the native napari layer controls contrast limits, not implemented
+        # self.contrast_widget = ContrastWidget(self.viewer)
+        # self.viewer.window.add_dock_widget(self.contrast_widget, name= 'Contrast', area='left')
     
         pts = self._points()
         self.points_layer = self.load_points(pts)
@@ -106,7 +109,8 @@ class Classify():
         
         self._key_binding()
         for key, feature in self.key_feature_map.items():
-            self.viewer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) #Note: set to overwriting standard shortkeys in napari
+            self.viewer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) #Note: set to overwrite standard shortcuts in napari
+            self.points_layer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) #Note: set to overwrite points layer specific shortcuts
         
         self.well_viewers = {}
         self.well_display_layers = {}
@@ -211,7 +215,7 @@ class Classify():
             selected_points = list(self.points_layer.selected_data)
             if len(selected_points) > 0:
                 feature_values = self.points_layer.features[feature_name]
-                feature_values[selected_points] = ~feature_values[selected_points]
+                feature_values.loc[selected_points] = ~feature_values[selected_points]
                 self.points_layer.features.loc[:, feature_name] = feature_values
 
                 if feature_name in self.deselect_rules and feature_values[selected_points].iloc[0]:
@@ -232,11 +236,14 @@ class Classify():
 
         self.class_btn = QPushButton("Save Classification")
 
-        container_widget = QWidget()
-        layout = QGridLayout(container_widget)  
+        save_widget = QWidget()
+        layout = QGridLayout(save_widget)  
         layout.addWidget(self.class_btn, 1, 0)
     
-        self.viewer.window.add_dock_widget(container_widget, name= 'Save', area='left', tabify=True)
+        self.save_widget = self.viewer.window.add_dock_widget(save_widget, name= 'Save', area='left', tabify=True)
+
+        if hasattr(self, 'fish_widget'):
+            self.fish_widget.raise_()
 
         def _save_it():
             """Saves the classification data from the points layer to csv on button press
@@ -503,7 +510,7 @@ class Classify():
 
         if reset:
             empty = self.points_layer.features['empty']
-            empty[:] = True
+            empty.loc[:] = True
             self.points_layer.features.loc[:, 'empty'] = empty
             for feat in self.deselect_rules['empty']:
                 self.points_layer.features.loc[empty, feat] = False
@@ -530,7 +537,7 @@ class Classify():
         """
 
         singlets = self.points_layer.features['singlet']
-        singlets[wells] = True
+        singlets.loc[wells] = True
         singlets_idxs = np.where(singlets)[0]
         self.points_layer.features.loc[:, 'singlet'] = singlets
         for feat in self.deselect_rules['singlet']:
@@ -638,7 +645,7 @@ class Classify():
         def find_fish_callback(layer_name: str, sigma: float):
             self.find_fish(points, layer_name, sigma, drop=False)
         fish_widget = FishFinderWidget(self.viewer, find_fish_callback)
-        self.viewer.window.add_dock_widget(fish_widget, name= 'Finding Nemo', area='left')
+        self.fish_widget = self.viewer.window.add_dock_widget(fish_widget, name= 'Finding Nemo', area='left')
     
     def _create_classify(self):
         """Classification side widget with key bindings and well viewer windows

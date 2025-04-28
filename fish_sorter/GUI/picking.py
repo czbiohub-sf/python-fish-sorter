@@ -232,3 +232,19 @@ class Pick():
         self.pp.move_pipette('clearance')
         self.pp.dest_home()
         logging.info('Finished Pick')
+
+    def single_inject(self, dtime: float=1.00):
+        """Tester function to test egg injection with the fish picker
+
+        :param dtime: delay time in seconds between pipette stage movement and valve control function calls
+        :type dtime: float
+        """
+
+        logging.info(f'Begin injection with delay time {dtime} seconds')
+        self.pp.move_pipette('clearance')
+        self.pp.dest_home()
+        self.pp.move_pipette('pick')
+        logging.info(f'Inject!')
+        sleep(dtime)
+        self.pp.move_pipette('clearance')
+        logging.info('Finished Injection')
