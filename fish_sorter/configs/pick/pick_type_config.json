@@ -3,7 +3,8 @@
         "picker": {
             "length_offset": 1652.5,
             "width_offset": 0.0,
-            "description": "Pick offset distance from well center in um"
+            "dtime": 0.5,
+            "description": "Pick offset distance from well center in um and delay time for picking in sec"
         },
         "well_class": {
             "empty": {
@@ -93,7 +94,8 @@
         "picker": {
             "length_offset": 0.0,
             "width_offset": 0.0,
-            "description": "Pick offset distance from well center in um"
+            "dtime": 0.50, 
+            "description": "Pick offset distance from well center in um and delay time for picking in sec"
         },
         "well_class": {
             "empty": {
@@ -156,6 +158,11 @@
                 "key": "4",
                 "preset": false,
                 "description": "Red 1 dpf embyros"
+            },
+            "lHead": {
+                "key": "r",
+                "preset": true,
+                "description": "Orientation of fish head to left or right side of well"
             }
         }
     }

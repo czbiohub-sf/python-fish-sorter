@@ -67,7 +67,7 @@ class Picking(QWidget):
         home = HomeWidget(self)
         move_pipette = MovePipette(self)
         pw = PickWidget(self)
-        disconnect = DisconnectWidget(self)
+        new_expt = NewExptWidget(self)
         reset = ResetWidget(self)
         
         draw = PipetteDrawWidget(self)
@@ -98,7 +98,7 @@ class Picking(QWidget):
         layout.addWidget(ppp, 7, 2)
         layout.addWidget(single, 8, 0)
         layout.addWidget(pw, 9, 0)
-        layout.addWidget(disconnect, 10, 0)
+        layout.addWidget(new_expt, 10, 0)
         layout.addWidget(reset, 10, 1)
 
     def _update_calib_status(self):
@@ -492,7 +492,7 @@ class PickerThread(QThread):
             self.picking.pick.match_pick()
             self.status_update.emit('Start of picking')
             self.picking.pick.pick_me()
-            self.status_update.emit('Picking complete!')
+            self.status_updatse.emit('Picking complete!')
         except Exception as e:
             self.status_update.emit(f'Exepction {str(e)}')
         finally:
@@ -545,8 +545,8 @@ class PickWidget(QPushButton):
         logging.info('Picker thread finished')
 
 
-class DisconnectWidget(QPushButton):
-    """A push button widget to disconnect hardware
+class NewExptWidget(QPushButton):
+    """A push button widget to start a new experiment
     """
     
     def __init__(self, picking, parent: QWidget | None=None):
@@ -563,8 +563,9 @@ class DisconnectWidget(QPushButton):
 
     def _create_button(self)->None:
         
-        self.setText("Disconnect Hardware")
-        self.clicked.connect(self.picking.pick.disconnect_hardware) 
+        self.setText("BROKEN BUTTON")
+        #TODO change for new experiment function calls. This may be one level higher
+        # self.clicked.connect(self.picking.pick.disconnect_hardware) 
 
 
 class ResetWidget(QPushButton):
@@ -696,10 +697,7 @@ class SinglePickWidget(QWidget):
 
         self.single_pick_btn = QPushButton('Single Pick')
         self.single_pick_btn.clicked.connect(self._start_pick)
-        self.single_inject_btn = QPushButton('Single Inject')
-        self.single_inject_btn.clicked.connect(self._start_inject)
         layout.addWidget(self.single_pick_btn, 3, 0)
-        layout.addWidget(self.single_inject_btn, 3, 1)
 
     def _start_pick(self):
         """Runs the single pick thread
@@ -716,53 +714,8 @@ class SinglePickWidget(QWidget):
         else:
             logging.info('Pipette not calibrated')
 
-    def _start_inject(self):
-        """Runs the single inject thread
-        """
-
-        self._mmc.live_mode = True
-
-        if self.picking.pick_calib and self.picking.disp_calib:
-            self.si_thread = SingleInjectThread(picking = self.picking)
-            self.si_thread.dtime = self.delay_time_spinbox.value()
-            logging.info(f'Delay time set to {self.si_thread.dtime} s')
-            self.si_thread.status_update.connect(self._update_status)
-            self.si_thread.start()
-
     def _update_status(self, msg):
         """Helper to update logging
         """
 
         logging.info(f'{msg}')
-
-
-class SingleInjectThread(QThread):
-    """Thread Injection so that live preview stay on during a single injection
-    """
-
-    status_update = pyqtSignal(str)
-    inject_done = pyqtSignal()
-
-    def __init__(self, picking, parent = None):
-        """Thread for single injection
-
-        :param picking: picking gui class
-        :type picking: pick gui class instance
-        """
-
-        super().__init__(parent=parent)
-        self.picking = picking
-    
-    def run(self):
-        """Run the single pick thread
-
-        """
-
-        try:
-            self.status_update.emit('Start Single Injection Thread')
-            self.picking.pick.single_inject(self.dtime)
-            self.status_update.emit('Single Inject Complete!')
-        except Exception as e:
-            self.status_update.emit(f'Exception {str(e)}')
-        finally:
-            self.status_update.emit('Finished single inject')

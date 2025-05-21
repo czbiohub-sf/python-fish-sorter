@@ -27,7 +27,7 @@ class ImageWidget(QWidget):
         self.mmc = CMMCorePlus().instance()
         self.viewer = viewer
 
-        self.btn = QPushButton("Stitch mosaic")
+        self.mosaic_btn = QPushButton("Stitch mosaic")
         self.class_btn = QPushButton("Classify")
         self.cross_btn = QPushButton('Crosshairs')
        
@@ -36,7 +36,7 @@ class ImageWidget(QWidget):
         self.cross_btn.clicked.connect(self._toggle_crosshairs)
 
         layout = QHBoxLayout()
-        layout.addWidget(self.btn)
+        layout.addWidget(self.mosaic_btn)
         layout.addWidget(self.class_btn)
         layout.addWidget(self.cross_btn)
         self.setLayout(layout)

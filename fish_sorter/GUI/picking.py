@@ -20,7 +20,7 @@ class Pick():
     It uses the PickingPipette class and the Mapping class
     """
 
-    def __init__(self, cfg_dir, pick_dir, prefix, offset, iplate, dp_array):
+    def __init__(self, cfg_dir, pick_dir, prefix, offset, dtime, iplate, dp_array):
         """Loads the files for classification and initializes PickingPipette class
         
         :param cfg_dir: parent path directory for all of the config files
@@ -31,6 +31,8 @@ class Pick():
         :type prefix: str
         :param offset: offset value from center points for picking
         :type offset: np array
+        :param dtime: delay time in s to be used between pipette actions from config
+        :type dtime: float
         :param iplate: image plate class
         :type: image plate class instance
         :param dp_file: path to dispense plate array in config folder
@@ -55,7 +57,7 @@ class Pick():
         
         self.matches = None
         self.pick_offset = offset
-        logging.info(f'Config offset to use: {offset}')
+        self.dtime = dtime
 
     def connect_hardware(self):
         """Connects to hardware
@@ -136,12 +138,9 @@ class Pick():
 
         logging.info('Load image plate calibration and wells')
 
-    def pick_me(self, dtime: float=1.00):
+    def pick_me(self):
         """Performs all actions to pick from the source plate to the destination plate using
         the match list created by match_pick
-
-        :param dtime: delay time in seconds between pipette stage movement and valve control function calls
-        :type dtime: float
         """
 
         logging.info('Begin iterating through pick list')
@@ -159,17 +158,17 @@ class Pick():
             
             self.iplate.go_to_well(self.matches['slotName'][match], offset)
             self.pp.move_pipette('pick')
-            sleep(dtime)
+            sleep(self.dtime)
             self.pp.draw()
-            sleep(dtime)
+            sleep(self.dtime)
             self.pp.move_pipette('clearance')
             
             self.pp.dplate.go_to_well(self.matches['dispenseWell'][match])
             self.pp.move_pipette('dispense')
             self.pp.expel()
-            sleep(dtime)
+            sleep(self.dtime)
             self.pp.expel()
-            sleep(dtime)
+            sleep(self.dtime)
             self.pp.move_pipette('clearance')
             self.pp.dest_home()
             logging.info('Picked fish in {} to {}'.format(self.matches['slotName'][match], self.matches['dispenseWell'][match]))
@@ -181,6 +180,7 @@ class Pick():
         #call mapping for the dest plate at init?      
         #Better handle 'lHead' column in csv??? or rather abstract at some point to also include embryos
         #Use pick_type_config.json better to determine what columns are needed
+        #Should it snake through the list of options?
 
 
         self.done()
@@ -202,8 +202,6 @@ class Pick():
         merge_sorted = pd.merge(self.pick_param_file[['dispenseWell']], merge, on='dispenseWell', how='inner')
         self.matches = pd.DataFrame({'slotName': merge_sorted['slotName'], 'dispenseWell': merge_sorted['dispenseWell'], 'lHead': merge_sorted['lHead']})
         logging.info('Created pick list')
-
-        #TODO future feature: save time and snake through position list?
 
     def single_pick(self, dtime: float=1.00):
         """Perform a single pick at the current position
@@ -232,19 +230,3 @@ class Pick():
         self.pp.move_pipette('clearance')
         self.pp.dest_home()
         logging.info('Finished Pick')
-
-    def single_inject(self, dtime: float=1.00):
-        """Tester function to test egg injection with the fish picker
-
-        :param dtime: delay time in seconds between pipette stage movement and valve control function calls
-        :type dtime: float
-        """
-
-        logging.info(f'Begin injection with delay time {dtime} seconds')
-        self.pp.move_pipette('clearance')
-        self.pp.dest_home()
-        self.pp.move_pipette('pick')
-        logging.info(f'Inject!')
-        sleep(dtime)
-        self.pp.move_pipette('clearance')
-        logging.info('Finished Injection')

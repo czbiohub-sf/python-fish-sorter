@@ -83,8 +83,9 @@ class PickingPipette():
 
         logging.info("Homing stage arms and turning off pressure and vacuum")
 
-        self.move_pipette(pos='pipette_swing')
+        self.move_pipette(pos='clearance')
         self.zc.home_arm(['x','y'])
+        self.move_pipette(pos='pipette_swing')
         self._valve_cmd(self.hardware_data['pneumatic_config']['register']['func_idle_type'], self.hardware_data['pneumatic_config']['function_codes']['idle_atm'])
         self.zc.disconnect()
         logging.info('Closed stage connnection')

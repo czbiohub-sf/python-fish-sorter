@@ -102,7 +102,7 @@ class nmm:
         self.ww_layout.addWidget(self.img_tools)
         self.dw.setWidget(self.wrap_widget)
 
-        self.img_tools.btn.clicked.connect(self.run)
+        self.img_tools.mosaic_btn.clicked.connect(self.run)
         self.img_tools.class_btn.clicked.connect(self.run_class)
 
     def run_class(self):
@@ -127,7 +127,7 @@ class nmm:
         self.expt_prefix = sequence.metadata['pymmcore_widgets']['save_name'].removesuffix('.ome.zarr')
         self.img_array = self.setup.get_img_array()
         self.dp_array = self.setup.get_dp_array()
-        self.pick_type, self.offset = self.setup.get_pick_type()
+        self.pick_type, self.offset, self.dtime = self.setup.get_pick_type()
 
         logging.info('Picker setup parameters: ')
         logging.info(f'Expt Path: {self.expt_path}')
@@ -137,11 +137,12 @@ class nmm:
         logging.info(f'cfg dir: {self.cfg_dir}')
         logging.info(f'Pick type: {self.pick_type}')
         logging.info(f'Pick offset: {self.offset}')
+        logging.info(f'Pick delay time: {self.dtime}')
 
         self.setup_iplate()
 
         logging.info('Loading picking hardware')
-        self.pick = Pick(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.iplate, self.dp_array)
+        self.pick = Pick(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.dtime, self.iplate, self.dp_array)
         self.picking = Picking(self.pick)
         self.v.window.add_dock_widget(self.picking, name='Picking', area='right', tabify=True)
 
@@ -204,7 +205,7 @@ class nmm:
                 color = 'red'
             else:
                 color = 'grey'
-            self.v.add_image(mosaic, colormap=color, opacity=0.5, name=chan_name)
+            self.v.add_image(mosaic, colormap=color, blending='additive', name=chan_name)
 
         logging.info('Remove unncessary layers')
         remove_layers = []
