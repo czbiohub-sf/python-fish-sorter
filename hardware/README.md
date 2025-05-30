@@ -1,6 +1,8 @@
 # Hardware
 
-Includes CAD files for custom CNC components. See BOM (linked below) for material specifications
+Includes:
+* CAD files for custom CNC components. See BOM (linked below) for material specifications
+* CODESYS valve control code for use with Wago valve controllers
 
 ## Useful links
 * [BOM](https://docs.google.com/spreadsheets/d/18FG5nUSA5xpwthEXuoxCpCr8i203l561eTH-Ku58tIY/edit?gid=1090041109#gid=1090041109) for off-the-shelf and custom parts, including estimated total cost
