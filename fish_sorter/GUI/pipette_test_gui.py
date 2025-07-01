@@ -254,13 +254,13 @@ class PipetteDrawWidget(QPushButton):
         cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
         array_file = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays/6well_plate20250325.json"
         try:
-            pp = PickingPipette(cfg_dir, array_file)
+            phc = PickingPipette(cfg_dir, array_file)
         except Exception as e:
             logging.info("Could not initialize and connect hardware controller")
 
         logging.info('Pipette is Drawing')
-        pp.draw()
-        pp.disconnect()
+        phc.draw()
+        phc.disconnect()
 
 class PipetteExpelWidget(QPushButton):
     """A push button widget to connect to the valve controller to actuate the expel function
@@ -289,13 +289,13 @@ class PipetteExpelWidget(QPushButton):
         cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
         array_file = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays/6well_plate20250325.json"
         try:
-            pp = PickingPipette(cfg_dir, array_file)
+            phc = PickingPipette(cfg_dir, array_file)
         except Exception as e:
             logging.critical("Could not initialize and connect hardware controller")
 
         logging.info('Pipette is Expelling')
-        pp.expel()
-        pp.disconnect()
+        phc.expel()
+        phc.disconnect()
 
 class PipettePressureWidget(QPushButton):
     """A push button widget to connect to the valve controller to toggle the pressure
@@ -325,14 +325,14 @@ class PipettePressureWidget(QPushButton):
         cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/" 
         array_file = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays/6well_plate20250325.json"
         try:
-            pp = PickingPipette(cfg_dir, array_file)
+            phc = PickingPipette(cfg_dir, array_file)
         except Exception as e:
             logging.critical("Could not initialize and connect hardware controller")
 
         logging.info(f'Toggle Pressure Valve: {self.pressure_state}')
         self.pressure_state = not self.pressure_state
-        pp.pressure(self.pressure_state)
-        pp.disconnect()
+        phc.pressure(self.pressure_state)
+        phc.disconnect()
 
 class PipetteVacuumWidget(QPushButton):
     """A push button widget to connect to the valve controller to toggle the vacuum
@@ -362,11 +362,11 @@ class PipetteVacuumWidget(QPushButton):
         cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/" 
         array_file = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays/6well_plate20250325.json"
         try:
-            pp = PickingPipette(cfg_dir, array_file)
+            phc = PickingPipette(cfg_dir, array_file)
         except Exception as e:
             logging.critical("Could not initialize and connect hardware controller")
 
         logging.info(f'Toggle Vacuum Valve: {self.vacuum_state}')
         self.vacuum_state = not self.vacuum_state
-        pp.vacuum(self.vacuum_state)
-        pp.disconnect()
+        phc.vacuum(self.vacuum_state)
+        phc.disconnect()

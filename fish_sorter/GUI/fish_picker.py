@@ -29,10 +29,11 @@ from useq import GridFromEdges, MDASequence
 
 from fish_sorter.GUI.classify import Classify
 from fish_sorter.GUI.picking import Pick
-from fish_sorter.GUI.picking_gui import Picking
+from fish_sorter.GUI.picking_gui import PickGUI
 from fish_sorter.GUI.setup_gui import SetupWidget
 from fish_sorter.GUI.image_gui import ImageWidget
 from fish_sorter.hardware.imaging_plate import ImagingPlate
+from fish_sorter.hardware.picking_pipette import PickingPipette
 from fish_sorter.helpers.mosaic import Mosaic
 
 # For simulation
@@ -44,7 +45,7 @@ except ModuleNotFoundError:
 os.environ['MICROMANAGER_PATH'] = "C:/Program Files/Micro-Manager-2.0-20240130"
 micromanager_path = os.environ.get('MICROMANAGER_PATH')
 
-class nmm:
+class FishPicker:
     def __init__(self, sim=False):
         
         logging.info(f'Napari is using: {napari.__version__}')
@@ -57,6 +58,7 @@ class nmm:
         
         self.core = self.main_window._mmc
 
+        logging.info('Loading mmcore')
         if sim:
             if FakeDemoCamera is not None:
                 # override snap to look at more realistic images from a microscoppe
@@ -78,6 +80,8 @@ class nmm:
             else:
                 logging.critical("Micromanager config folder does not exisit")
 
+        logging.info('Initialize picking hardware controller')
+        self.phc = PickingPipette(self.cfg_dir)
         # Load sequence and Mosaic class
         self.mosaic = Mosaic(self.v)
         self.assign_widgets()
@@ -104,6 +108,11 @@ class nmm:
 
         self.img_tools.mosaic_btn.clicked.connect(self.run)
         self.img_tools.class_btn.clicked.connect(self.run_class)
+
+        # Picking GUI Widget
+        #TODO need to get self.pick out of there and initialized in pick_gui once it is initialized
+        self.pick_gui = PickGUI(self.pick, self.phc)
+        self.v.window.add_dock_widget(self.pick_GUI, name='Picking', area='right', tabify=True)
 
     def run_class(self):
         """Classification GUI startup from image widget class_btn
@@ -142,9 +151,12 @@ class nmm:
         self.setup_iplate()
 
         logging.info('Loading picking hardware')
-        self.pick = Pick(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.dtime, self.iplate, self.dp_array)
-        self.picking = Picking(self.pick)
-        self.v.window.add_dock_widget(self.picking, name='Picking', area='right', tabify=True)
+        self.pick = Pick(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.dtime, self.iplate, self.dp_array, self.phc)
+        
+        #TODO add in self.pick to picking gui
+
+        #self.pick_gui = PickGUI(self.pick)
+        #self.v.window.add_dock_widget(self.pick_gui, name='Picking', area='right', tabify=True)
 
     def setup_MDA(self):
         """Setup the MDA from Picker setup information and the starting configuration
@@ -257,4 +269,4 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--sim', action='store_true')
     args = parser.parse_args()
 
-    nmm(sim=args.sim)
+    FishPicker(sim=args.sim)

@@ -15,13 +15,11 @@ class PickingPipette():
         It uses the ZaberController and ValveController classes
     """
 
-    def __init__(self, parent_dir, array_file, zc=None):
+    def __init__(self, parent_dir, zc=None):
         """Runs pipette hardware setup and passes config parameters to each hardware
         
         :param parent_dir: parent directory for config files
         :type parent_dir: path
-        :param array_file: path to dispense plate pick type array in config folder
-        :type: path
         :param zc: zaber controller class 
         :type zc: zaber controller instance
         :raises FileNotFoundError: loggings critical if the hardware config file not found
@@ -50,15 +48,12 @@ class PickingPipette():
         self.pick_h = self.hardware_data['picker_config']['pipette']['stage']['pick']['p']
         self.disp_h = self.hardware_data['picker_config']['pipette']['stage']['dispense']['p']
 
-        self.dplate_array = array_file
         self.pipettor_cfg = hardware_dir / 'picker_config.json'
 
         if zc is None:
             self.connect()
         else:
             self.zc = zc
-
-        self._define_dp()
     
     def connect(self, env='prod'):
         """Connect to hardware
@@ -98,14 +93,18 @@ class PickingPipette():
 
         self.disconnect()
         self.connect()
-        self._define_dp()
+        self.define_dp(self.current_dp)
 
-    def _define_dp(self):
+    def define_dp(self, array_file):
         """Define the dispense plate and create an instance of the
         Dispense plate class
+
+        :param array_file: path to dispense plate pick type array in config folder
+        :type: path 
         """
 
-        self.dplate = DispensePlate(self.zc, self.dplate_array)
+        self.current_dp = array_file
+        self.dplate = DispensePlate(self.zc, self.current_dp)
         self.dplate.set_calib_pts(pipettor_cfg=self.pipettor_cfg)
         self.dplate.load_wells(xflip=True)
     

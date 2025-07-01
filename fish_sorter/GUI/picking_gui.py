@@ -29,6 +29,7 @@ from qtpy.QtWidgets import (
 )
 
 from fish_sorter.GUI.picking import Pick
+from fish_sorter.hardware.picking_pipette import PickingPipette
 
 COLOR_TYPES = Union[
     QColor,
@@ -39,19 +40,22 @@ COLOR_TYPES = Union[
     "tuple[int, int, int]"
 ]
 
-class Picking(QWidget):
+class PickGUI(QWidget):
 
-    def __init__(self, picker, parent: QWidget | None=None):
+    def __init__(self, picker, phc, parent: QWidget | None=None):
         """Initialize Picker GUI
 
-        :param picker: Pick class object to control picker hardware
+        :param picker: Pick class object to control picking
         :type picker: class instance
+        :param phc: PickingPipette class object
+        :type phc: class instance
         """
         
         super().__init__(parent=parent)
         CMMCorePlus.instance()
 
         self.pick = picker
+        self.phc = phc
         self.pick_calib = False
         self.disp_calib = False
         
@@ -200,7 +204,7 @@ class Pipette2PickWidget(QPushButton):
     def _pick_pos(self)->None:
         
         self.picking.pick.move_calib(pick=True)
-        self.picking.pick.pp.move_pipette(pos='pick')
+        self.picking.pick.phc.move_pipette(pos='pick')
 
 
 class Pipette2DispWidget(QPushButton):
@@ -228,7 +232,7 @@ class Pipette2DispWidget(QPushButton):
 
     def _disp_pos(self)->None:
         self.picking.pick.move_calib(pick=False, well='A01')
-        self.picking.pick.pp.move_pipette(pos='dispense')
+        self.picking.pick.phc.move_pipette(pos='dispense')
 
 
 class Pipette2ClearWidget(QPushButton):
@@ -256,7 +260,7 @@ class Pipette2ClearWidget(QPushButton):
 
     def _clear_pos(self)->None:
         
-        self.picking.pick.pp.move_pipette(pos='clearance')
+        self.picking.pick.phc.move_pipette(pos='clearance')
 
 
 class Pipette2SwingWidget(QPushButton):
@@ -284,7 +288,7 @@ class Pipette2SwingWidget(QPushButton):
 
     def _swing_pos(self)->None:
         
-        self.picking.pick.pp.move_pipette(pos='pipette_swing')
+        self.picking.pick.phc.move_pipette(pos='pipette_swing')
 
 
 class MovePipette(QWidget):
@@ -330,7 +334,7 @@ class MovePipette(QWidget):
         unit_bool = units == 'mm'
 
         logging.info(f'Moving pipette by {dist} {units}')
-        self.picking.pick.pp.move_pipette_increment(dist, unit_bool)
+        self.picking.pick.phc.move_pipette_increment(dist, unit_bool)
 
     def _move_pipette_down(self):
 
@@ -339,7 +343,7 @@ class MovePipette(QWidget):
         unit_bool = units == 'mm'
 
         logging.info(f'Moving pipette by {dist} {units}')
-        self.picking.pick.pp.move_pipette_increment(dist, unit_bool)
+        self.picking.pick.phc.move_pipette_increment(dist, unit_bool)
 
 
 class ChangeTimeWidget(QWidget):
@@ -377,13 +381,13 @@ class ChangeTimeWidget(QWidget):
 
         time = self.time_spinbox.value()
         logging.info(f'Change Draw time to {time} ms')
-        self.picking.pick.pp.draw_time(time)
+        self.picking.pick.phc.draw_time(time)
 
     def _change_expel(self):
 
         time = self.time_spinbox.value()
         logging.info(f'Change Expel time to {time} ms')
-        self.picking.pick.pp.expel_time(time)
+        self.picking.pick.phc.expel_time(time)
 
 
 class PipetteDrawWidget(QPushButton):
@@ -411,7 +415,7 @@ class PipetteDrawWidget(QPushButton):
 
     def _draw(self)->None:
         
-        self.picking.pick.pp.draw()
+        self.picking.pick.phc.draw()
 
 
 class PipetteExpelWidget(QPushButton):
@@ -439,7 +443,7 @@ class PipetteExpelWidget(QPushButton):
 
     def _expel(self)->None:
         
-        self.picking.pick.pp.expel()
+        self.picking.pick.phc.expel()
 
 
 class PipettePressureWidget(QPushButton):
@@ -469,7 +473,7 @@ class PipettePressureWidget(QPushButton):
     def _pressure(self)->None:
         
         self.pressure_state = not self.pressure_state
-        self.picking.pick.pp.pressure(self.pressure_state)
+        self.picking.pick.phc.pressure(self.pressure_state)
 
 
 class PickerThread(QThread):
@@ -609,7 +613,7 @@ class HomeWidget(QPushButton):
     def _create_button(self)->None:
         
         self.setText("Move Dispense Stages to Home")
-        self.clicked.connect(self.picking.pick.pp.dest_home)  
+        self.clicked.connect(self.picking.pick.phc.dest_home)  
 
 
 class ImageWidget(QPushButton):
@@ -631,7 +635,7 @@ class ImageWidget(QPushButton):
     def _create_button(self)->None:
         
         self.setText("Move Stages to Image")
-        self.clicked.connect(self.picking.pick.pp.move_fluor_img)
+        self.clicked.connect(self.picking.pick.phc.move_fluor_img)
 
 
 class SinglePickThread(QThread):

@@ -20,7 +20,7 @@ class Pick():
     It uses the PickingPipette class and the Mapping class
     """
 
-    def __init__(self, cfg_dir, pick_dir, prefix, offset, dtime, iplate, dp_array):
+    def __init__(self, cfg_dir, pick_dir, prefix, offset, dtime, iplate, dp_array, phc=None):
         """Loads the files for classification and initializes PickingPipette class
         
         :param cfg_dir: parent path directory for all of the config files
@@ -37,17 +37,17 @@ class Pick():
         :type: image plate class instance
         :param dp_file: path to dispense plate array in config folder
         :type: path
+        :param phc: PickingPipette class
+        :type phc: Picking pipette class instance
 
         :raises FileNotFoundError: loggings critical if any of the files are not found
         """
 
-        logging.info('Initializing Picking Pipette hardware controller')
+        logging.info('Initializing Pick class')
         dplate_array = cfg_dir / 'arrays' / dp_array
-        try:
-            self.pp = PickingPipette(cfg_dir, dplate_array)
-        except Exception as e:
-            logging.info("Could not initialize and connect hardware controller")
-        
+        self.phc = phc
+        self.phc.define_dp(dplate_array)
+
         self.pick_dir = pick_dir
         self.prefix = prefix
         self.class_file = None
@@ -63,19 +63,19 @@ class Pick():
         """Connects to hardware
         """
 
-        self.pp.connect(env='prod')
+        self.phc.connect(env='prod')
 
     def disconnect_hardware(self):
         """Disconnects from hardware
         """
 
-        self.pp.disconnect()
+        self.phc.disconnect()
 
     def reset_hardware(self):
         """Reset the hardware connection
         """
         
-        self.pp.reset()
+        self.phc.reset()
 
     def move_calib(self, pick: bool=True, well: Optional[str]=None):
         """Checks for calibration of pipette tip height
@@ -88,12 +88,12 @@ class Pick():
 
         if pick:
             logging.info('Move for Picking Calib Height')
-            self.pp.move_for_calib(pick)
+            self.phc.move_for_calib(pick)
         else:
             logging.info('Move for Dispense Calib Height')
             logging.info(f'well passed: {well}')
             logging.info(f'pick is {pick}')
-            self.pp.move_for_calib(pick, well)
+            self.phc.move_for_calib(pick, well)
 
     def set_calib(self, pick: bool=True):
         """Sets pipette calibration once user acknowledges location
@@ -102,7 +102,7 @@ class Pick():
         :type pick: bool
         """
             
-        self.pp.set_calib(pick)
+        self.phc.set_calib(pick)
 
     def get_classified(self):
         """Opens classification and pick parameter files
@@ -145,8 +145,8 @@ class Pick():
 
         logging.info('Begin iterating through pick list')
         self.matches.drop(columns=['lHead']).head(0).to_csv(self.picked_file, index=False)
-        self.pp.move_pipette('clearance')
-        self.pp.dest_home()
+        self.phc.move_pipette('clearance')
+        self.phc.dest_home()
         
         for match in self.matches.index:
             if self.matches['lHead'][match]:
@@ -157,20 +157,20 @@ class Pick():
                 logging.info(f'Offset right head:{offset}')
             
             self.iplate.go_to_well(self.matches['slotName'][match], offset)
-            self.pp.move_pipette('pick')
+            self.phc.move_pipette('pick')
             sleep(self.dtime)
-            self.pp.draw()
+            self.phc.draw()
             sleep(self.dtime)
-            self.pp.move_pipette('clearance')
+            self.phc.move_pipette('clearance')
             
-            self.pp.dplate.go_to_well(self.matches['dispenseWell'][match])
-            self.pp.move_pipette('dispense')
-            self.pp.expel()
+            self.phc.dplate.go_to_well(self.matches['dispenseWell'][match])
+            self.phc.move_pipette('dispense')
+            self.phc.expel()
             sleep(self.dtime)
-            self.pp.expel()
+            self.phc.expel()
             sleep(self.dtime)
-            self.pp.move_pipette('clearance')
-            self.pp.dest_home()
+            self.phc.move_pipette('clearance')
+            self.phc.dest_home()
             logging.info('Picked fish in {} to {}'.format(self.matches['slotName'][match], self.matches['dispenseWell'][match]))
             pd.DataFrame([self.matches.drop(columns=['lHead']).iloc[match].values], columns=self.matches.drop(columns=['lHead']).columns)\
                 .to_csv(self.picked_file, mode='a', header=False, index=False)
@@ -211,22 +211,22 @@ class Pick():
         """
 
         logging.info(f'Begin single pick with delay time {dtime} seconds')
-        self.pp.move_pipette('clearance')
-        self.pp.dest_home()
+        self.phc.move_pipette('clearance')
+        self.phc.dest_home()
         
-        self.pp.move_pipette('pick')
+        self.phc.move_pipette('pick')
         sleep(dtime)
-        self.pp.draw()
+        self.phc.draw()
         sleep(dtime)
-        self.pp.move_pipette('clearance')
+        self.phc.move_pipette('clearance')
             
-        self.pp.dplate.go_to_well(self.matches['dispenseWell'][match])
-        self.pp.move_pipette('dispense')
-        self.pp.expel()
+        self.phc.dplate.go_to_well(self.matches['dispenseWell'][match])
+        self.phc.move_pipette('dispense')
+        self.phc.expel()
         sleep(dtime)
-        self.pp.expel()
+        self.phc.expel()
         sleep(dtime)
 
-        self.pp.move_pipette('clearance')
-        self.pp.dest_home()
+        self.phc.move_pipette('clearance')
+        self.phc.dest_home()
         logging.info('Finished Pick')

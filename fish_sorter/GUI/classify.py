@@ -916,7 +916,7 @@ class FishFinderWidget(QWidget):
         self.sigma_spin.setMinimum(0.1)
         self.sigma_spin.setMaximum(100)
         self.sigma_spin.setSingleStep(0.1)
-        self.sigma_spin.setValue(15)
+        self.sigma_spin.setValue(1)
         layout.addWidget(self.sigma_label)
         layout.addWidget(self.sigma_spin)
         self.run_button = QPushButton('Find Fish')
