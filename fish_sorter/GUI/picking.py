@@ -20,7 +20,7 @@ class Pick():
     It uses the PickingPipette class and the Mapping class
     """
 
-    def __init__(self, cfg_dir, pick_dir, prefix, offset, dtime, iplate, dp_array, phc=None):
+    def __init__(self, phc=None):
         """Loads the files for classification and initializes PickingPipette class
         
         :param cfg_dir: parent path directory for all of the config files
@@ -44,20 +44,8 @@ class Pick():
         """
 
         logging.info('Initializing Pick class')
-        dplate_array = cfg_dir / 'arrays' / dp_array
         self.phc = phc
-        self.phc.define_dp(dplate_array)
-
-        self.pick_dir = pick_dir
-        self.prefix = prefix
-        self.class_file = None
-        self.pick_param_file = None
-
-        self.iplate = iplate
-        
-        self.matches = None
-        self.pick_offset = offset
-        self.dtime = dtime
+        self.configured = False
 
     def connect_hardware(self):
         """Connects to hardware
@@ -77,6 +65,55 @@ class Pick():
         
         self.phc.reset()
 
+    def setup_exp(self, cfg_dir, pick_dir, prefix, offset, dtime, iplate, dp_array):
+        """Configuration for the user-input experiment parameters
+
+        :param cfg_dir: parent path directory for all of the config files
+        :type cfg_dir: path
+        :param pick_dir: experiment directory for classification and pick files
+        :type pick_dir: str
+        :param prefix: prefix name details
+        :type prefix: str
+        :param offset: offset value from center points for picking
+        :type offset: np array
+        :param dtime: delay time in s to be used between pipette actions from config
+        :type dtime: float
+        :param iplate: image plate class
+        :type: image plate class instance
+        :param dp_array: path to dispense plate array in config folder
+        :type: path
+
+        :raises FileNotFoundError: loggings critical if any of the files are not found
+        """
+        
+        logging.info('Configure Pick class with experimental parameters')
+        dplate_array = cfg_dir / 'arrays' / dp_array
+        self.phc.define_dp(dplate_array)
+
+        self.pick_dir = pick_dir
+        self.prefix = prefix
+        self.class_file = None
+        self.pick_param_file = None
+
+        self.iplate = iplate
+        
+        self.matches = None
+        self.pick_offset = offset
+        self.dtime = dtime
+        
+        self.configured = True
+
+    def requires_setup(method):
+        """Check for functions that require experiment setup parameters
+
+        raises RuntimeError if not setup
+        """
+        def wrapper(self, *args, **kwargs):
+            if not self.configured:
+                raise RuntimeError('Must setup the experiment first')
+            return method(self, *args, **kwargs)
+        return wrapper
+    
     def move_calib(self, pick: bool=True, well: Optional[str]=None):
         """Checks for calibration of pipette tip height
 
@@ -104,6 +141,7 @@ class Pick():
             
         self.phc.set_calib(pick)
 
+    @requires_setup
     def get_classified(self):
         """Opens classification and pick parameter files
         """
@@ -138,6 +176,7 @@ class Pick():
 
         logging.info('Load image plate calibration and wells')
 
+    @requires_setup
     def pick_me(self):
         """Performs all actions to pick from the source plate to the destination plate using
         the match list created by match_pick
@@ -191,6 +230,7 @@ class Pick():
 
         logging.info('Finished Picking!')
 
+    @requires_setup
     def match_pick(self):
         """Matches the desired pick parameters to the classification
         """
@@ -203,6 +243,7 @@ class Pick():
         self.matches = pd.DataFrame({'slotName': merge_sorted['slotName'], 'dispenseWell': merge_sorted['dispenseWell'], 'lHead': merge_sorted['lHead']})
         logging.info('Created pick list')
 
+    @requires_setup
     def single_pick(self, dtime: float=1.00):
         """Perform a single pick at the current position
 

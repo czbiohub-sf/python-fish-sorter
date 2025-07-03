@@ -29,7 +29,6 @@ from qtpy.QtWidgets import (
 )
 
 from fish_sorter.GUI.picking import Pick
-from fish_sorter.hardware.picking_pipette import PickingPipette
 
 COLOR_TYPES = Union[
     QColor,
@@ -42,7 +41,7 @@ COLOR_TYPES = Union[
 
 class PickGUI(QWidget):
 
-    def __init__(self, picker, phc, parent: QWidget | None=None):
+    def __init__(self, picker=None, parent: QWidget | None=None):
         """Initialize Picker GUI
 
         :param picker: Pick class object to control picking
@@ -55,7 +54,6 @@ class PickGUI(QWidget):
         CMMCorePlus.instance()
 
         self.pick = picker
-        self.phc = phc
         self.pick_calib = False
         self.disp_calib = False
         
@@ -70,8 +68,9 @@ class PickGUI(QWidget):
         img = ImageWidget(self)
         home = HomeWidget(self)
         move_pipette = MovePipette(self)
-        pw = PickWidget(self)
-        new_expt = NewExptWidget(self)
+        self.pw = PickWidget(self)
+        self.pw.setEnabled(False)
+        self.new_expt = NewExptWidget(self)
         reset = ResetWidget(self)
         
         draw = PipetteDrawWidget(self)
@@ -79,7 +78,8 @@ class PickGUI(QWidget):
         ppp = PipettePressureWidget(self)
         
         time = ChangeTimeWidget(self)
-        single = SinglePickWidget(self)
+        self.single = SinglePickWidget(self)
+        self.single.setEnable(False)
 
         layout = QGridLayout(self)
         layout.addWidget(calib_pick, 1, 0)
@@ -100,9 +100,9 @@ class PickGUI(QWidget):
         layout.addWidget(draw, 7, 0)
         layout.addWidget(expel, 7, 1)
         layout.addWidget(ppp, 7, 2)
-        layout.addWidget(single, 8, 0)
-        layout.addWidget(pw, 9, 0)
-        layout.addWidget(new_expt, 10, 0)
+        layout.addWidget(self.single, 8, 0)
+        layout.addWidget(self.pw, 9, 0)
+        layout.addWidget(self.new_expt, 10, 0)
         layout.addWidget(reset, 10, 1)
 
     def _update_calib_status(self):
@@ -119,6 +119,12 @@ class PickGUI(QWidget):
         else:
             self.disp_calib_status.setText('❌ Disp Not Calibrated')
 
+    def update_pick_widgets(self, status: bool=True):
+        """Updates the widgets dependent on the Pick class
+        """
+        
+        self.pw.setEnabled(status)
+        self.single.setEnabled(status)
 
 class PipettePickCalibWidget(QPushButton):
     """A push button widget to calibrate the pick position for the pipette
@@ -553,6 +559,8 @@ class NewExptWidget(QPushButton):
     """A push button widget to start a new experiment
     """
     
+    new_exp_req = pyqtSignal()
+
     def __init__(self, picking, parent: QWidget | None=None):
         
         super().__init__(parent=parent)
@@ -563,13 +571,19 @@ class NewExptWidget(QPushButton):
 
         self.picking = picking
         self._mmc = CMMCorePlus.instance()
+
         self._create_button()
 
     def _create_button(self)->None:
         
-        self.setText("BROKEN BUTTON")
-        #TODO change for new experiment function calls. This may be one level higher
-        # self.clicked.connect(self.picking.pick.disconnect_hardware) 
+        self.setText("New Experiment")
+        self.clicked.connect(self._new)
+
+    def _new(self):
+        logging.info('Start new experiment')
+
+        self.picking.update_pick_widgets(False)
+        self.new_exp_req.emit()
 
 
 class ResetWidget(QPushButton):
@@ -657,7 +671,6 @@ class SinglePickThread(QThread):
     
     def run(self):
         """Run the single pick thread
-
         """
 
         try:

@@ -110,8 +110,9 @@ class FishPicker:
         self.img_tools.class_btn.clicked.connect(self.run_class)
 
         # Picking GUI Widget
-        #TODO need to get self.pick out of there and initialized in pick_gui once it is initialized
-        self.pick_gui = PickGUI(self.pick, self.phc)
+        self.pick = Pick(self.phc)
+        self.pick_gui = PickGUI(self.pick)
+        self.pick_gui.new_exp.new_exp_req.connect(self._new_exp)
         self.v.window.add_dock_widget(self.pick_GUI, name='Picking', area='right', tabify=True)
 
     def run_class(self):
@@ -150,13 +151,9 @@ class FishPicker:
 
         self.setup_iplate()
 
-        logging.info('Loading picking hardware')
-        self.pick = Pick(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.dtime, self.iplate, self.dp_array, self.phc)
-        
-        #TODO add in self.pick to picking gui
-
-        #self.pick_gui = PickGUI(self.pick)
-        #self.v.window.add_dock_widget(self.pick_gui, name='Picking', area='right', tabify=True)
+        logging.info('Enabling full pick functionality')
+        self.pick.setup_exp(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.dtime, self.iplate, self.dp_array)
+        self.pick_gui.update_pick_widgets(status=True)
 
     def setup_MDA(self):
         """Setup the MDA from Picker setup information and the starting configuration
@@ -212,9 +209,13 @@ class FishPicker:
         for chan, chan_name in zip(range(num_chan), chan_names):
             mosaic = self.stitch[chan, :, :]
             if chan_name == 'GFP':
-                color = 'green'
+                color = Colormap([[0, 0, 0], [0, 1, 0]], name='GFP-green')
             elif chan_name == 'TXR':
-                color = 'red'
+                color = Colormap([[0, 0, 0], [1, 0.25, 0]], name='tiger-orange')
+            elif chan_name == 'CIT':
+                color = Colormap([[0, 0, 0], [1, 1, 0]], name='CIT-yellow')
+            elif chan_name == 'CY5':
+                color = Colormap([[0, 0, 0], [0.93, 0.13, 0.53]], name='CY5-plasma')
             else:
                 color = 'grey'
             self.v.add_image(mosaic, colormap=color, blending='additive', name=chan_name)
@@ -260,6 +261,23 @@ class FishPicker:
             logging.info(f'Saved layer {layer}')
 
         logging.info('Ready to classify')
+
+    def _new_exp(self):
+        """Set up to start a new experiment after running one
+        """
+
+        logging.info('Remove all layers')
+        for layer in list(self.picking.viewer.layers):
+            logging.info(f'Layer {layer}')
+            self.picking.viewer.layers.remove(layer)
+            logging.info(f'Removed layer {layer}')
+        
+        if hasattr(self, 'classify') and self.classify is not None:
+            try:
+                self.v.window.remove_dock_widget(self.classify.classify_widget)
+            except Exception as e:
+                logging.warning(f'Could not remove classify dock widget: {e}')
+        self.classify = None
 
 
 if __name__ == "__main__":

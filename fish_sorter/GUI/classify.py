@@ -112,10 +112,17 @@ class Classify():
             self.viewer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) #Note: set to overwrite standard shortcuts in napari
             self.points_layer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) #Note: set to overwrite points layer specific shortcuts
         
+        # Prevents points being deleted
+        self.points_layer.unbind_key('Backspace')
+        self.points_layer.unbind_key('Delete')
+        self.viewer.unbind_key('Backspace')
+        self.viewer.unbind_key('Delete')
+        
         self.well_viewers = {}
         self.well_display_layers = {}
         self.feature_labels = {}
         self.current_well = 0
+        self.counter = None
 
         self.extract_fish(pts)
         self._find_fish_widget(pts)
@@ -294,6 +301,11 @@ class Classify():
             face_color = 'empty',
             face_color_cycle = face_color_cycle
         )
+
+        self.points_layer.unbind_key('Backspace')
+        self.points_layer.unbind_key('Delete')
+        self.viewer.unbind_key('Backspace')
+        self.viewer.unbind_key('Delete')
 
         return self.points_layer
 
@@ -536,6 +548,8 @@ class Classify():
         if self.picking == 'larvae':
             logging.info('Determining fish orientation for picking larvae')
             self.find_orientation()
+        
+        self._update_counter()
 
     def find_orientation(self):
         """Determines orientation to select side of well for picking
@@ -646,6 +660,10 @@ class Classify():
         self.classify_widget = QWidget()
         self.classify_layout = QVBoxLayout(self.classify_widget)
 
+        self.counter = QLabel('')
+        self.counter.setStyleSheet('font-size: 16pt; font-weight: bold; color: #6a617a;')
+        self.classify_layout.addWidget(self.counter)
+
         self.well_disp_container = QWidget()
         self.well_disp_layout = QVBoxLayout(self.well_disp_container) 
         self.classify_layout.addWidget(self.well_disp_container)
@@ -676,6 +694,8 @@ class Classify():
         self.viewer.window.add_dock_widget(self.classify_widget, name= 'Classification', area='right', tabify = True)
         self.viewer.bind_key("Right", self._next_well)
         self.viewer.bind_key("Left", self._previous_well)
+
+        self._update_counter()
     
     def _create_viewer(self, layer_name, masked_region):
         """Make side viewer on main thread
@@ -726,7 +746,11 @@ class Classify():
         if layer == 'GFP':
             return Colormap([[0, 0, 0], [0, 1, 0]], name='GFP-green')
         elif layer == 'TXR':
-            return Colormap([[0, 0, 0], [1, 0, 0]], name='TXR-red')
+            return Colormap([[0, 0, 0], [1, 0.25, 0]], name='tiger-orange')
+        elif layer == 'CIT':
+            return Colormap([[0, 0, 0], [1, 1, 0]], name='CIT-yellow')
+        elif layer == 'CY5':
+            return Colormap([[0, 0, 0], [0.93, 0.13, 0.53]], name='CY5-plasma')
         else:
             return Colormap([[0, 0, 0], [0.5, 0.5, 0.5]], name='gray')
     
@@ -759,6 +783,7 @@ class Classify():
         self._select_current_point()
         self._update_feature_display(self.current_well)
         self._selected_current_pt()
+        self._update_counter()
     
     def _previous_well(self, event=None):
         """Updates the viewer window with the previous well when the left arrow key is pressed
@@ -788,7 +813,28 @@ class Classify():
         self._select_current_point()
         self._update_feature_display(self.current_well)
         self._selected_current_pt()
+        self._update_counter()
 
+    def _update_counter(self):
+        """Updates the fish counter for the user to know which fish they are on and the total
+        """
+
+        singlets = self.points_layer.features['singlet']
+        singlet_idxs = np.where(singlets)[0]
+
+        if len(singlet_idxs) == 0:
+            self.counter.setText('No Fish')
+            return
+        
+        try:
+            pos = np.where(singlet_idxs == self.current_well)[0][0] + 1
+
+        except IndexError:
+            pos = 1
+        
+        total = len(singlet_idxs)
+        self.counter.setText(f'Fish {pos} of {total}')
+    
     def _well_disp(self):
         """Force _update_well_display to run on main thread
         """
