@@ -141,8 +141,9 @@ class SetupWidget(QWidget):
                 offset = np.array([self.pick_type[button.text()]['picker']['length_offset'], 
                         self.pick_type[button.text()]['picker']['width_offset']])
                 dtime = self.pick_type[button.text()]['picker']['dtime']
-                return button.text(), offset, dtime
-        return "default_pick_type", np.array([0.0, 0.0]), float(0.0)
+                pick_height = self.pick_type[button.text()]['picker']['pick_height']
+                return button.text(), offset, dtime, pick_height
+        return "default_pick_type", np.array([0.0, 0.0]), float(0.0), float(0.0)
     
     def get_img_array(self):
         """

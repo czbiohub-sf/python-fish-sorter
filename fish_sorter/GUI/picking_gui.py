@@ -130,6 +130,8 @@ class PipettePickCalibWidget(QPushButton):
     """A push button widget to calibrate the pick position for the pipette
     """
     
+    save_pick_h = pyqtSignal()
+
     def __init__(self, picking, parent: QWidget | None=None):
         
         super().__init__(parent=parent)
@@ -153,6 +155,7 @@ class PipettePickCalibWidget(QPushButton):
         self.picking.pick.set_calib(pick=True)
         self.picking.pick_calib = True
         self.picking._update_calib_status()
+        self.save_pick_h.emit()
 
 
 class PipetteDispCalibWidget(QPushButton):

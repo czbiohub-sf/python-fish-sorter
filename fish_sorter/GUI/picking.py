@@ -65,7 +65,7 @@ class Pick():
         
         self.phc.reset()
 
-    def setup_exp(self, cfg_dir, pick_dir, prefix, offset, dtime, iplate, dp_array):
+    def setup_exp(self, cfg_dir, pick_dir, prefix, offset, dtime, pick_h, iplate, dp_array):
         """Configuration for the user-input experiment parameters
 
         :param cfg_dir: parent path directory for all of the config files
@@ -78,6 +78,8 @@ class Pick():
         :type offset: np array
         :param dtime: delay time in s to be used between pipette actions from config
         :type dtime: float
+        :param pick_h: previous pick height for the specific pick type
+        :type pick_h: float
         :param iplate: image plate class
         :type: image plate class instance
         :param dp_array: path to dispense plate array in config folder
@@ -100,6 +102,8 @@ class Pick():
         self.matches = None
         self.pick_offset = offset
         self.dtime = dtime
+        self.phc.pick_h = pick_h
+        logging.info(f'Setting pick height previous pick height {self.phc.pick_h}')
         
         self.configured = True
 

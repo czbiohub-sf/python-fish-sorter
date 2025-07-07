@@ -4,7 +4,8 @@
             "length_offset": 1652.5,
             "width_offset": 0.0,
             "dtime": 0.5,
-            "description": "Pick offset distance from well center in um and delay time for picking in sec"
+            "pick_height": 74.35,
+            "description": "Pick offset distance from well center in um, pick height in mm, and delay time for picking in sec"
         },
         "well_class": {
             "empty": {
@@ -94,8 +95,9 @@
         "picker": {
             "length_offset": 0.0,
             "width_offset": 0.0,
-            "dtime": 0.50, 
-            "description": "Pick offset distance from well center in um and delay time for picking in sec"
+            "dtime": 0.50,
+            "pick_height": 72.0,
+            "description": "Pick offset distance from well center in um, pick height in mm, and delay time for picking in sec"
         },
         "well_class": {
             "empty": {

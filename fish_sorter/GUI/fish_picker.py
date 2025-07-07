@@ -113,6 +113,7 @@ class FishPicker:
         self.pick = Pick(self.phc)
         self.pick_gui = PickGUI(self.pick)
         self.pick_gui.new_exp.new_exp_req.connect(self._new_exp)
+        self.pick_gui.save_pick_h.connect(self._save_pick_h)
         self.v.window.add_dock_widget(self.pick_GUI, name='Picking', area='right', tabify=True)
 
     def run_class(self):
@@ -137,7 +138,7 @@ class FishPicker:
         self.expt_prefix = sequence.metadata['pymmcore_widgets']['save_name'].removesuffix('.ome.zarr')
         self.img_array = self.setup.get_img_array()
         self.dp_array = self.setup.get_dp_array()
-        self.pick_type, self.offset, self.dtime = self.setup.get_pick_type()
+        self.pick_type, offset, dtime, pick_h = self.setup.get_pick_type()
 
         logging.info('Picker setup parameters: ')
         logging.info(f'Expt Path: {self.expt_path}')
@@ -146,13 +147,14 @@ class FishPicker:
         logging.info(f'Dispense array: {self.dp_array}')
         logging.info(f'cfg dir: {self.cfg_dir}')
         logging.info(f'Pick type: {self.pick_type}')
-        logging.info(f'Pick offset: {self.offset}')
-        logging.info(f'Pick delay time: {self.dtime}')
+        logging.info(f'Pick offset: {offset}')
+        logging.info(f'Pick delay time: {dtime}')
+        logging.info(f'Previous pick height: {pick_h}')
 
         self.setup_iplate()
 
         logging.info('Enabling full pick functionality')
-        self.pick.setup_exp(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.dtime, self.iplate, self.dp_array)
+        self.pick.setup_exp(self.cfg_dir, self.expt_path, self.expt_prefix, offset, dtime, pick_h, self.iplate, self.dp_array)
         self.pick_gui.update_pick_widgets(status=True)
 
     def setup_MDA(self):
@@ -278,6 +280,23 @@ class FishPicker:
             except Exception as e:
                 logging.warning(f'Could not remove classify dock widget: {e}')
         self.classify = None
+
+    def _save_pick_h(self):
+        """Saves the calibrated pick height for the specific pick type to the pick type config
+        """
+
+        logging.info("Saving pick height to the pick type config")
+        cfg = self.cfg_dir / 'pick/pick_type_config.json' 
+        with open(cfg, 'r') as pc:
+            pick_cfg = json.load(pc)
+            pick_cfg[self.pick_type]['picker']['pick_height'] = self.phc.pick_h
+            [button.text()]['picker']['pick_height']
+            pc.close()
+        with open(self.pipettor_cfg, 'w') as pc:
+            pick_update = json.dump(pick_cfg, pc, indent = 4, separators= (',',': '))
+            pc.close()
+
+        logging.info('Saved pick_type_config.json with updated value')
 
 
 if __name__ == "__main__":
