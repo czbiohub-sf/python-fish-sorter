@@ -290,7 +290,6 @@ class FishPicker:
         with open(cfg, 'r') as pc:
             pick_cfg = json.load(pc)
             pick_cfg[self.pick_type]['picker']['pick_height'] = self.phc.pick_h
-            [button.text()]['picker']['pick_height']
             pc.close()
         with open(self.pipettor_cfg, 'w') as pc:
             pick_update = json.dump(pick_cfg, pc, indent = 4, separators= (',',': '))
