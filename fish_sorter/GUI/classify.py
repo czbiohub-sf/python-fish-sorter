@@ -109,14 +109,15 @@ class Classify():
         
         self._key_binding()
         for key, feature in self.key_feature_map.items():
-            self.viewer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) #Note: set to overwrite standard shortcuts in napari
-            self.points_layer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) #Note: set to overwrite points layer specific shortcuts
+            self.viewer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) # Note: set to overwrite standard shortcuts in napari
+            self.points_layer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) # Note: set to overwrite points layer specific shortcuts
         
-        # Prevents points being deleted
-        self.points_layer.unbind_key('Backspace')
-        self.points_layer.unbind_key('Delete')
-        self.viewer.unbind_key('Backspace')
-        self.viewer.unbind_key('Delete')
+        # Prevents points from being deleted
+        self.viewer.bind_key('Backspace', self._blank, overwrite=True)
+        self.viewer.bind_key('Delete', self._blank, overwrite=True)
+        self.points_layer.bind_key('Backspace', self._blank, overwrite=True)
+        self.points_layer.bind_key('Delete', self._blank, overwrite=True)
+
         
         self.well_viewers = {}
         self.well_display_layers = {}
@@ -134,6 +135,12 @@ class Classify():
         self.prefix = prefix
         self.expt_dir = expt_dir
         self.save_data()
+
+    def _blank(self, event):
+        """Empty function used to overwrite hotkeys
+        """
+
+        pass
 
     def _feat(self):
         """Loads the feature list
@@ -301,11 +308,6 @@ class Classify():
             face_color = 'empty',
             face_color_cycle = face_color_cycle
         )
-
-        self.points_layer.unbind_key('Backspace')
-        self.points_layer.unbind_key('Delete')
-        self.viewer.unbind_key('Backspace')
-        self.viewer.unbind_key('Delete')
 
         return self.points_layer
 
@@ -692,8 +694,8 @@ class Classify():
         self.classify_layout.addWidget(self.feature_widget)
 
         self.viewer.window.add_dock_widget(self.classify_widget, name= 'Classification', area='right', tabify = True)
-        self.viewer.bind_key("Right", self._next_well)
-        self.viewer.bind_key("Left", self._previous_well)
+        self.viewer.bind_key("Right", self._next_well, overwrite=True)
+        self.viewer.bind_key("Left", self._previous_well, overwrite=True)
 
         self._update_counter()
     
@@ -764,9 +766,10 @@ class Classify():
         singlets = self.points_layer.features['singlet']
         singlet_idxs = np.where(singlets)[0]
 
-        if len(singlets) == 0:
-            logging.warning('There are no singlets.')
-            return
+        if len(singlet_idxs) == 0:
+            all_idx = np.arange(len(self.points_layer.data))
+            logging.info('There are no singlets. Cycling through all points')
+            singlet_idxs = all_idx
         try:
             current_well = np.where(singlet_idxs == self.current_well)[0][0]
             next_idx = (current_well + 1) % len(singlet_idxs)
@@ -795,9 +798,11 @@ class Classify():
         singlets = self.points_layer.features['singlet']
         singlet_idxs = np.where(singlets)[0]
 
-        if len(singlets) == 0:
-            logging.warning('There are no singlets.')
-            return
+        if len(singlet_idxs) == 0:
+            all_idx = np.arange(len(self.points_layer.data))
+            logging.info('There are no singlets. Cycling through all points')
+            singlet_idxs = all_idx
+
         try:
             current_well = np.where(singlet_idxs == self.current_well)[0][0]
             prev_idx = (current_well - 1) % len(singlet_idxs)
@@ -976,8 +981,15 @@ class FishFinderWidget(QWidget):
         """
 
         layer_names = [layer.name for layer in self.viewer.layers if isinstance(layer, Image)]
-        layer_names.append('sum')
+        if len(layer_names) >1 and 'sum' not in layer_names:
+            layer_names.append('sum')
+        self.layer_combo.clear()
         self.layer_combo.addItems(layer_names)
+        if 'sum' in layer_names:
+            sum_idx = self.layer_combo.findText('sum')
+            self.layer_combo.setCurrentIndex(sum_idx)
+        elif layer_names:
+            self.layer_combo.setCurrentIndex(0)
 
     def run_find_fish(self):
         """Callback for the fish finding widget

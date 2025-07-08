@@ -57,7 +57,7 @@ class PickGUI(QWidget):
         self.pick_calib = False
         self.disp_calib = False
         
-        calib_pick = PipettePickCalibWidget(self)
+        self.calib_pick = PipettePickCalibWidget(self)
         self.pick_calib_status = QLabel('❌ Pick Not Calibrated')
         calib_disp = PipetteDispCalibWidget(self)
         self.disp_calib_status = QLabel('❌ Disp Not Calibrated')
@@ -79,10 +79,10 @@ class PickGUI(QWidget):
         
         time = ChangeTimeWidget(self)
         self.single = SinglePickWidget(self)
-        self.single.setEnable(False)
+        self.single.setEnabled(False)
 
         layout = QGridLayout(self)
-        layout.addWidget(calib_pick, 1, 0)
+        layout.addWidget(self.calib_pick, 1, 0)
         layout.addWidget(self.pick_calib_status, 1, 3)
         layout.addWidget(calib_disp, 1, 1)
         layout.addWidget(move2swing, 1, 2)

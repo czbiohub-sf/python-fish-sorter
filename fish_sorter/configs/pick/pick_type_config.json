@@ -17,7 +17,7 @@
                 "key": "d",
                 "preset": false,
                 "description": "Indicates if the fish is deformed"
-             },
+            },
             "wrong_o": {
                 "key": "w",
                 "preset": false,
@@ -39,12 +39,48 @@
                 "description": "Indicates a single fish. This will be used to select those for feature classification"
             },
             "deselect": {
-                "empty": ["deformed", "wrong_o", "unknown", "multiple", "singlet"],
-                "deformed": ["empty", "wrong_o", "unknown", "multiple", "singlet"],
-                "wrong_o": ["empty", "deformed", "unknown", "multiple", "singlet"],
-                "unknown": ["empty", "deformed", "wrong_o", "multiple", "singlet"],
-                "multiple": ["empty", "deformed", "wrong_o", "unknown","singlet"],
-                "singlet": ["empty", "deformed", "wrong_o", "unknown", "multiple"],
+                "empty": [
+                    "deformed",
+                    "wrong_o",
+                    "unknown",
+                    "multiple",
+                    "singlet"
+                ],
+                "deformed": [
+                    "empty",
+                    "wrong_o",
+                    "unknown",
+                    "multiple",
+                    "singlet"
+                ],
+                "wrong_o": [
+                    "empty",
+                    "deformed",
+                    "unknown",
+                    "multiple",
+                    "singlet"
+                ],
+                "unknown": [
+                    "empty",
+                    "deformed",
+                    "wrong_o",
+                    "multiple",
+                    "singlet"
+                ],
+                "multiple": [
+                    "empty",
+                    "deformed",
+                    "wrong_o",
+                    "unknown",
+                    "singlet"
+                ],
+                "singlet": [
+                    "empty",
+                    "deformed",
+                    "wrong_o",
+                    "unknown",
+                    "multiple"
+                ],
                 "description": "Rules to deselect options if one of the others is selected"
             }
         },
@@ -95,8 +131,8 @@
         "picker": {
             "length_offset": 0.0,
             "width_offset": 0.0,
-            "dtime": 0.50,
-            "pick_height": 72.0,
+            "dtime": 0.5,
+            "pick_height": 72.00,
             "description": "Pick offset distance from well center in um, pick height in mm, and delay time for picking in sec"
         },
         "well_class": {
@@ -109,7 +145,7 @@
                 "key": "d",
                 "preset": false,
                 "description": "Indicates if the fish is deformed"
-             },
+            },
             "wrong_o": {
                 "key": "w",
                 "preset": false,
@@ -131,12 +167,48 @@
                 "description": "Indicates a single fish. This will be used to select those for feature classification"
             },
             "deselect": {
-                "empty": ["deformed", "wrong_o", "unknown", "multiple", "singlet"],
-                "deformed": ["empty", "wrong_o", "unknown", "multiple", "singlet"],
-                "wrong_o": ["empty", "deformed", "unknown", "multiple", "singlet"],
-                "unknown": ["empty", "deformed", "wrong_o", "multiple", "singlet"],
-                "multiple": ["empty", "deformed", "wrong_o", "unknown","singlet"],
-                "singlet": ["empty", "deformed", "wrong_o", "unknown", "multiple"],
+                "empty": [
+                    "deformed",
+                    "wrong_o",
+                    "unknown",
+                    "multiple",
+                    "singlet"
+                ],
+                "deformed": [
+                    "empty",
+                    "wrong_o",
+                    "unknown",
+                    "multiple",
+                    "singlet"
+                ],
+                "wrong_o": [
+                    "empty",
+                    "deformed",
+                    "unknown",
+                    "multiple",
+                    "singlet"
+                ],
+                "unknown": [
+                    "empty",
+                    "deformed",
+                    "wrong_o",
+                    "multiple",
+                    "singlet"
+                ],
+                "multiple": [
+                    "empty",
+                    "deformed",
+                    "wrong_o",
+                    "unknown",
+                    "singlet"
+                ],
+                "singlet": [
+                    "empty",
+                    "deformed",
+                    "wrong_o",
+                    "unknown",
+                    "multiple"
+                ],
                 "description": "Rules to deselect options if one of the others is selected"
             }
         },

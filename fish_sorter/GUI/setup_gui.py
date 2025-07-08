@@ -124,7 +124,7 @@ class SetupWidget(QWidget):
         for i, key in enumerate(self.pick_type.keys()):
             radio_button = QRadioButton(key)
             radio_button.setMinimumHeight(0)
-            radio_buttong.setContentsMargins(0, 0, 0, 0)
+            radio_button.setContentsMargins(0, 0, 0, 0)
             self.pick_type_grp.addButton(radio_button)
             self.layout.addWidget(radio_button, start_row + i, 0, 1, 3)
 

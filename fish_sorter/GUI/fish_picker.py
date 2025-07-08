@@ -1,4 +1,5 @@
 import argparse
+import json
 import logging
 
 import numpy as np
@@ -112,9 +113,9 @@ class FishPicker:
         # Picking GUI Widget
         self.pick = Pick(self.phc)
         self.pick_gui = PickGUI(self.pick)
-        self.pick_gui.new_exp.new_exp_req.connect(self._new_exp)
-        self.pick_gui.save_pick_h.connect(self._save_pick_h)
-        self.v.window.add_dock_widget(self.pick_GUI, name='Picking', area='right', tabify=True)
+        self.pick_gui.new_expt.new_exp_req.connect(self._new_exp)
+        self.pick_gui.calib_pick.save_pick_h.connect(self._save_pick_h)
+        self.v.window.add_dock_widget(self.pick_gui, name='Picking', area='right', tabify=True)
 
     def run_class(self):
         """Classification GUI startup from image widget class_btn
@@ -196,7 +197,7 @@ class FishPicker:
         array = self.cfg_dir / 'arrays' / self.img_array
         logging.info(f'{array}')
         self.iplate = ImagingPlate(self.core, self.mda, array)
-        logging.info('Loaded imate plate')
+        logging.info('Loaded image plate')
 
     def run(self):
         """Runs the mosaic processing, dispay and setup of classification
@@ -269,14 +270,19 @@ class FishPicker:
         """
 
         logging.info('Remove all layers')
-        for layer in list(self.picking.viewer.layers):
+        for layer in list(self.v.layers):
             logging.info(f'Layer {layer}')
-            self.picking.viewer.layers.remove(layer)
+            self.v.layers.remove(layer)
             logging.info(f'Removed layer {layer}')
         
         if hasattr(self, 'classify') and self.classify is not None:
             try:
-                self.v.window.remove_dock_widget(self.classify.classify_widget)
+                if hasattr(self.classify, 'classify_widget'):
+                    self.v.window.remove_dock_widget(self.classify.classify_widget)
+                if hasattr(self.classify, 'save_widget'):
+                    self.v.window.remove_dock_widget(self.classify.save_widget)
+                if hasattr(self.classify, 'fish_widget'):
+                    self.v.window.remove_dock_widget(self.classify.fish_widget)
             except Exception as e:
                 logging.warning(f'Could not remove classify dock widget: {e}')
         self.classify = None
@@ -291,7 +297,7 @@ class FishPicker:
             pick_cfg = json.load(pc)
             pick_cfg[self.pick_type]['picker']['pick_height'] = self.phc.pick_h
             pc.close()
-        with open(self.pipettor_cfg, 'w') as pc:
+        with open(cfg, 'w') as pc:
             pick_update = json.dump(pick_cfg, pc, indent = 4, separators= (',',': '))
             pc.close()
 
