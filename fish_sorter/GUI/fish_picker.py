@@ -29,10 +29,11 @@ from typing import overload
 from useq import GridFromEdges, MDASequence
 
 from fish_sorter.GUI.classify import Classify
+from fish_sorter.GUI.image_gui import ImageWidget
 from fish_sorter.GUI.picking import Pick
 from fish_sorter.GUI.picking_gui import PickGUI
+from fish_sorter.GUI.selection_gui import SelectGUI
 from fish_sorter.GUI.setup_gui import SetupWidget
-from fish_sorter.GUI.image_gui import ImageWidget
 from fish_sorter.hardware.imaging_plate import ImagingPlate
 from fish_sorter.hardware.picking_pipette import PickingPipette
 from fish_sorter.helpers.mosaic import Mosaic
@@ -129,6 +130,7 @@ class FishPicker:
         self.iplate.load_wells(grid_list=self.mosaic.grid_list)
 
         self.classify = Classify(self.cfg_dir, self.pick_type, self.expt_prefix, self.expt_path, self.iplate, self.v)
+        self.classify.pick_selection.connect(self._pick_selection_gui)
 
     def setup_picker(self):
         """After collecting required setup information, setup the picker
@@ -302,6 +304,13 @@ class FishPicker:
             pc.close()
 
         logging.info('Saved pick_type_config.json with updated value')
+
+    def _pick_selection_gui(self):
+        """Loads pick selection gui on save of classification
+        """
+
+        self.selection = SelectGUI(self.pick, self.classify)
+        self.v.window.add_dock_widget(self.selection, name = 'Pick Selection', area='right', tabify=True)
 
 
 if __name__ == "__main__":

@@ -43,6 +43,8 @@ from fish_sorter.constants import PIXEL_SIZE_UM
 class Classify():
     """Add points layer of the well locations to the image mosaic in napari.
     """
+
+    pick_selection = pyqtSignal()
     
     def __init__(self, cfg_dir, pick_type, prefix, expt_dir, iplate, viewer=None):
         """Load pymmcore-plus core, acquisition engine and napari viewer, and load classification features
@@ -279,14 +281,15 @@ class Classify():
             logging.info(f'Classification saved as {classified}')
 
             pickable_file_name = f"{timestamp}_{self.prefix}_pickable.csv"
-            pick = os.path.normpath(os.path.join(self.expt_dir, pickable_file_name))
-            headers_df = pd.DataFrame(columns=class_df.columns)
-            headers_df.drop(columns='lHead', inplace=True)
-            headers_df.rename(columns={'slotName': 'dispenseWell'}, inplace=True) 
-            headers_df.to_csv(pick, index=False)
+            self.pickable_file = os.path.normpath(os.path.join(self.expt_dir, pickable_file_name))
+            self.headers_df = pd.DataFrame(columns=class_df.columns)
+            self.headers_df.drop(columns='lHead', inplace=True)
+            self.headers_df.rename(columns={'slotName': 'dispenseWell'}, inplace=True) 
+            self.headers_df.to_csv(self.pickable_file, index=False)
             logging.info(f'Pickable template saved as {pick}')
             
         self.class_btn.clicked.connect(_save_it)
+        self.pick_selection.emit()
     
     def load_points(self, points_coords) -> napari.layers.Points:
         """Load the points layer into the napari viewer

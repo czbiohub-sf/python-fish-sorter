@@ -46,8 +46,6 @@ class PickGUI(QWidget):
 
         :param picker: Pick class object to control picking
         :type picker: class instance
-        :param phc: PickingPipette class object
-        :type phc: class instance
         """
         
         super().__init__(parent=parent)
