@@ -46,7 +46,7 @@ class SetupWidget(QWidget):
 
         super().__init__(parent)
         self.layout = QGridLayout(self)
-        self.layout.setSpacing(4)
+        self.layout.setSpacing(50)
         
         self.config = Path(cfg_path)
 
@@ -64,12 +64,16 @@ class SetupWidget(QWidget):
 
         self.pick_type = self.load_config("pick", "pick_type_config.json")
         self.pick_type_label = QLabel("Select Pick Type:")
-        self.layout.addWidget(self.pick_type_label, 2, 0, 1, 3)
+        self.layout.addWidget(self.pick_type_label, 2, 0)
         self.pick_type_grp = QButtonGroup(self)
+        self.radio_layout = QHBoxLayout()
+        self.radio_layout.setSpacing(0)
         self.populate_options()
+        self.layout.addLayout(self.radio_layout, 2, 1)
 
         self.pick_setup = QPushButton("Setup Picker")
-        self.layout.addWidget(self.pick_setup, 3 + len(self.pick_type), 0)
+        self.layout.addWidget(self.pick_setup, 3, 0, 1, 2)
+        self.layout.setRowStretch(self.layout.rowCount(), 1)
 
     def load_config(self, cfg_folder, cfg_file):
         """
@@ -115,18 +119,10 @@ class SetupWidget(QWidget):
         Populates the pick type options from the config file
         """
 
-        start_row = 3
-
-        if not self.pick_type:
-            no_cfg_label = QLabel("Config Data Not Found")
-            self.layout.addWidget(no_cfg_label, start_row, 0, 1, 3)
-
-        for i, key in enumerate(self.pick_type.keys()):
+        for key in self.pick_type.keys():
             radio_button = QRadioButton(key)
-            radio_button.setMinimumHeight(0)
-            radio_button.setContentsMargins(0, 0, 0, 0)
             self.pick_type_grp.addButton(radio_button)
-            self.layout.addWidget(radio_button, start_row + i, 0, 1, 3)
+            self.radio_layout.addWidget(radio_button)
 
     def get_pick_type(self):
         """
