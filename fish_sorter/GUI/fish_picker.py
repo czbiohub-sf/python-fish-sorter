@@ -1,17 +1,9 @@
 import argparse
 import json
 import logging
-
+import napari
 import numpy as np
 import os
-
-#TODO delete and clean up once figured out
-
-os.environ["VISPY_LOG_LEVEL"] = "DEBUG"
-os.environ["VISPY_GL_DEBUG"] = "True"
-import napari
-from vispy.app import use_app
-
 import types
 
 from pathlib import Path
@@ -20,6 +12,7 @@ from pymmcore_widgets import StageWidget
 from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
+    QTabWidget,
     QVBoxLayout,
     QWidget
 )
@@ -49,10 +42,6 @@ micromanager_path = os.environ.get('MICROMANAGER_PATH')
 
 class FishPicker:
     def __init__(self, sim=False):
-        
-        logging.info(f'Napari is using: {napari.__version__}')
-        logging.info(f'Vispy is using: {use_app()}')
-
         self.expt_parent_dir = Path("D:/fishpicker_expts/")
         self.cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
         self.v = napari.Viewer()
@@ -86,8 +75,9 @@ class FishPicker:
         self.phc = PickingPipette(self.cfg_dir)
         # Load sequence and Mosaic class
         self.mosaic = Mosaic(self.v)
-        self.assign_widgets()
         self.setup_MDA()
+        self.assign_widgets()
+        self.main_window._show_dock_widget("MDA")
 
         napari.run()
 
@@ -95,7 +85,7 @@ class FishPicker:
         
         # Setup
         self.setup = SetupWidget(self.cfg_dir)
-        self.v.window.add_dock_widget(self.setup, name = 'Setup', area='right')
+        self.v.window.add_dock_widget(self.setup, name = 'Setup', area='right', tabify=True)
         self.setup.pick_setup.clicked.connect(self.setup_picker)
 
         # Image Manipulation Widget

@@ -67,13 +67,14 @@ class SetupWidget(QWidget):
         self.layout.addWidget(self.pick_type_label, 2, 0)
         self.pick_type_grp = QButtonGroup(self)
         self.radio_layout = QHBoxLayout()
-        self.radio_layout.setSpacing(0)
+        self.radio_layout.setSpacing(25)
         self.populate_options()
         self.layout.addLayout(self.radio_layout, 2, 1)
 
         self.pick_setup = QPushButton("Setup Picker")
         self.layout.addWidget(self.pick_setup, 3, 0, 1, 2)
         self.layout.setRowStretch(self.layout.rowCount(), 1)
+        self.layout.setColumnStretch(self.layout.columnCount(), 1)
 
     def load_config(self, cfg_folder, cfg_file):
         """

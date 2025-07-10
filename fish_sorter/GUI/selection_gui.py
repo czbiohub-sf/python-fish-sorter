@@ -1,8 +1,8 @@
-import csv
 import logging
 import sys
 from json import load
 from pathlib import Path
+import pandas as pd
 from typing import List, Optional, Union
 
 from pymmcore_plus import CMMCorePlus
@@ -64,7 +64,7 @@ class SelectGUI(QWidget):
         self.well = self.pick.phc.dplate.wells['names']
         self.features = [
             feat for feat in list(self.classify.headers_df.columns)
-            if c!= 'dispenseWell'
+            if feat != 'dispenseWell'
         ]
         self.deselect = list(self.classify.deselect_rules)
         self.pickable_path = self.classify.pickable_file
@@ -72,7 +72,7 @@ class SelectGUI(QWidget):
         self.rows = []
         self.hide = True
         self.layout = QVBoxLayout(self)
-        self.hide_cb = QCheckBox("Hide columns: " + ", ".join(self.deselect))
+        self.hide_cb = QCheckBox('Select Singlets Only')
         self.hide_cb.setChecked(True)
         self.hide_cb.stateChanged.connect(self.toggle_hidden)
         self.layout.addWidget(self.hide_cb)
@@ -84,10 +84,10 @@ class SelectGUI(QWidget):
         self.scroll.setWidget(self.rows_container)
         self.layout.addWidget(self.scroll)
 
-        self.add_row_btn = QPushButton("Add Row")
+        self.add_row_btn = QPushButton('Add Row')
         self.add_row_btn.clicked.connect(self.add_row)
 
-        self.save_btn = QPushButton("Save")
+        self.save_btn = QPushButton('Save')
         self.save_btn.clicked.connect(self.save_select)
         btn_layout = QHBoxLayout()
         btn_layout.addWidget(self.add_row_btn)
@@ -112,7 +112,7 @@ class SelectGUI(QWidget):
 
     def get_selection(self):
         """Returns all selection rows in the table rows as a list of dicts."""
-        return [row.get_row_data() for row in self.rows]
+        return [row.get_row_select() for row in self.rows]
     
     def toggle_hidden(self, state: bool=True):
         """Toggles between hidden options and showing all options
@@ -130,13 +130,14 @@ class SelectGUI(QWidget):
         """
 
         try:
-            with open(self.pickable_path, "a", newline="") as f:
-                writer = csv.DictWriter(f, fieldnames=["dispenseWell"] + self.param_cols)
-                for row in self.rows:
-                    writer.writerow(row.get_row_data())
-            QMessageBox.information(self, "Saved", f"Rows appended to {self.pickable_path}")
+            header = list(self.classify.headers_df.columns)
+            rows = self.get_selection()
+            df = pd.DataFrame(rows)[header]
+            df.to_csv(self.pickable_path, index=False)
+            QMessageBox.information(self, 'Saved', f'Selection saved to {self.pickable_path}. \n\nReady to Pick!')
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Could not save: {e}")
+            logging.info('Did not save the pickable file')
 
 
 class AddRow(QWidget):
@@ -163,7 +164,7 @@ class AddRow(QWidget):
         self.deselect_cols = deselect
         self.on_delete = on_delete
         
-        self.layout = QHBoxLayou(self)
+        self.layout = QHBoxLayout(self)
         self.well_dropdown = QComboBox()
         self.well_dropdown.addItems(wells)
         self.layout.addWidget(self.well_dropdown)
@@ -171,9 +172,9 @@ class AddRow(QWidget):
         self.checkboxes = {}
         for col in features:
             cb = QCheckBox(col)
-            if col == 'singlet' and not hide:
+            if col == 'singlet':
                 cb.setChecked(True)
-            if col in dselect and hide:
+            if col in self.deselect_cols and hide:
                 cb.hide()
             self.checkboxes[col] = cb
             self.layout.addWidget(cb)
@@ -188,10 +189,10 @@ class AddRow(QWidget):
         """
 
         well = self.well_dropdown.currentText()
-        selection = {col: int(self.checkboxes[].isChecked()) for col in self.cols}
+        selection = {col: int(self.checkboxes[col].isChecked()) for col in self.cols}
         return {'dispenseWell': well, **selection}
 
-    def _show_hide(self, hide):
+    def _show_hide(self, hide: bool=True):
         """Determine whether to show the full list of selection features
         :param hide: whether to show or hide
         :type hide: bool
@@ -200,6 +201,8 @@ class AddRow(QWidget):
         for col in self.deselect_cols:
             if col in self.checkboxes:
                 self.checkboxes[col].setHidden(hide)
+                if hide:
+                    self.checkboxes[col].setChecked(False)        
         self.checkboxes['singlet'].setChecked(hide)
 
     def _delete_self(self):

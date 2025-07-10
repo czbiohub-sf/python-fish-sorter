@@ -1,5 +1,4 @@
 import concurrent.futures
-import csv
 import json
 import logging
 import napari
@@ -15,7 +14,14 @@ from napari.qt import QtViewer
 from napari.utils.colormaps import Colormap
 from pathlib import Path
 from pymmcore_plus import CMMCorePlus
-from qtpy.QtCore import QSize, Qt, QThread, QTimer
+from PyQt6.QtCore import (
+    pyqtSignal,
+    QObject,
+    QSize,
+    Qt,
+    QThread,
+    QTimer
+)
 from qtpy.QtGui import QColor, QScreen
 from qtpy.QtWidgets import (
     QApplication,
@@ -40,7 +46,7 @@ from typing import List, Optional, Tuple, Callable
 from fish_sorter.hardware.imaging_plate import ImagingPlate
 from fish_sorter.constants import PIXEL_SIZE_UM
 
-class Classify():
+class Classify(QObject):
     """Add points layer of the well locations to the image mosaic in napari.
     """
 
@@ -64,7 +70,7 @@ class Classify():
         """
 
         #TODO will need to add in loading previous classifications
-
+        super().__init__()
         CMMCorePlus.instance()
 
         self.iplate = iplate
@@ -123,6 +129,7 @@ class Classify():
         
         self.well_viewers = {}
         self.well_display_layers = {}
+        self.viewer_containers = {}
         self.feature_labels = {}
         self.current_well = 0
         self.counter = None
@@ -132,7 +139,6 @@ class Classify():
     
         self._create_classify()
         self._start_async_extraction()
-        self._well_disp()
 
         self.prefix = prefix
         self.expt_dir = expt_dir
@@ -285,11 +291,11 @@ class Classify():
             self.headers_df = pd.DataFrame(columns=class_df.columns)
             self.headers_df.drop(columns='lHead', inplace=True)
             self.headers_df.rename(columns={'slotName': 'dispenseWell'}, inplace=True) 
-            self.headers_df.to_csv(self.pickable_file, index=False)
-            logging.info(f'Pickable template saved as {pick}')
+            # self.headers_df.to_csv(self.pickable_file, index=False)
+            # logging.info(f'Pickable template saved as {self.pickable_file}')
+            self.pick_selection.emit()
             
         self.class_btn.clicked.connect(_save_it)
-        self.pick_selection.emit()
     
     def load_points(self, points_coords) -> napari.layers.Points:
         """Load the points layer into the napari viewer
@@ -437,8 +443,11 @@ class Classify():
                     raw_data += layer.data
                 layer_name = 'sum'
             mask_mean = raw_data.mean()
+            logging.info(f'{mask_mean}')
             mask_std = raw_data.std()
-            thresh = mask_mean + sigma * mask_std
+            logging.info(f'{mask_std}')
+            thresh = mask_mean + (sigma * mask_std)
+            logging.info(f'{thresh}')
             binary_mask = raw_data > thresh
             image_layers = [{'data': binary_mask.astype(np.uint8), 'name': layer_name}]
     
@@ -712,7 +721,7 @@ class Classify():
         """
 
         def _create():
-            
+
             viewer_model = ViewerModel(title = layer_name)
             viewer = QtViewerWrap(self.viewer, viewer_model)
             color = self._get_color(layer_name)
@@ -737,8 +746,10 @@ class Classify():
             container_layout.addWidget(QLabel(layer_name))
             container_layout.addWidget(viewer)
             container.setLayout(container_layout)
+            self.viewer_containers[layer_name] = container
+            viewer.setParent(container)
             self.well_disp_layout.addWidget(container)
-            
+        
         QTimer.singleShot(0, _create)
 
     def _get_color(self, layer):
@@ -863,24 +874,22 @@ class Classify():
             widget = item.widget()
             if widget:
                 widget.setParent(None)
-                widget.deleteLater()
 
         for layer_name, masked_region in point_region.items():
             if masked_region is None:
                 continue
 
-            if layer_name in self.well_display_layers:
+            if (layer_name in self.well_viewers and 
+                layer_name in self.well_display_layers and
+                layer_name in self.viewer_containers):
+
                 well_layer = self.well_display_layers[layer_name] 
                 viewer = self.well_viewers[layer_name]
                 well_layer.data = masked_region
                 well_layer.refresh()
                 well_layer.events.data()
                 
-                container = QWidget()
-                container_layout = QVBoxLayout()
-                container_layout.addWidget(QLabel(layer_name))
-                container_layout.addWidget(viewer)
-                container.setLayout(container_layout)
+                container = self.viewer_containers[layer_name]
                 self.well_disp_layout.addWidget(container)             
             else:
                 self._create_viewer(layer_name, masked_region)
@@ -961,7 +970,7 @@ class FishFinderWidget(QWidget):
         
         layout = QVBoxLayout()
         self.setLayout(layout)
-        self.layer_label = QLabel('Layer for fish detection')
+        self.layer_label = QLabel('Fish detection channel')
         self.layer_combo = QComboBox()
         layout.addWidget(self.layer_label)
         layout.addWidget(self.layer_combo)

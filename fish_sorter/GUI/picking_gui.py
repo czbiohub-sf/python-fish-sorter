@@ -19,7 +19,8 @@ from qtpy.QtWidgets import (
     QComboBox, 
     QGridLayout,
     QHBoxLayout, 
-    QLabel, 
+    QLabel,
+    QMessageBox, 
     QPushButton, 
     QSizePolicy, 
     QDoubleSpinBox, 
@@ -503,7 +504,7 @@ class PickerThread(QThread):
             self.picking.pick.match_pick()
             self.status_update.emit('Start of picking')
             self.picking.pick.pick_me()
-            self.status_updatse.emit('Picking complete!')
+            self.status_update.emit('Picking complete!')
         except Exception as e:
             self.status_update.emit(f'Exepction {str(e)}')
         finally:
@@ -542,6 +543,7 @@ class PickWidget(QPushButton):
             self.fp_thread.start()
         else:
             logging.info('Pipette not calibrated')
+            QMessageBox.information(self, 'Calibration Needed', f'Please calibrate the pipette before picking')
 
     def _update_status(self, msg):
         """Helper to update logging
@@ -554,6 +556,7 @@ class PickWidget(QPushButton):
         """
 
         logging.info('Picker thread finished')
+        QMessageBox.information(self, 'Complete', f'Picking Finished!')
 
 
 class NewExptWidget(QPushButton):
