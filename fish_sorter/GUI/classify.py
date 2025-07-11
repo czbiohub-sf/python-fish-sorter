@@ -291,8 +291,6 @@ class Classify(QObject):
             self.headers_df = pd.DataFrame(columns=class_df.columns)
             self.headers_df.drop(columns='lHead', inplace=True)
             self.headers_df.rename(columns={'slotName': 'dispenseWell'}, inplace=True) 
-            # self.headers_df.to_csv(self.pickable_file, index=False)
-            # logging.info(f'Pickable template saved as {self.pickable_file}')
             self.pick_selection.emit()
             
         self.class_btn.clicked.connect(_save_it)
