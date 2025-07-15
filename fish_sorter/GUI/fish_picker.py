@@ -6,6 +6,7 @@ import numpy as np
 import os
 import types
 
+from napari.utils.colormaps import Colormap
 from pathlib import Path
 from pymmcore_plus import DeviceType
 from pymmcore_widgets import StageWidget
