@@ -36,12 +36,19 @@ class nmm:
                 # make sure we start in a valid channel group
                 self.core.setConfig("Channel", "Cy5")
         else:
-            cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/micromanager"
-            cfg_file = "20240718 - LeicaDMI - AndorZyla.cfg"
-            cfg_path = cfg_dir / cfg_file
-            logging.info(f'{cfg_path}')
-            self.core.loadSystemConfiguration(str(cfg_path))
-
+            self.cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
+            mm_dir = self.cfg_dir / "micromanager"
+            if mm_dir.exists() and mm_dir.is_dir():
+                mm_cfg_files = list(mm_dir.glob("*.cfg"))
+                if mm_cfg_files:
+                    mm_cfg_path = mm_cfg_files[0]
+                    logging.info(f'Micromanager config: {mm_cfg_path}')
+                    self.core.loadSystemConfiguration(str(mm_cfg_path))
+                else:
+                    logging.critical("Micromanager config file not found")
+            else:
+                logging.critical("Micromanager config folder does not exisit")
+            
         self.main_window._show_dock_widget("MDA")
         self.mda = self.v.window._dock_widgets.get("MDA").widget()
 

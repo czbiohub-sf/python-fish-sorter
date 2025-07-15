@@ -46,7 +46,7 @@ class SetupWidget(QWidget):
 
         super().__init__(parent)
         self.layout = QGridLayout(self)
-        self.layout.setSpacing(10)
+        self.layout.setSpacing(50)
         
         self.config = Path(cfg_path)
 
@@ -64,12 +64,17 @@ class SetupWidget(QWidget):
 
         self.pick_type = self.load_config("pick", "pick_type_config.json")
         self.pick_type_label = QLabel("Select Pick Type:")
-        self.layout.addWidget(self.pick_type_label, 2, 0, 1, 3)
+        self.layout.addWidget(self.pick_type_label, 2, 0)
         self.pick_type_grp = QButtonGroup(self)
+        self.radio_layout = QHBoxLayout()
+        self.radio_layout.setSpacing(25)
         self.populate_options()
+        self.layout.addLayout(self.radio_layout, 2, 1)
 
         self.pick_setup = QPushButton("Setup Picker")
-        self.layout.addWidget(self.pick_setup, 4, 0)
+        self.layout.addWidget(self.pick_setup, 3, 0, 1, 2)
+        self.layout.setRowStretch(self.layout.rowCount(), 1)
+        self.layout.setColumnStretch(self.layout.columnCount(), 1)
 
     def load_config(self, cfg_folder, cfg_file):
         """
@@ -115,14 +120,10 @@ class SetupWidget(QWidget):
         Populates the pick type options from the config file
         """
 
-        if not self.pick_type:
-            no_cfg_label = QLabel("Config Data Not Found")
-            self.layout.addWidget(no_cfg_label)
-
         for key in self.pick_type.keys():
             radio_button = QRadioButton(key)
             self.pick_type_grp.addButton(radio_button)
-            self.layout.addWidget(radio_button)
+            self.radio_layout.addWidget(radio_button)
 
     def get_pick_type(self):
         """
@@ -137,8 +138,9 @@ class SetupWidget(QWidget):
                 offset = np.array([self.pick_type[button.text()]['picker']['length_offset'], 
                         self.pick_type[button.text()]['picker']['width_offset']])
                 dtime = self.pick_type[button.text()]['picker']['dtime']
-                return button.text(), offset, dtime
-        return "default_pick_type", np.array([0.0, 0.0]), float(0.0)
+                pick_height = self.pick_type[button.text()]['picker']['pick_height']
+                return button.text(), offset, dtime, pick_height
+        return "default_pick_type", np.array([0.0, 0.0]), float(0.0), float(0.0)
     
     def get_img_array(self):
         """

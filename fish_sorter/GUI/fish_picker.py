@@ -1,24 +1,19 @@
 import argparse
+import json
 import logging
-
+import napari
 import numpy as np
 import os
-
-#TODO delete and clean up once figured out
-
-os.environ["VISPY_LOG_LEVEL"] = "DEBUG"
-os.environ["VISPY_GL_DEBUG"] = "True"
-import napari
-from vispy.app import use_app
-
 import types
 
+from napari.utils.colormaps import Colormap
 from pathlib import Path
 from pymmcore_plus import DeviceType
 from pymmcore_widgets import StageWidget
 from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
+    QTabWidget,
     QVBoxLayout,
     QWidget
 )
@@ -28,11 +23,13 @@ from typing import overload
 from useq import GridFromEdges, MDASequence
 
 from fish_sorter.GUI.classify import Classify
-from fish_sorter.GUI.picking import Pick
-from fish_sorter.GUI.picking_gui import Picking
-from fish_sorter.GUI.setup_gui import SetupWidget
 from fish_sorter.GUI.image_gui import ImageWidget
+from fish_sorter.GUI.picking import Pick
+from fish_sorter.GUI.picking_gui import PickGUI
+from fish_sorter.GUI.selection_gui import SelectGUI
+from fish_sorter.GUI.setup_gui import SetupWidget
 from fish_sorter.hardware.imaging_plate import ImagingPlate
+from fish_sorter.hardware.picking_pipette import PickingPipette
 from fish_sorter.helpers.mosaic import Mosaic
 
 # For simulation
@@ -44,12 +41,8 @@ except ModuleNotFoundError:
 os.environ['MICROMANAGER_PATH'] = "C:/Program Files/Micro-Manager-2.0-20240130"
 micromanager_path = os.environ.get('MICROMANAGER_PATH')
 
-class nmm:
+class FishPicker:
     def __init__(self, sim=False):
-        
-        logging.info(f'Napari is using: {napari.__version__}')
-        logging.info(f'Vispy is using: {use_app()}')
-
         self.expt_parent_dir = Path("D:/fishpicker_expts/")
         self.cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
         self.v = napari.Viewer()
@@ -57,6 +50,7 @@ class nmm:
         
         self.core = self.main_window._mmc
 
+        logging.info('Loading mmcore')
         if sim:
             if FakeDemoCamera is not None:
                 # override snap to look at more realistic images from a microscoppe
@@ -78,10 +72,13 @@ class nmm:
             else:
                 logging.critical("Micromanager config folder does not exisit")
 
+        logging.info('Initialize picking hardware controller')
+        self.phc = PickingPipette(self.cfg_dir)
         # Load sequence and Mosaic class
         self.mosaic = Mosaic(self.v)
-        self.assign_widgets()
         self.setup_MDA()
+        self.assign_widgets()
+        self.main_window._show_dock_widget("MDA")
 
         napari.run()
 
@@ -89,7 +86,7 @@ class nmm:
         
         # Setup
         self.setup = SetupWidget(self.cfg_dir)
-        self.v.window.add_dock_widget(self.setup, name = 'Setup', area='right')
+        self.v.window.add_dock_widget(self.setup, name = 'Setup', area='right', tabify=True)
         self.setup.pick_setup.clicked.connect(self.setup_picker)
 
         # Image Manipulation Widget
@@ -105,6 +102,13 @@ class nmm:
         self.img_tools.mosaic_btn.clicked.connect(self.run)
         self.img_tools.class_btn.clicked.connect(self.run_class)
 
+        # Picking GUI Widget
+        self.pick = Pick(self.phc)
+        self.pick_gui = PickGUI(self.pick)
+        self.pick_gui.new_expt.new_exp_req.connect(self._new_exp)
+        self.pick_gui.calib_pick.save_pick_h.connect(self._save_pick_h)
+        self.v.window.add_dock_widget(self.pick_gui, name='Picking', area='right', tabify=True)
+
     def run_class(self):
         """Classification GUI startup from image widget class_btn
         """
@@ -117,6 +121,7 @@ class nmm:
         self.iplate.load_wells(grid_list=self.mosaic.grid_list)
 
         self.classify = Classify(self.cfg_dir, self.pick_type, self.expt_prefix, self.expt_path, self.iplate, self.v)
+        self.classify.pick_selection.connect(self._pick_selection_gui)
 
     def setup_picker(self):
         """After collecting required setup information, setup the picker
@@ -127,7 +132,7 @@ class nmm:
         self.expt_prefix = sequence.metadata['pymmcore_widgets']['save_name'].removesuffix('.ome.zarr')
         self.img_array = self.setup.get_img_array()
         self.dp_array = self.setup.get_dp_array()
-        self.pick_type, self.offset, self.dtime = self.setup.get_pick_type()
+        self.pick_type, offset, dtime, pick_h = self.setup.get_pick_type()
 
         logging.info('Picker setup parameters: ')
         logging.info(f'Expt Path: {self.expt_path}')
@@ -136,15 +141,15 @@ class nmm:
         logging.info(f'Dispense array: {self.dp_array}')
         logging.info(f'cfg dir: {self.cfg_dir}')
         logging.info(f'Pick type: {self.pick_type}')
-        logging.info(f'Pick offset: {self.offset}')
-        logging.info(f'Pick delay time: {self.dtime}')
+        logging.info(f'Pick offset: {offset}')
+        logging.info(f'Pick delay time: {dtime}')
+        logging.info(f'Previous pick height: {pick_h}')
 
         self.setup_iplate()
 
-        logging.info('Loading picking hardware')
-        self.pick = Pick(self.cfg_dir, self.expt_path, self.expt_prefix, self.offset, self.dtime, self.iplate, self.dp_array)
-        self.picking = Picking(self.pick)
-        self.v.window.add_dock_widget(self.picking, name='Picking', area='right', tabify=True)
+        logging.info('Enabling full pick functionality')
+        self.pick.setup_exp(self.cfg_dir, self.expt_path, self.expt_prefix, offset, dtime, pick_h, self.iplate, self.dp_array)
+        self.pick_gui.update_pick_widgets(status=True)
 
     def setup_MDA(self):
         """Setup the MDA from Picker setup information and the starting configuration
@@ -185,7 +190,7 @@ class nmm:
         array = self.cfg_dir / 'arrays' / self.img_array
         logging.info(f'{array}')
         self.iplate = ImagingPlate(self.core, self.mda, array)
-        logging.info('Loaded imate plate')
+        logging.info('Loaded image plate')
 
     def run(self):
         """Runs the mosaic processing, dispay and setup of classification
@@ -200,9 +205,13 @@ class nmm:
         for chan, chan_name in zip(range(num_chan), chan_names):
             mosaic = self.stitch[chan, :, :]
             if chan_name == 'GFP':
-                color = 'green'
+                color = Colormap([[0, 0, 0], [0, 1, 0]], name='GFP-green')
             elif chan_name == 'TXR':
-                color = 'red'
+                color = Colormap([[0, 0, 0], [1, 0.25, 0]], name='tiger-orange')
+            elif chan_name == 'CIT':
+                color = Colormap([[0, 0, 0], [1, 1, 0]], name='CIT-yellow')
+            elif chan_name == 'CY5':
+                color = Colormap([[0, 0, 0], [0.93, 0.13, 0.53]], name='CY5-plasma')
             else:
                 color = 'grey'
             self.v.add_image(mosaic, colormap=color, blending='additive', name=chan_name)
@@ -249,6 +258,51 @@ class nmm:
 
         logging.info('Ready to classify')
 
+    def _new_exp(self):
+        """Set up to start a new experiment after running one
+        """
+
+        logging.info('Remove all layers')
+        for layer in list(self.v.layers):
+            logging.info(f'Layer {layer}')
+            self.v.layers.remove(layer)
+            logging.info(f'Removed layer {layer}')
+        
+        if hasattr(self, 'classify') and self.classify is not None:
+            try:
+                if hasattr(self.classify, 'classify_widget'):
+                    self.v.window.remove_dock_widget(self.classify.classify_widget)
+                if hasattr(self.classify, 'save_widget'):
+                    self.v.window.remove_dock_widget(self.classify.save_widget)
+                if hasattr(self.classify, 'fish_widget'):
+                    self.v.window.remove_dock_widget(self.classify.fish_widget)
+            except Exception as e:
+                logging.warning(f'Could not remove classify dock widget: {e}')
+        self.classify = None
+
+    def _save_pick_h(self):
+        """Saves the calibrated pick height for the specific pick type to the pick type config
+        """
+
+        logging.info("Saving pick height to the pick type config")
+        cfg = self.cfg_dir / 'pick/pick_type_config.json' 
+        with open(cfg, 'r') as pc:
+            pick_cfg = json.load(pc)
+            pick_cfg[self.pick_type]['picker']['pick_height'] = self.phc.pick_h
+            pc.close()
+        with open(cfg, 'w') as pc:
+            pick_update = json.dump(pick_cfg, pc, indent = 4, separators= (',',': '))
+            pc.close()
+
+        logging.info('Saved pick_type_config.json with updated value')
+
+    def _pick_selection_gui(self):
+        """Loads pick selection gui on save of classification
+        """
+
+        self.selection = SelectGUI(self.pick, self.classify)
+        self.v.window.add_dock_widget(self.selection, name = 'Pick Selection', area='right', tabify=True)
+
 
 if __name__ == "__main__":
     parser = argparse.ArgumentParser(
@@ -257,4 +311,4 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--sim', action='store_true')
     args = parser.parse_args()
 
-    nmm(sim=args.sim)
+    FishPicker(sim=args.sim)

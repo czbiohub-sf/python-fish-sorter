@@ -1,5 +1,4 @@
 import concurrent.futures
-import csv
 import json
 import logging
 import napari
@@ -15,7 +14,14 @@ from napari.qt import QtViewer
 from napari.utils.colormaps import Colormap
 from pathlib import Path
 from pymmcore_plus import CMMCorePlus
-from qtpy.QtCore import QSize, Qt, QThread, QTimer
+from PyQt6.QtCore import (
+    pyqtSignal,
+    QObject,
+    QSize,
+    Qt,
+    QThread,
+    QTimer
+)
 from qtpy.QtGui import QColor, QScreen
 from qtpy.QtWidgets import (
     QApplication,
@@ -40,9 +46,11 @@ from typing import List, Optional, Tuple, Callable
 from fish_sorter.hardware.imaging_plate import ImagingPlate
 from fish_sorter.constants import PIXEL_SIZE_UM
 
-class Classify():
+class Classify(QObject):
     """Add points layer of the well locations to the image mosaic in napari.
     """
+
+    pick_selection = pyqtSignal()
     
     def __init__(self, cfg_dir, pick_type, prefix, expt_dir, iplate, viewer=None):
         """Load pymmcore-plus core, acquisition engine and napari viewer, and load classification features
@@ -62,7 +70,7 @@ class Classify():
         """
 
         #TODO will need to add in loading previous classifications
-
+        super().__init__()
         CMMCorePlus.instance()
 
         self.iplate = iplate
@@ -109,24 +117,38 @@ class Classify():
         
         self._key_binding()
         for key, feature in self.key_feature_map.items():
-            self.viewer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) #Note: set to overwrite standard shortcuts in napari
-            self.points_layer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) #Note: set to overwrite points layer specific shortcuts
+            self.viewer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) # Note: set to overwrite standard shortcuts in napari
+            self.points_layer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) # Note: set to overwrite points layer specific shortcuts
+        
+        # Prevents points from being deleted
+        self.viewer.bind_key('Backspace', self._blank, overwrite=True)
+        self.viewer.bind_key('Delete', self._blank, overwrite=True)
+        self.points_layer.bind_key('Backspace', self._blank, overwrite=True)
+        self.points_layer.bind_key('Delete', self._blank, overwrite=True)
+
         
         self.well_viewers = {}
         self.well_display_layers = {}
+        self.viewer_containers = {}
         self.feature_labels = {}
         self.current_well = 0
+        self.counter = None
 
         self.extract_fish(pts)
         self._find_fish_widget(pts)
     
         self._create_classify()
         self._start_async_extraction()
-        self._well_disp()
 
         self.prefix = prefix
         self.expt_dir = expt_dir
         self.save_data()
+
+    def _blank(self, event):
+        """Empty function used to overwrite hotkeys
+        """
+
+        pass
 
     def _feat(self):
         """Loads the feature list
@@ -265,12 +287,11 @@ class Classify():
             logging.info(f'Classification saved as {classified}')
 
             pickable_file_name = f"{timestamp}_{self.prefix}_pickable.csv"
-            pick = os.path.normpath(os.path.join(self.expt_dir, pickable_file_name))
-            headers_df = pd.DataFrame(columns=class_df.columns)
-            headers_df.drop(columns='lHead', inplace=True)
-            headers_df.rename(columns={'slotName': 'dispenseWell'}, inplace=True) 
-            headers_df.to_csv(pick, index=False)
-            logging.info(f'Pickable template saved as {pick}')
+            self.pickable_file = os.path.normpath(os.path.join(self.expt_dir, pickable_file_name))
+            self.headers_df = pd.DataFrame(columns=class_df.columns)
+            self.headers_df.drop(columns='lHead', inplace=True)
+            self.headers_df.rename(columns={'slotName': 'dispenseWell'}, inplace=True) 
+            self.pick_selection.emit()
             
         self.class_btn.clicked.connect(_save_it)
     
@@ -420,8 +441,11 @@ class Classify():
                     raw_data += layer.data
                 layer_name = 'sum'
             mask_mean = raw_data.mean()
+            logging.info(f'{mask_mean}')
             mask_std = raw_data.std()
-            thresh = mask_mean + sigma * mask_std
+            logging.info(f'{mask_std}')
+            thresh = mask_mean + (sigma * mask_std)
+            logging.info(f'{thresh}')
             binary_mask = raw_data > thresh
             image_layers = [{'data': binary_mask.astype(np.uint8), 'name': layer_name}]
     
@@ -536,6 +560,8 @@ class Classify():
         if self.picking == 'larvae':
             logging.info('Determining fish orientation for picking larvae')
             self.find_orientation()
+        
+        self._update_counter()
 
     def find_orientation(self):
         """Determines orientation to select side of well for picking
@@ -646,6 +672,10 @@ class Classify():
         self.classify_widget = QWidget()
         self.classify_layout = QVBoxLayout(self.classify_widget)
 
+        self.counter = QLabel('')
+        self.counter.setStyleSheet('font-size: 16pt; font-weight: bold; color: #6a617a;')
+        self.classify_layout.addWidget(self.counter)
+
         self.well_disp_container = QWidget()
         self.well_disp_layout = QVBoxLayout(self.well_disp_container) 
         self.classify_layout.addWidget(self.well_disp_container)
@@ -674,8 +704,10 @@ class Classify():
         self.classify_layout.addWidget(self.feature_widget)
 
         self.viewer.window.add_dock_widget(self.classify_widget, name= 'Classification', area='right', tabify = True)
-        self.viewer.bind_key("Right", self._next_well)
-        self.viewer.bind_key("Left", self._previous_well)
+        self.viewer.bind_key("Right", self._next_well, overwrite=True)
+        self.viewer.bind_key("Left", self._previous_well, overwrite=True)
+
+        self._update_counter()
     
     def _create_viewer(self, layer_name, masked_region):
         """Make side viewer on main thread
@@ -687,7 +719,7 @@ class Classify():
         """
 
         def _create():
-            
+
             viewer_model = ViewerModel(title = layer_name)
             viewer = QtViewerWrap(self.viewer, viewer_model)
             color = self._get_color(layer_name)
@@ -712,8 +744,10 @@ class Classify():
             container_layout.addWidget(QLabel(layer_name))
             container_layout.addWidget(viewer)
             container.setLayout(container_layout)
+            self.viewer_containers[layer_name] = container
+            viewer.setParent(container)
             self.well_disp_layout.addWidget(container)
-            
+        
         QTimer.singleShot(0, _create)
 
     def _get_color(self, layer):
@@ -726,7 +760,11 @@ class Classify():
         if layer == 'GFP':
             return Colormap([[0, 0, 0], [0, 1, 0]], name='GFP-green')
         elif layer == 'TXR':
-            return Colormap([[0, 0, 0], [1, 0, 0]], name='TXR-red')
+            return Colormap([[0, 0, 0], [1, 0.25, 0]], name='tiger-orange')
+        elif layer == 'CIT':
+            return Colormap([[0, 0, 0], [1, 1, 0]], name='CIT-yellow')
+        elif layer == 'CY5':
+            return Colormap([[0, 0, 0], [0.93, 0.13, 0.53]], name='CY5-plasma')
         else:
             return Colormap([[0, 0, 0], [0.5, 0.5, 0.5]], name='gray')
     
@@ -740,9 +778,10 @@ class Classify():
         singlets = self.points_layer.features['singlet']
         singlet_idxs = np.where(singlets)[0]
 
-        if len(singlets) == 0:
-            logging.warning('There are no singlets.')
-            return
+        if len(singlet_idxs) == 0:
+            all_idx = np.arange(len(self.points_layer.data))
+            logging.info('There are no singlets. Cycling through all points')
+            singlet_idxs = all_idx
         try:
             current_well = np.where(singlet_idxs == self.current_well)[0][0]
             next_idx = (current_well + 1) % len(singlet_idxs)
@@ -759,6 +798,7 @@ class Classify():
         self._select_current_point()
         self._update_feature_display(self.current_well)
         self._selected_current_pt()
+        self._update_counter()
     
     def _previous_well(self, event=None):
         """Updates the viewer window with the previous well when the left arrow key is pressed
@@ -770,9 +810,11 @@ class Classify():
         singlets = self.points_layer.features['singlet']
         singlet_idxs = np.where(singlets)[0]
 
-        if len(singlets) == 0:
-            logging.warning('There are no singlets.')
-            return
+        if len(singlet_idxs) == 0:
+            all_idx = np.arange(len(self.points_layer.data))
+            logging.info('There are no singlets. Cycling through all points')
+            singlet_idxs = all_idx
+
         try:
             current_well = np.where(singlet_idxs == self.current_well)[0][0]
             prev_idx = (current_well - 1) % len(singlet_idxs)
@@ -788,7 +830,28 @@ class Classify():
         self._select_current_point()
         self._update_feature_display(self.current_well)
         self._selected_current_pt()
+        self._update_counter()
 
+    def _update_counter(self):
+        """Updates the fish counter for the user to know which fish they are on and the total
+        """
+
+        singlets = self.points_layer.features['singlet']
+        singlet_idxs = np.where(singlets)[0]
+
+        if len(singlet_idxs) == 0:
+            self.counter.setText('No Fish')
+            return
+        
+        try:
+            pos = np.where(singlet_idxs == self.current_well)[0][0] + 1
+
+        except IndexError:
+            pos = 1
+        
+        total = len(singlet_idxs)
+        self.counter.setText(f'Fish {pos} of {total}')
+    
     def _well_disp(self):
         """Force _update_well_display to run on main thread
         """
@@ -809,24 +872,22 @@ class Classify():
             widget = item.widget()
             if widget:
                 widget.setParent(None)
-                widget.deleteLater()
 
         for layer_name, masked_region in point_region.items():
             if masked_region is None:
                 continue
 
-            if layer_name in self.well_display_layers:
+            if (layer_name in self.well_viewers and 
+                layer_name in self.well_display_layers and
+                layer_name in self.viewer_containers):
+
                 well_layer = self.well_display_layers[layer_name] 
                 viewer = self.well_viewers[layer_name]
                 well_layer.data = masked_region
                 well_layer.refresh()
                 well_layer.events.data()
                 
-                container = QWidget()
-                container_layout = QVBoxLayout()
-                container_layout.addWidget(QLabel(layer_name))
-                container_layout.addWidget(viewer)
-                container.setLayout(container_layout)
+                container = self.viewer_containers[layer_name]
                 self.well_disp_layout.addWidget(container)             
             else:
                 self._create_viewer(layer_name, masked_region)
@@ -907,7 +968,7 @@ class FishFinderWidget(QWidget):
         
         layout = QVBoxLayout()
         self.setLayout(layout)
-        self.layer_label = QLabel('Layer for fish detection')
+        self.layer_label = QLabel('Fish detection channel')
         self.layer_combo = QComboBox()
         layout.addWidget(self.layer_label)
         layout.addWidget(self.layer_combo)
@@ -916,7 +977,7 @@ class FishFinderWidget(QWidget):
         self.sigma_spin.setMinimum(0.1)
         self.sigma_spin.setMaximum(100)
         self.sigma_spin.setSingleStep(0.1)
-        self.sigma_spin.setValue(15)
+        self.sigma_spin.setValue(1)
         layout.addWidget(self.sigma_label)
         layout.addWidget(self.sigma_spin)
         self.run_button = QPushButton('Find Fish')
@@ -930,8 +991,15 @@ class FishFinderWidget(QWidget):
         """
 
         layer_names = [layer.name for layer in self.viewer.layers if isinstance(layer, Image)]
-        layer_names.append('sum')
+        if len(layer_names) >1 and 'sum' not in layer_names:
+            layer_names.append('sum')
+        self.layer_combo.clear()
         self.layer_combo.addItems(layer_names)
+        if 'sum' in layer_names:
+            sum_idx = self.layer_combo.findText('sum')
+            self.layer_combo.setCurrentIndex(sum_idx)
+        elif layer_names:
+            self.layer_combo.setCurrentIndex(0)
 
     def run_find_fish(self):
         """Callback for the fish finding widget
