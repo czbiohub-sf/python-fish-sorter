@@ -12,7 +12,9 @@ from qtpy.QtCore import (
 )
 from PyQt6.QtCore import (
     pyqtSignal,
-    QThread
+    QMutex,
+    QThread,
+    QWaitCondition
 )
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
@@ -69,6 +71,8 @@ class PickGUI(QWidget):
         move_pipette = MovePipette(self)
         self.pw = PickWidget(self)
         self.pw.setEnabled(False)
+        self.pw.pause_button.setEnabled(False)
+        self.pw.stop_button.setEnabled(False)
         self.new_expt = NewExptWidget(self)
         reset = ResetWidget(self)
         
@@ -101,6 +105,8 @@ class PickGUI(QWidget):
         layout.addWidget(ppp, 7, 2)
         layout.addWidget(self.single, 8, 0)
         layout.addWidget(self.pw, 9, 0)
+        layout.addWidget(self.pw.pause_button, 9, 1)
+        layout.addWidget(self.pw.stop_button, 9, 2)
         layout.addWidget(self.new_expt, 10, 0)
         layout.addWidget(reset, 10, 1)
 
@@ -124,6 +130,9 @@ class PickGUI(QWidget):
         
         self.pw.setEnabled(status)
         self.single.setEnabled(status)
+        self.pw.pause_button.setEnabled(status)
+        self.pw.stop_button.setEnabled(status)
+
 
 class PipettePickCalibWidget(QPushButton):
     """A push button widget to calibrate the pick position for the pipette
@@ -494,22 +503,71 @@ class PickerThread(QThread):
     def __init__(self, picking, parent = None):
         super().__init__(parent=parent)
         self.picking = picking
+        self._pause = False
+        self._stop = False
+        self._mutex = QMutex()
+        self._wait_cond = QWaitCondition()
     
     def run(self):
 
         try:
             self.status_update.emit('Start Picking Thread')
+            self._check_state()
             self.picking.pick.get_classified()
             self.status_update.emit('Matching to pick parameters')
+            self._check_state()
             self.picking.pick.match_pick()
             self.status_update.emit('Start of picking')
-            self.picking.pick.pick_me()
+
+            for checkpoint in self.picking.pick.pick_me():
+                self._check_state()
+                self.status_update.emit(checkpoint)
             self.status_update.emit('Picking complete!')
         except Exception as e:
-            self.status_update.emit(f'Exepction {str(e)}')
+            self.status_update.emit(f'Exception {str(e)}')
         finally:
             self.picking_done.emit()
 
+    def _check_state(self):
+        """Check function for whether pause/resume, or stop have been 
+        pressed
+        """
+
+        self._mutex.lock()
+        while self._pause:
+            logging.info('Picking Thread Paused')
+            self._wait_cond.wait(self._mutex)
+        if self._stop:
+            self._mutex.unlock()
+            logging.info('Picking Thread Stopped')
+            raise Exception('Stopped Picking')
+        self._mutex.unlock()
+
+    def pause(self):
+        """Pause function to pause picking
+        """
+
+        self._mutex.lock()
+        self._pause = True
+        self._mutex.unlock()
+
+    def resume(self):
+        """Function to resume picking
+        """
+
+        self._mutex.lock()
+        self._pause = False
+        self._wait_cond.wakeAll()
+        self._mutex.unlock()
+
+    def stop(self):
+        """Function to stop picking
+        """
+
+        self._mutex.lock()
+        self._stop = True
+        self._wait_cond.wakeAll()
+        self._mutex.unlock()
 
 class PickWidget(QPushButton):
     """A push button widget to start picking
@@ -522,15 +580,21 @@ class PickWidget(QPushButton):
         self.setSizePolicy(
             QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
         )
+        self.setText("Full Pick!")
 
         self.picking = picking
         self._mmc = CMMCorePlus.instance()
-        self._create_button()
-
-    def _create_button(self)->None:
-        
-        self.setText("Full Pick!")
         self.clicked.connect(self._start_full_picking) 
+
+        self.fp_thread = None
+        self.paused = False
+
+        self.pause_button = QPushButton('Pause Picking')
+        self.pause_button.clicked.connect(self._pause_picking)
+        self.pause_button.setEnabled(False)
+        self.stop_button = QPushButton('Stop Picking')
+        self.stop_button.clicked.connect(self._stop_picking)
+        self.stop_button.setEnabled(False)
     
     def _start_full_picking(self):
 
@@ -557,6 +621,31 @@ class PickWidget(QPushButton):
 
         logging.info('Picker thread finished')
         QMessageBox.information(self, 'Complete', f'Picking Finished!')
+
+    def _pause_picking(self):
+        """Callback to pause picking
+        """
+
+        if self.fp_thread and self.fp_thread.isRunning():
+            if not self.paused:
+                self.fp_thread.pause()
+                self.pause_button.setText('Resume Picking')
+                self.paused = True
+                logging.info('Paused picking')
+            else:
+                self.fp_thread.resume()
+                self.pause_button.setText('Pause Picking')
+                self.paused = False
+                logging.info('Resumed Picking')
+            
+
+    def _stop_picking(self):
+        """Calback to stop picking
+        """
+
+        if self.fp_thread and self.fp_thread.isRunning():
+            self.fp_thread.stop()
+            logging.info('Stop picking requested')
 
 
 class NewExptWidget(QPushButton):

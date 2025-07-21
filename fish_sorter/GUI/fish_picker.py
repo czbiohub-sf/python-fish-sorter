@@ -183,6 +183,14 @@ class FishPicker:
         )
         self.v.reset_view()
 
+        if not hasattr(self, "_mda_finished_connect"):
+            def _mda_finish(seq):
+                logging.info('MDA sequence finished. Triggering Mosaic stitching and classification')
+                self.run()
+            self.core.mda.events.sequenceFinished.connect(_mda_finish)
+            self._mda_finished_connect = True
+
+
     def setup_iplate(self):
         """Setup image plate instance to pass to Pick and Classify classes
         """
@@ -257,6 +265,7 @@ class FishPicker:
             logging.info(f'Saved layer {layer}')
 
         logging.info('Ready to classify')
+        self.run_class()
 
     def _new_exp(self):
         """Set up to start a new experiment after running one
@@ -300,8 +309,16 @@ class FishPicker:
         """Loads pick selection gui on save of classification
         """
 
+        if hasattr(self, 'selection') and self.selection is not None:
+            if self.selection.isVisible():
+                self.selection.raise_()
+                self.selection.setFocus()
+                return
+
         self.selection = SelectGUI(self.pick, self.classify)
         self.v.window.add_dock_widget(self.selection, name = 'Pick Selection', area='right', tabify=True)
+        self.selection.destroyed.connect(lambda: setattr(self, 'selection', None))
+
 
 
 if __name__ == "__main__":
