@@ -189,6 +189,7 @@ class Pick():
         self.matches.drop(columns=['lHead']).head(0).to_csv(self.picked_file, index=False)
         self.phc.move_pipette('clearance')
         self.phc.dest_home()
+        yield 'Moved hardware for picking'
         
         for match in self.matches.index:
             if self.matches['lHead'][match]:
@@ -199,23 +200,32 @@ class Pick():
                 logging.info(f'Offset right head:{offset}')
             
             self.iplate.go_to_well(self.matches['slotName'][match], offset)
+            yield 'Move to well'
             self.phc.move_pipette('pick')
-            sleep(self.dtime)
+            yield from self._troubled_sleep(self.dtime)
             self.phc.draw()
-            sleep(self.dtime)
+            yield from self._troubled_sleep(self.dtime)
             self.phc.move_pipette('clearance')
-            
+            yield 'Move to clearance'
             self.phc.dplate.go_to_well(self.matches['dispenseWell'][match])
+            yield 'Move dispense plate'
             self.phc.move_pipette('dispense')
+            yield 'Move to dispense'
             self.phc.expel()
-            sleep(self.dtime)
+            yield from self._troubled_sleep(self.dtime)
             self.phc.expel()
-            sleep(self.dtime)
+            yield from self._troubled_sleep(self.dtime)
             self.phc.move_pipette('clearance')
+            yield 'Move to clearance'
             self.phc.dest_home()
-            logging.info('Picked fish in {} to {}'.format(self.matches['slotName'][match], self.matches['dispenseWell'][match]))
+            msg = 'Picked fish in {} to {}'.format(self.matches['slotName'][match], self.matches['dispenseWell'][match])
+            logging.info(msg)
+            yield msg
+
             pd.DataFrame([self.matches.drop(columns=['lHead']).iloc[match].values], columns=self.matches.drop(columns=['lHead']).columns)\
                 .to_csv(self.picked_file, mode='a', header=False, index=False)
+
+        yield 'Completed picking'
         
         #TODO how to more elegantly handle lHead, rightHead, none, etc
         #call to mapping?
@@ -224,9 +234,21 @@ class Pick():
         #Use pick_type_config.json better to determine what columns are needed
         #Should it snake through the list of options?
 
-
         self.done()
 
+    def _troubled_sleep(self, duration: float):
+        """Interruptable sleep time to ensure pausing during fish picking
+
+        :param duration: length of sleep in seconds
+        :type duration: float
+        """
+
+        steps = int(duration / 0.05)
+        for _ in range(steps):
+            sleep(0.05)
+            yield 'Sleep checkpoint'
+
+    
     def done(self):
         """Helper to call when picking is complete
         """

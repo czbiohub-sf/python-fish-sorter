@@ -135,6 +135,7 @@ class SelectGUI(QWidget):
             df = pd.DataFrame(rows)[header]
             df.to_csv(self.pickable_path, index=False)
             QMessageBox.information(self, 'Saved', f'Selection saved to {self.pickable_path}. \n\nReady to Pick!')
+            logging.info(f'Selection saved to {self.pickable_path}. Ready to Pick.')
         except Exception as e:
             QMessageBox.critical(self, "Error", f"Could not save: {e}")
             logging.info('Did not save the pickable file')

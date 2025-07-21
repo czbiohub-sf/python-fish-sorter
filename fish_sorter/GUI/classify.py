@@ -120,6 +120,8 @@ class Classify(QObject):
             self.viewer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) # Note: set to overwrite standard shortcuts in napari
             self.points_layer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) # Note: set to overwrite points layer specific shortcuts
         
+        self.navigate_all = False
+        
         # Prevents points from being deleted
         self.viewer.bind_key('Backspace', self._blank, overwrite=True)
         self.viewer.bind_key('Delete', self._blank, overwrite=True)
@@ -134,10 +136,9 @@ class Classify(QObject):
         self.current_well = 0
         self.counter = None
 
+        self._create_classify()
         self.extract_fish(pts)
         self._find_fish_widget(pts)
-    
-        self._create_classify()
         self._start_async_extraction()
 
         self.prefix = prefix
@@ -435,19 +436,21 @@ class Classify(QObject):
                 raw_data = raw_layers[0].data
                 layer_name = raw_layers[0].name
             else:
-                raw_layers = [layer for layer in self.viewer.layers if isinstance(layer, napari.layers.Image)]
+                raw_layers = [
+                    layer for layer in self.viewer.layers 
+                    if isinstance(layer, napari.layers.Image) and layer.name != 'BF'
+                ]
                 raw_data = np.zeros_like(raw_layers[0].data, dtype=np.uint16)
                 for layer in raw_layers:
+                    logging.info(f'layer name {layer}')
                     raw_data += layer.data
                 layer_name = 'sum'
             mask_mean = raw_data.mean()
-            logging.info(f'{mask_mean}')
             mask_std = raw_data.std()
-            logging.info(f'{mask_std}')
             thresh = mask_mean + (sigma * mask_std)
-            logging.info(f'{thresh}')
             binary_mask = raw_data > thresh
             image_layers = [{'data': binary_mask.astype(np.uint8), 'name': layer_name}]
+            logging.info(f'image layers {layer_name}')
     
         def _extract_point(point):
             """Creates extracted image around points
@@ -500,7 +503,7 @@ class Classify(QObject):
         else:
             return [_extract_point(p) for p in points]
     
-    def find_fish(self, points, layer_name=None, sigma=0.25, reset=True, drop=True):
+    def find_fish(self, points, layer_name=None, sigma=0.25, drop=True):
         """Automatically detects fish and fish orientation.
 
         :param points: x, y coordinates for center location points defining the well locations
@@ -512,23 +515,17 @@ class Classify(QObject):
         :param sigma: threshold value to compare well intensities to background
         :type simga: float
 
-        :param reset: whether to reset the detected fish prior to the fish detection
-        :type reset: bool
-
         :param drop: whether to drop the four corners from the detected fish list
         :type drop: bool
         """
 
-        if reset:
-            empty = self.points_layer.features['empty']
-            empty.loc[:] = True
-            self.points_layer.features.loc[:, 'empty'] = empty
-            for feat in self.deselect_rules['empty']:
-                self.points_layer.features.loc[empty, feat] = False
         img_data = self._extract_wells(points, img_flag=False, mask_layer=layer_name, parallel=True, sigma=sigma)
         wells_data = [list(region.values())[0].mean() for region in img_data]
         well_mean = np.mean(wells_data)
-        well_class = [region_mean > well_mean for region_mean in wells_data]
+        if layer_name == 'BF':
+            well_class = [region_mean < well_mean for region_mean in wells_data]
+        else:
+            well_class = [region_mean > well_mean for region_mean in wells_data]
 
         if drop:
             tl = 0
@@ -540,6 +537,17 @@ class Classify(QObject):
 
         self._update_found_fish(well_class)
 
+    def _reset_fish(self):
+        """Resets the found fish to the empty state and deselects all classifications
+        """
+
+        self._feat()
+        for feat in self.features:
+            self.points_layer.features[feat] = self.features[feat]
+        self.refresh()
+        self._update_counter()
+        self._update_nav_mode()
+    
     def _update_found_fish(self, wells: List[int]):
         """Updates the feature classification for the found fish and orientation
 
@@ -655,8 +663,8 @@ class Classify(QObject):
         """
 
         def find_fish_callback(layer_name: str, sigma: float):
-            self.find_fish(points, layer_name, sigma, drop=False)
-        self.fish_widget = FishFinderWidget(self.viewer, find_fish_callback)
+            self.find_fish(points, layer_name, sigma)
+        self.fish_widget = FishFinderWidget(self.viewer, find_fish_callback, self)
         self.fish_widget_name = 'Finding Nemo'
         self.viewer.window.add_dock_widget(self.fish_widget, name=self.fish_widget_name, area='left')
         minmax_wgt = self.viewer.window._dock_widgets['MinMax']
@@ -672,9 +680,17 @@ class Classify(QObject):
         self.classify_widget = QWidget()
         self.classify_layout = QVBoxLayout(self.classify_widget)
 
+        header_widget = QWidget()
+        header_layout =QHBoxLayout()
+        header_widget.setLayout(header_layout)
         self.counter = QLabel('')
         self.counter.setStyleSheet('font-size: 16pt; font-weight: bold; color: #6a617a;')
-        self.classify_layout.addWidget(self.counter)
+        header_layout.addWidget(self.counter)
+        self.nav_mode_label = QLabel()
+        self.nav_mode_label.setStyleSheet('font-size: 10 pt; color: #6a617a;')
+        header_layout.addWidget(self.nav_mode_label)
+        header_layout.addStretch()
+        self.classify_layout.addWidget(header_widget)
 
         self.well_disp_container = QWidget()
         self.well_disp_layout = QVBoxLayout(self.well_disp_container) 
@@ -706,8 +722,10 @@ class Classify(QObject):
         self.viewer.window.add_dock_widget(self.classify_widget, name= 'Classification', area='right', tabify = True)
         self.viewer.bind_key("Right", self._next_well, overwrite=True)
         self.viewer.bind_key("Left", self._previous_well, overwrite=True)
+        self.viewer.bind_key("T", self._toggle_navigation, overwrite=True)
 
         self._update_counter()
+        self._update_nav_mode()
     
     def _create_viewer(self, layer_name, masked_region):
         """Make side viewer on main thread
@@ -775,24 +793,19 @@ class Classify(QObject):
         :type event: Event of Napari Qt Event loop
         """
 
-        singlets = self.points_layer.features['singlet']
-        singlet_idxs = np.where(singlets)[0]
+        idxs = np.arange(len(self.points_layer.data)) if self.navigate_all else np.where(self.points_layer.features['singlet'])[0]
 
-        if len(singlet_idxs) == 0:
-            all_idx = np.arange(len(self.points_layer.data))
-            logging.info('There are no singlets. Cycling through all points')
-            singlet_idxs = all_idx
+        if len(idxs) == 0:
+            logging.info(f'No wells were found under the current navigation mode')
+            return
+
         try:
-            current_well = np.where(singlet_idxs == self.current_well)[0][0]
-            next_idx = (current_well + 1) % len(singlet_idxs)
-        except:
-            next_idxs = singlet_idxs[singlet_idxs > self.current_well]
-            if len(next_idxs) == 0:
-                next_idx = 0
-            else:
-                next_idx = np.where(singlet_idxs == next_idxs[0])[0][0]
-        
-        self.current_well = singlet_idxs[next_idx]
+            current_idx = np.where(idxs == self.current_well)[0][0]
+            next_idx = (current_idx + 1) % len(idxs)
+        except IndexError:
+            next_idx = 0
+            
+        self.current_well = idxs[next_idx]
         self._well_disp()
         self._refocus_viewer()
         self._select_current_point()
@@ -807,24 +820,19 @@ class Classify(QObject):
         :type event: Event of Napari Qt Event loop
         """
 
-        singlets = self.points_layer.features['singlet']
-        singlet_idxs = np.where(singlets)[0]
+        idxs = np.arange(len(self.points_layer.data)) if self.navigate_all else np.where(self.points_layer.features['singlet'])[0]
 
-        if len(singlet_idxs) == 0:
-            all_idx = np.arange(len(self.points_layer.data))
-            logging.info('There are no singlets. Cycling through all points')
-            singlet_idxs = all_idx
+        if len(idxs) == 0:
+            logging.info(f'No wells were found under the current navigation mode')
+            return
 
         try:
-            current_well = np.where(singlet_idxs == self.current_well)[0][0]
-            prev_idx = (current_well - 1) % len(singlet_idxs)
-        except:
-            prev_idxs = singlet_idxs[singlet_idxs < self.current_well]
-            if len(prev_idxs) == 0:
-                prev_idx = len(singlet_idxs) - 1
-            else:
-                prev_idx = np.where(singlet_idxs == prev_idxs[-1])[0][0]
-        self.current_well = singlet_idxs[prev_idx]
+            current_idx = np.where(idxs == self.current_well)[0][0]
+            prev_idx = (current_idx - 1 + len(idxs)) % len(idxs)
+        except IndexError:
+            prev_idx = len(idxs) - 1
+
+        self.current_well = idxs[prev_idx]
         self._well_disp()
         self._refocus_viewer()
         self._select_current_point()
@@ -832,26 +840,54 @@ class Classify(QObject):
         self._selected_current_pt()
         self._update_counter()
 
+    def _toggle_navigation(self, event=None):
+        """Changes left right navigation from singlets to all fish
+
+        :param event: key press of T
+        :type event: Event of Napari Qt Event loop
+        """
+
+        self.navigate_all = not self.navigate_all
+        mode = 'All' if self.navigate_all else 'Singlets'
+        logging.info(f'Well navigation set to {mode}')
+        self._update_counter()
+        self._update_nav_mode()
+
     def _update_counter(self):
         """Updates the fish counter for the user to know which fish they are on and the total
         """
 
-        singlets = self.points_layer.features['singlet']
-        singlet_idxs = np.where(singlets)[0]
+        if self.navigate_all:
+            total = len(self.points_layer.data)
+            pos = self.current_well + 1
+            self.counter.setText(f'Well {pos} of {total} (All Wells)')
 
-        if len(singlet_idxs) == 0:
-            self.counter.setText('No Fish')
-            return
+        else:
         
-        try:
-            pos = np.where(singlet_idxs == self.current_well)[0][0] + 1
+            singlets = self.points_layer.features['singlet']
+            singlet_idxs = np.where(singlets)[0]
 
-        except IndexError:
-            pos = 1
+            if len(singlet_idxs) == 0:
+                self.counter.setText('No Fish')
+                return
         
-        total = len(singlet_idxs)
-        self.counter.setText(f'Fish {pos} of {total}')
+            try:
+                pos = np.where(singlet_idxs == self.current_well)[0][0] + 1
+
+            except IndexError:
+                pos = 1
+        
+            total = len(singlet_idxs)
+            self.counter.setText(f'Fish {pos} of {total}')
     
+    def _update_nav_mode(self):
+        """GUI navigate mode indicator
+        """
+
+        mode = 'All Wells' if self.navigate_all else 'Singlets'
+        self.nav_mode_label.setText(f'Nav Mode <b>{mode} </b/> &nbsp; (press <b>T</b> to toggle)')
+
+
     def _well_disp(self):
         """Force _update_well_display to run on main thread
         """
@@ -961,28 +997,33 @@ class FishFinderWidget(QWidget):
     the well locations with fish
     """
 
-    def __init__(self, viewer, find_fish_callback):
+    def __init__(self, viewer, find_fish_callback, classify):
         super().__init__()
         self.viewer = viewer
+        self.classify = classify
         self.find_fish_callback = find_fish_callback
         
-        layout = QVBoxLayout()
+        layout = QGridLayout()
         self.setLayout(layout)
         self.layer_label = QLabel('Fish detection channel')
         self.layer_combo = QComboBox()
-        layout.addWidget(self.layer_label)
-        layout.addWidget(self.layer_combo)
+        layout.addWidget(self.layer_label, 1, 0)
+        layout.addWidget(self.layer_combo, 1, 1)
         self.sigma_label = QLabel('Sigma')
         self.sigma_spin = QDoubleSpinBox()
-        self.sigma_spin.setMinimum(0.1)
+        self.sigma_spin.setDecimals(4)
+        self.sigma_spin.setMinimum(0.0001)
         self.sigma_spin.setMaximum(100)
-        self.sigma_spin.setSingleStep(0.1)
+        self.sigma_spin.setSingleStep(0.0001)
         self.sigma_spin.setValue(1)
-        layout.addWidget(self.sigma_label)
-        layout.addWidget(self.sigma_spin)
+        layout.addWidget(self.sigma_label, 2, 0)
+        layout.addWidget(self.sigma_spin, 2, 1)
         self.run_button = QPushButton('Find Fish')
         self.run_button.clicked.connect(self.run_find_fish)
-        layout.addWidget(self.run_button)
+        layout.addWidget(self.run_button, 3, 0)
+        self.reset_fish = QPushButton('Reset Fish')
+        self.reset_fish.clicked.connect(self.classify._reset_fish)
+        layout.addWidget(self.reset_fish, 3, 1)
         self.update_layers()
 
     def update_layers(self):
