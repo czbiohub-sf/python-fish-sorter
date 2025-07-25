@@ -132,6 +132,7 @@ class PickGUI(QWidget):
         self.single.setEnabled(status)
         self.pw.pause_button.setEnabled(status)
         self.pw.stop_button.setEnabled(status)
+        QMessageBox.information(self, 'Setup Complete', f'Ready to calibrate pipette and image.')
 
 
 class PipettePickCalibWidget(QPushButton):
