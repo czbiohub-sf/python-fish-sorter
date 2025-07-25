@@ -80,6 +80,7 @@ class Mosaic:
         meta = cast("dict", sequence.metadata.get(PYMMCW_METADATA_KEY, {}))
         return cast(str, meta.get('save_name', DEFAULT_NAME))
 
+    @classmethod
     def get_mosaic_metadata(self, sequence: MDASequence):
         """Get mosaic info from the MDASequence metadata"""
         # General metadata
