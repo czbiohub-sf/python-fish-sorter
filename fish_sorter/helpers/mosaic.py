@@ -34,7 +34,7 @@ class Mosaic:
         sequence = MDASequence(            
             grid_plan = {
                 "top": grid_plan['top'],
-                "left": grid_plan['left']
+                "left": grid_plan['left'],
                 "bottom": grid_plan['bottom'],
                 "right": grid_plan['right'],
                 "overlap": (grid_plan[overlap][0], grid_plan[overlap][1])
