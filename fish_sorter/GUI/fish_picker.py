@@ -184,9 +184,21 @@ class FishPicker:
         self.v.reset_view()
 
         if not hasattr(self, "_mda_finished_connect"):
+            self._cancel = False
+
+            def _mda_cancel(seq):
+                logging.info('MDA canceled — user aborted acquisition')
+                self._cancel = True
+            
             def _mda_finish(seq):
-                logging.info('MDA sequence finished. Triggering Mosaic stitching and classification')
-                self.run()
+                if self._cancel:
+                    logging.info('Skipping stitching and classification.')
+                else:
+                    logging.info('MDA sequence finished. Triggering Mosaic stitching and classification')
+                    self.run()
+                self._cancel = False
+            
+            self.core.mda.events.sequenceCanceled.connect(_mda_cancel)
             self.core.mda.events.sequenceFinished.connect(_mda_finish)
             self._mda_finished_connect = True
 
