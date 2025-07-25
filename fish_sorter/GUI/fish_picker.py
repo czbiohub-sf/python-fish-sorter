@@ -122,6 +122,7 @@ class FishPicker:
 
         self.classify = Classify(self.cfg_dir, self.pick_type, self.expt_prefix, self.expt_path, self.iplate, self.v)
         self.classify.pick_selection.connect(self._pick_selection_gui)
+        self.v.reset_view()
 
     def setup_picker(self):
         """After collecting required setup information, setup the picker
