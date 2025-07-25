@@ -28,6 +28,28 @@ class Mosaic:
         self.viewer = viewer
         self.grid_list = None
 
+    @classmethod
+    def get_sequence():
+
+        sequence = MDASequence(            
+            grid_plan = {
+                "top": 0.0,
+                "left": 0.0,
+                "bottom": 0.0,
+                "right": 0.0,
+                "overlap": 5.0,
+                "fov_width": FOV_WIDTH,
+                "fov_height": FOV_HEIGHT,
+            },
+            channels = [
+                {"config": "GFP","exposure": 300}, 
+                {"config": "TXR", "exposure": 300}
+            ],
+            axis_order = "gc",
+        )
+    
+        return sequence
+
     def init_pos(self):
 
         sequence = MDASequence(            
@@ -81,6 +103,31 @@ class Mosaic:
         return cast(str, meta.get('save_name', DEFAULT_NAME))
 
     @classmethod
+    def get_grid_list(sequence):
+        """Get mosaic info from the MDASequence metadata"""
+        # General metadata
+        num_chan = len(sequence.channels)
+        logging.info(f'num_chan: {num_chan}')
+        chan_names = [channel.config for channel in sequence.channels]
+        logging.info(f'chan_nam: {chan_names}')
+        overlap = sequence.grid_plan.overlap
+        logging.info(f'overlap: {overlap}')
+
+        # Get position at each id
+        event_iterator = sequence.iter_events()
+        pos_list = np.unique([[event.index['g'], event.x_pos, event.y_pos] for event in event_iterator], axis=0)
+        xpos_list, x_ids = np.unique(pos_list[:,1], return_inverse=True)
+        ypos_list, y_ids = np.unique(pos_list[:,2], return_inverse=True)
+        num_rows = len(np.unique(pos_list[:,2]))
+        num_cols = len(np.unique(pos_list[:,1]))
+
+        # Save order of positions
+        grid_list = np.zeros((num_cols, num_rows, 3), dtype=int)
+        for grid_pos, y_id, x_id in zip(pos_list, y_ids, x_ids):
+            grid_list[x_id, y_id] = grid_pos
+
+        return grid_list
+
     def get_mosaic_metadata(self, sequence: MDASequence):
         """Get mosaic info from the MDASequence metadata"""
         # General metadata
