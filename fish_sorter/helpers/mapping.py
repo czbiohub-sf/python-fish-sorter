@@ -96,8 +96,10 @@ class Mapping:
         # Returns corner bounds as x1 y1 x2 y2 
         # where (x1, y1) are the TL corner
         # and (x2, y2) are the BR corner
-        return np.hstack(px_pos * 2) + [-half_width, -half_height, half_width, half_height]
+        bounds_operation = np.array([-half_width,-half_height, half_width, half_height])
 
+        return np.hstack((px_pos, px_pos)) + bounds_operation.T
+    
     def get_transform(self):
         # Get transformation matrix and corresponding angle
         return self.transform_exp2actual
