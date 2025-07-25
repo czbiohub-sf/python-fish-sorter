@@ -82,6 +82,22 @@ class Mapping:
 
         self.transform_exp2actual = np.dot(theta_transform, scale_transform)
 
+    def calc_crops(self, px_pos, px_padding=[0, 0]):
+        width = int(round(
+            self.wells["array_design"]["slot_length"] / PIXEL_SIZE_UM
+        )) + (2 * px_padding[0])
+        height = int(round(
+            self.wells["array_design"]["slot_width"] / PIXEL_SIZE_UM
+        )) + (2 * px_padding[1])
+
+        half_width = int(width / 2)
+        half_height = int(height / 2)
+
+        # Returns corner bounds as x1 y1 x2 y2 
+        # where (x1, y1) are the TL corner
+        # and (x2, y2) are the BR corner
+        return np.hstack(px_pos * 2) + [-half_width, -half_height, half_width, half_height]
+
     def get_transform(self):
         # Get transformation matrix and corresponding angle
         return self.transform_exp2actual
@@ -122,6 +138,7 @@ class Mapping:
         actual_rel_um = self.exp_to_actual(exp_rel_um)
         actual_abs_um = self.rel_um_to_abs_um(actual_rel_um)
         px_pos = self.rel_um_to_px(actual_rel_um)
+        px_crops = self.calc_crops(px_pos)
 
         # Load sequence
         self.wells = {
@@ -130,6 +147,7 @@ class Mapping:
             'exp_rel_um' : exp_rel_um,
             "actual_abs_um": actual_abs_um,
             "actual_px": px_pos, # NOTE px is unused for dispense plate
+            "crop_px_coords" : px_crops,
         }
 
     def get_well_id(self, well_name: str):
