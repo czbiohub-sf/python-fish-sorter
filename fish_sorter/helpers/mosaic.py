@@ -29,15 +29,15 @@ class Mosaic:
         self.grid_list = None
 
     @classmethod
-    def get_sequence():
+    def get_sequence(grid_plan):
 
         sequence = MDASequence(            
             grid_plan = {
-                "top": 0.0,
-                "left": 0.0,
-                "bottom": 0.0,
-                "right": 0.0,
-                "overlap": 5.0,
+                "top": grid_plan['top'],
+                "left": grid_plan['left']
+                "bottom": grid_plan['bottom'],
+                "right": grid_plan['right'],
+                "overlap": (grid_plan[overlap][0], grid_plan[overlap][1])
                 "fov_width": FOV_WIDTH,
                 "fov_height": FOV_HEIGHT,
             },
