@@ -37,7 +37,7 @@ class Mosaic:
                 "left": grid_plan['left'],
                 "bottom": grid_plan['bottom'],
                 "right": grid_plan['right'],
-                "overlap": (grid_plan[overlap][0], grid_plan[overlap][1])
+                "overlap": (grid_plan['overlap'][0], grid_plan['overlap'][1]),
                 "fov_width": FOV_WIDTH,
                 "fov_height": FOV_HEIGHT,
             },
