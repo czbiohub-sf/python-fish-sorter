@@ -96,7 +96,7 @@ class Mapping:
         # Returns corner bounds as x1 y1 x2 y2 
         # where (x1, y1) are the TL corner
         # and (x2, y2) are the BR corner
-        bounds_operation = np.array([-half_width,-half_height, half_width, half_height])
+        bounds_operation = np.array([-half_height, -half_width, half_height, half_width])
 
         return np.hstack((px_pos, px_pos)) + bounds_operation.T
     
