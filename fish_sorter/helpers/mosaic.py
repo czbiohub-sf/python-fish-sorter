@@ -28,7 +28,7 @@ class Mosaic:
         self.viewer = viewer
         self.grid_list = None
 
-    @classmethod
+    @staticmethod
     def get_sequence(grid_plan):
 
         sequence = MDASequence(            
@@ -102,7 +102,7 @@ class Mosaic:
         meta = cast("dict", sequence.metadata.get(PYMMCW_METADATA_KEY, {}))
         return cast(str, meta.get('save_name', DEFAULT_NAME))
 
-    @classmethod
+    @staticmethod
     def get_grid_list(sequence):
         """Get mosaic info from the MDASequence metadata"""
         # General metadata
