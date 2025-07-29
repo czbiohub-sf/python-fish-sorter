@@ -121,7 +121,6 @@ class FishPicker:
         self.iplate.load_wells(grid_list=self.mosaic.grid_list)
 
         self.classify = Classify(self.cfg_dir, self.pick_type, self.expt_prefix, self.expt_path, self.iplate, self.v)
-        self.classify.pick_selection.connect(self._pick_selection_gui)
         self.v.reset_view()
 
     def setup_picker(self):
@@ -151,6 +150,7 @@ class FishPicker:
         logging.info('Enabling full pick functionality')
         self.pick.setup_exp(self.cfg_dir, self.expt_path, self.expt_prefix, offset, dtime, pick_h, self.iplate, self.dp_array)
         self.pick_gui.update_pick_widgets(status=True)
+        self._pick_selection_gui()
 
     def setup_MDA(self):
         """Setup the MDA from Picker setup information and the starting configuration
@@ -202,7 +202,6 @@ class FishPicker:
             self.core.mda.events.sequenceCanceled.connect(_mda_cancel)
             self.core.mda.events.sequenceFinished.connect(_mda_finish)
             self._mda_finished_connect = True
-
 
     def setup_iplate(self):
         """Setup image plate instance to pass to Pick and Classify classes
@@ -302,6 +301,13 @@ class FishPicker:
                 logging.warning(f'Could not remove classify dock widget: {e}')
         self.classify = None
 
+        if hasattr(self, 'selection') and self.selection is not None:
+            try:
+                    self.v.window.remove_dock_widget(self.selection)
+            except Exception as e:
+                logging.warning(f'Could not remove selection dock widget: {e}')
+        self.selection = None
+
     def _save_pick_h(self):
         """Saves the calibrated pick height for the specific pick type to the pick type config
         """
@@ -328,10 +334,9 @@ class FishPicker:
                 self.selection.setFocus()
                 return
 
-        self.selection = SelectGUI(self.pick, self.classify)
+        self.selection = SelectGUI(self.pick, self.pick_type)
         self.v.window.add_dock_widget(self.selection, name = 'Pick Selection', area='right', tabify=True)
         self.selection.destroyed.connect(lambda: setattr(self, 'selection', None))
-
 
 
 if __name__ == "__main__":
