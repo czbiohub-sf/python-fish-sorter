@@ -22,20 +22,6 @@ class Pick():
     def __init__(self, phc=None):
         """Loads the files for classification and initializes PickingPipette class
         
-        :param cfg_dir: parent path directory for all of the config files
-        :type cfg_dir: path
-        :param pick_dir: experiment directory for classification and pick files
-        :type pick_dir: str
-        :param prefix: prefix name details
-        :type prefix: str
-        :param offset: offset value from center points for picking
-        :type offset: np array
-        :param dtime: delay time in s to be used between pipette actions from config
-        :type dtime: float
-        :param iplate: image plate class
-        :type: image plate class instance
-        :param dp_file: path to dispense plate array in config folder
-        :type: path
         :param phc: PickingPipette class
         :type phc: Picking pipette class instance
 
@@ -88,7 +74,8 @@ class Pick():
         """
         
         logging.info('Configure Pick class with experimental parameters')
-        dplate_array = cfg_dir / 'arrays' / dp_array
+        self.cfg = cfg_dir
+        dplate_array = self.cfg / 'arrays' / dp_array
         self.phc.define_dp(dplate_array)
 
         self.pick_dir = pick_dir
@@ -189,7 +176,7 @@ class Pick():
         self.matches.drop(columns=['lHead']).head(0).to_csv(self.picked_file, index=False)
         self.phc.move_pipette('clearance')
         self.phc.dest_home()
-        yield 'Moved hardware for picking'
+        yield 'Moved hardware for picking', False
         
         for match in self.matches.index:
             if self.matches['lHead'][match]:
@@ -200,27 +187,27 @@ class Pick():
                 logging.info(f'Offset right head:{offset}')
             
             self.iplate.go_to_well(self.matches['slotName'][match], offset)
-            yield 'Move to well'
+            yield 'Move to well', False
             self.phc.move_pipette('pick')
             yield from self._troubled_sleep(self.dtime)
             self.phc.draw()
             yield from self._troubled_sleep(self.dtime)
             self.phc.move_pipette('clearance')
-            yield 'Move to clearance'
+            yield 'Move to clearance', False
             self.phc.dplate.go_to_well(self.matches['dispenseWell'][match])
-            yield 'Move dispense plate'
+            yield 'Move dispense plate', False
             self.phc.move_pipette('dispense')
-            yield 'Move to dispense'
+            yield 'Move to dispense', False
             self.phc.expel()
             yield from self._troubled_sleep(self.dtime)
             self.phc.expel()
             yield from self._troubled_sleep(self.dtime)
             self.phc.move_pipette('clearance')
-            yield 'Move to clearance'
+            yield 'Move to clearance', False
             self.phc.dest_home()
             msg = 'Picked fish in {} to {}'.format(self.matches['slotName'][match], self.matches['dispenseWell'][match])
             logging.info(msg)
-            yield msg
+            yield msg, True
 
             pd.DataFrame([self.matches.drop(columns=['lHead']).iloc[match].values], columns=self.matches.drop(columns=['lHead']).columns)\
                 .to_csv(self.picked_file, mode='a', header=False, index=False)
@@ -246,9 +233,8 @@ class Pick():
         steps = int(duration / 0.05)
         for _ in range(steps):
             sleep(0.05)
-            yield 'Sleep checkpoint'
+            yield 'Sleep checkpoint', False
 
-    
     def done(self):
         """Helper to call when picking is complete
         """
