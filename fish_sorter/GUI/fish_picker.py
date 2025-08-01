@@ -8,8 +8,6 @@ import types
 
 from napari.utils.colormaps import Colormap
 from pathlib import Path
-from pymmcore_plus import DeviceType
-from pymmcore_widgets import StageWidget
 from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
@@ -224,7 +222,9 @@ class FishPicker:
 
         for chan, chan_name in zip(range(num_chan), chan_names):
             mosaic = self.stitch[chan, :, :]
-            if chan_name == 'GFP':
+            if chan_name == 'DAPI':
+                color = Colormap([[0, 0, 0], [0.16, 0.82, 0.79]], name='DAPI-cyan')
+            elif chan_name == 'GFP':
                 color = Colormap([[0, 0, 0], [0, 1, 0]], name='GFP-green')
             elif chan_name == 'TXR':
                 color = Colormap([[0, 0, 0], [1, 0.25, 0]], name='tiger-orange')

@@ -780,7 +780,9 @@ class Classify(QObject):
         :type layer: str
         """
 
-        if layer == 'GFP':
+        if layer == 'DAPI':
+            return Colormap([[0, 0, 0], [0.16, 0.82, 0.79]], name='DAPI-cyan')
+        elif layer == 'GFP':
             return Colormap([[0, 0, 0], [0, 1, 0]], name='GFP-green')
         elif layer == 'TXR':
             return Colormap([[0, 0, 0], [1, 0.25, 0]], name='tiger-orange')
