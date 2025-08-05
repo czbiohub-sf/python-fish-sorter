@@ -359,12 +359,12 @@ class Classify(QObject):
         :type padding: int
         """
 
-        origin = self.iplate.px_to_rel_um(np.array([0, 0]))
         w_h = np.array([self.iplate.wells['array_design']['slot_length'], self.iplate.wells['array_design']['slot_width']])
-        abs_coords = w_h + origin
-        conv = self.iplate.rel_um_to_px(abs_coords)
-        width = int(round(conv[0]))
-        height = int(round(conv[1]))
+        origin = self.iplate.px_to_rel_um(np.array([0, 0]))
+        abs_w_h = w_h + origin
+        convert_w_h = self.iplate.rel_um_to_px(abs_w_h)
+        width = int(round(convert_w_h[0]))
+        height = int(round(convert_w_h[1]))
 
         padded_width = width + 2 * padding
         padded_height = height + 2 * padding

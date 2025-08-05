@@ -28,13 +28,13 @@ class Mosaic:
         self.viewer = viewer
         self.grid_list = None
 
-    def init_pos(self, FOV_W, FOV_H):
+    def init_pos(self, fov_w, fov_h):
         """Setup the initial position
 
-        :param FOV_W: field of view width
-        :type FOV_W: float
-        :param FOV_H: field of view width
-        :type FOV_H: float
+        :param fov_w: field of view width
+        :type fov_w: float
+        :param fov_h: field of view width
+        :type fov_h: float
         """
 
         sequence = MDASequence(            
@@ -44,8 +44,8 @@ class Mosaic:
                 "bottom": 0.0,
                 "right": 0.0,
                 "overlap": 5.0,
-                "fov_width": FOV_W,
-                "fov_height": FOV_H,
+                "fov_width": fov_w,
+                "fov_height": fov_h,
             },
             channels = [
                 {"config": "GFP","exposure": 300}, 
@@ -59,8 +59,8 @@ class Mosaic:
         else:
             # Convert if not already GridFromEdges
             grid_plan = GridFromEdges(
-                fov_width=FOV_W,
-                fov_height=FOV_H,
+                fov_width=fov_w,
+                fov_height=fov_h,
                 overlap=(5.0, 5.0),
                 top=sequence.grid_plan.top,
                 left=sequence.grid_plan.left,

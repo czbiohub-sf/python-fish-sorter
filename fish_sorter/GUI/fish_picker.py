@@ -128,9 +128,9 @@ class FishPicker:
         if 'crosshairs' in self.v.layers:
             self.img_tools._create_crosshairs(mag)
 
-        self.PX_SZ_UM = CAM_PX_UM / mag
-        self.FOV_H = CAM_Y_PX * self.PX_SZ_UM
-        self.FOV_W = CAM_X_PX * self.PX_SZ_UM
+        self.pixel_size_um = CAM_PX_UM / mag
+        self.fov_h = CAM_Y_PX * self.pixel_size_um
+        self.fov_w = CAM_X_PX * self.pixel_size_um
         
         if self.mda is not None:
             self.update_MDA()
@@ -153,6 +153,7 @@ class FishPicker:
         """After collecting required setup information, setup the picker
         """
 
+        self.main_mag()
         sequence = self.mda.value()
         self.expt_path = sequence.metadata['pymmcore_widgets']['save_dir'].strip()
         self.expt_prefix = sequence.metadata['pymmcore_widgets']['save_name'].removesuffix('.ome.zarr')
@@ -174,7 +175,7 @@ class FishPicker:
         self.setup_iplate()
 
         logging.info('Enabling full pick functionality')
-        self.pick.setup_exp(self.cfg_dir, self.expt_path, self.expt_prefix, offset, dtime, pick_h, self.iplate, self.dp_array, self.PX_SZ_UM)
+        self.pick.setup_exp(self.cfg_dir, self.expt_path, self.expt_prefix, offset, dtime, pick_h, self.iplate, self.dp_array, self.pixel_size_um)
         self.pick_gui.update_pick_widgets(status=True)
         self._pick_selection_gui()
 
@@ -184,7 +185,7 @@ class FishPicker:
 
         self.main_window._show_dock_widget("MDA")
         self.mda = self.v.window._dock_widgets.get("MDA").widget()
-        sequence = self.mosaic.init_pos(self.FOV_W, self.FOV_H)
+        sequence = self.mosaic.init_pos(self.fov_w, self.fov_h)
         self.mda.setValue(sequence)
         seq = self.mda.value()
         new_seq = MDASequence(
@@ -238,8 +239,8 @@ class FishPicker:
         new_seq = MDASequence(
             axis_order = seq.axis_order,  
             grid_plan = GridFromEdges(
-                fov_width=self.FOV_W,
-                fov_height=self.FOV_H,
+                fov_width=self.fov_w,
+                fov_height=self.fov_h,
                 overlap=(5.0,5.0),
                 top=seq.grid_plan.top,
                 left=seq.grid_plan.left,
@@ -273,7 +274,7 @@ class FishPicker:
 
         array = self.cfg_dir / 'arrays' / self.img_array
         logging.info(f'{array}')
-        self.iplate = ImagingPlate(self.core, self.mda, array, self.PX_SZ_UM)
+        self.iplate = ImagingPlate(self.core, self.mda, array, self.pixel_size_um)
         logging.info('Loaded image plate')
 
     def run(self):

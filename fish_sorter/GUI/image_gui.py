@@ -60,12 +60,12 @@ class ImageWidget(QWidget):
         if preview_layer is None:
             return
 
-        FOV_H = CAM_Y_PX * CAM_PX_UM / magnification
-        FOV_W = CAM_X_PX * CAM_PX_UM / magnification
+        fov_h = CAM_Y_PX * CAM_PX_UM / magnification
+        fov_w = CAM_X_PX * CAM_PX_UM / magnification
 
         lines = [
-            [[0, FOV_H / 2], [FOV_W, FOV_H / 2]],
-            [[FOV_W / 2, 0], [FOV_W / 2, FOV_H]]
+            [[0, fov_h / 2], [fov_w, fov_h / 2]],
+            [[fov_w / 2, 0], [fov_w / 2, fov_h]]
         ]
         
         if self.crosshair_layer in self.viewer.layers:
