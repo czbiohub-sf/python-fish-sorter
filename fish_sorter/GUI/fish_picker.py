@@ -3,13 +3,12 @@ import json
 import logging
 import napari
 import numpy as np
+import re
 import os
 import types
 
 from napari.utils.colormaps import Colormap
 from pathlib import Path
-from pymmcore_plus import DeviceType
-from pymmcore_widgets import StageWidget
 from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
@@ -30,6 +29,7 @@ from fish_sorter.GUI.selection_gui import SelectGUI
 from fish_sorter.GUI.setup_gui import SetupWidget
 from fish_sorter.hardware.imaging_plate import ImagingPlate
 from fish_sorter.hardware.picking_pipette import PickingPipette
+from fish_sorter.constants import CAM_PX_UM, CAM_X_PX, CAM_Y_PX
 from fish_sorter.helpers.mosaic import Mosaic
 
 # For simulation
@@ -48,9 +48,9 @@ class FishPicker:
         self.v = napari.Viewer()
         self.dw, self.main_window = self.v.window.add_plugin_dock_widget("napari-micromanager")
         
+        logging.info('Loading mmcore')
         self.core = self.main_window._mmc
 
-        logging.info('Loading mmcore')
         if sim:
             if FakeDemoCamera is not None:
                 # override snap to look at more realistic images from a microscoppe
@@ -76,6 +76,8 @@ class FishPicker:
         self.phc = PickingPipette(self.cfg_dir)
         # Load sequence and Mosaic class
         self.mosaic = Mosaic(self.v)
+        self.mda = None
+        self.main_mag()
         self.setup_MDA()
         self.assign_widgets()
         self.main_window._show_dock_widget("MDA")
@@ -91,7 +93,6 @@ class FishPicker:
 
         # Image Manipulation Widget
         self.img_tools = ImageWidget(self.v)
-
         self.wrap_widget = QWidget()
         self.ww_layout = QVBoxLayout()
         self.wrap_widget.setLayout(self.ww_layout)
@@ -101,13 +102,38 @@ class FishPicker:
 
         self.img_tools.mosaic_btn.clicked.connect(self.run)
         self.img_tools.class_btn.clicked.connect(self.run_class)
-
+        self.core.events.pixelSizeChanged.connect(self.main_mag)
+    
         # Picking GUI Widget
         self.pick = Pick(self.phc)
         self.pick_gui = PickGUI(self.pick)
         self.pick_gui.new_expt.new_exp_req.connect(self._new_exp)
         self.pick_gui.calib_pick.save_pick_h.connect(self._save_pick_h)
         self.v.window.add_dock_widget(self.pick_gui, name='Picking', area='right', tabify=True)
+    
+    def main_mag(self):
+        """Main level call to get the objective and determine magnification
+        """
+
+        self.obj_dev = self.core.guessObjectiveDevices()[0]
+        obj_label = self.core.getStateLabel(self.obj_dev)
+
+        match = re.search(r'([\d.]+)x', obj_label)
+        if match:
+            mag = float(match.group(1))
+        else:
+            logging.warning(f'Could not parse magnfication from label {obj_label}')
+            mag = 1.0
+
+        if 'crosshairs' in self.v.layers:
+            self.img_tools._create_crosshairs(mag)
+
+        self.PX_SZ_UM = CAM_PX_UM / mag
+        self.FOV_H = CAM_Y_PX * self.PX_SZ_UM
+        self.FOV_W = CAM_X_PX * self.PX_SZ_UM
+        
+        if self.mda is not None:
+            self.update_MDA()
 
     def run_class(self):
         """Classification GUI startup from image widget class_btn
@@ -148,7 +174,7 @@ class FishPicker:
         self.setup_iplate()
 
         logging.info('Enabling full pick functionality')
-        self.pick.setup_exp(self.cfg_dir, self.expt_path, self.expt_prefix, offset, dtime, pick_h, self.iplate, self.dp_array)
+        self.pick.setup_exp(self.cfg_dir, self.expt_path, self.expt_prefix, offset, dtime, pick_h, self.iplate, self.dp_array, self.PX_SZ_UM)
         self.pick_gui.update_pick_widgets(status=True)
         self._pick_selection_gui()
 
@@ -156,9 +182,9 @@ class FishPicker:
         """Setup the MDA from Picker setup information and the starting configuration
         """
 
-        sequence = self.mosaic.init_pos()
         self.main_window._show_dock_widget("MDA")
         self.mda = self.v.window._dock_widgets.get("MDA").widget()
+        sequence = self.mosaic.init_pos(self.FOV_W, self.FOV_H)
         self.mda.setValue(sequence)
         seq = self.mda.value()
         new_seq = MDASequence(
@@ -203,13 +229,51 @@ class FishPicker:
             self.core.mda.events.sequenceFinished.connect(_mda_finish)
             self._mda_finished_connect = True
 
+    def update_MDA(self):
+        """Updates the MDA when the magnification changes
+        """
+
+        seq = self.mda.value()
+        logging.info(f'{seq}')
+        new_seq = MDASequence(
+            axis_order = seq.axis_order,  
+            grid_plan = GridFromEdges(
+                fov_width=self.FOV_W,
+                fov_height=self.FOV_H,
+                overlap=(5.0,5.0),
+                top=seq.grid_plan.top,
+                left=seq.grid_plan.left,
+                bottom=seq.grid_plan.bottom,
+                right=seq.grid_plan.right,
+            ),  
+            channels=seq.channels,
+            metadata={
+                "pymmcore_widgets": {
+                "save_dir": str(seq.metadata['pymmcore_widgets']['save_dir']),
+                "save_name": str(seq.metadata['pymmcore_widgets']['save_name']),
+                "should_save": True,
+                },
+                "napari_micromanager": {
+                    "axis_order": ("g", "c"),
+                    "grid_plan": seq.grid_plan
+                }
+             }
+        )
+        self.mda.setValue(new_seq)
+        final_seq = self.mda.value()
+        logging.info(f'Updated MDA setup sequence: {final_seq}')
+        self.v.window._qt_viewer.console.push(
+            {"main_window": self.main_window, "mmc": self.core, "sequence": final_seq, "np": np}
+        )
+        self.v.reset_view()
+
     def setup_iplate(self):
         """Setup image plate instance to pass to Pick and Classify classes
         """
 
         array = self.cfg_dir / 'arrays' / self.img_array
         logging.info(f'{array}')
-        self.iplate = ImagingPlate(self.core, self.mda, array)
+        self.iplate = ImagingPlate(self.core, self.mda, array, self.PX_SZ_UM)
         logging.info('Loaded image plate')
 
     def run(self):

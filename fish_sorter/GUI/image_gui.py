@@ -1,4 +1,6 @@
+import logging
 import numpy as np
+import re
 from typing import List, Optional, Union
 
 from pymmcore_plus import CMMCorePlus
@@ -12,7 +14,7 @@ from qtpy.QtWidgets import (
     QWidget
 )
 
-from fish_sorter.constants import FOV_WIDTH, FOV_HEIGHT
+from fish_sorter.constants import CAM_PX_UM, CAM_X_PX, CAM_Y_PX
 
 
 class ImageWidget(QWidget):
@@ -41,8 +43,13 @@ class ImageWidget(QWidget):
         layout.addWidget(self.cross_btn)
         self.setLayout(layout)
         
-    def _create_crosshairs(self):
-
+    def _create_crosshairs(self, magnification):
+        """Adds image center crosshairs to the napari viewer
+        
+        :param magnification: current objective magnification
+        :type magnification: float
+        """
+        
         self.viewer.reset_view()
         preview_layer = None
         for layer in self.viewer.layers:
@@ -53,9 +60,12 @@ class ImageWidget(QWidget):
         if preview_layer is None:
             return
 
+        FOV_H = CAM_Y_PX * CAM_PX_UM / magnification
+        FOV_W = CAM_X_PX * CAM_PX_UM / magnification
+
         lines = [
-            [[0, FOV_HEIGHT / 2], [FOV_WIDTH, FOV_HEIGHT / 2]],
-            [[FOV_WIDTH / 2, 0], [FOV_WIDTH / 2, FOV_HEIGHT]]
+            [[0, FOV_H / 2], [FOV_W, FOV_H / 2]],
+            [[FOV_W / 2, 0], [FOV_W / 2, FOV_H]]
         ]
         
         if self.crosshair_layer in self.viewer.layers:
@@ -72,6 +82,19 @@ class ImageWidget(QWidget):
         layer.editable = False
         layer.selectable = False
 
+    def get_mag(self):
+        """Helper function to get the current magnification of the microscope
+        """
+
+        obj_dev = self.mmc.guessObjectiveDevices()[0]
+        obj_label = self.mmc.getStateLabel(obj_dev)
+
+        match = re.search(r'([\d.]+)x', obj_label)
+        if match:
+            return float(match.group(1))
+        logging.warning(f'Could not parse magnfication from label {obj_label}')
+        return 1.0
+
     def _toggle_crosshairs(self):
         """Toggles the crosshairs on the button press
         """
@@ -79,4 +102,4 @@ class ImageWidget(QWidget):
         if self.crosshair_layer in self.viewer.layers:
             self.viewer.layers.remove(self.crosshair_layer)
         else:
-            self._create_crosshairs()
+            self._create_crosshairs(self.get_mag())
