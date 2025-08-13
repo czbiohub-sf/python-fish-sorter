@@ -9,7 +9,7 @@ from typing import cast
 from useq import MDASequence, Position, GridFromEdges
 from useq._iter_sequence import _used_axes, _iter_axis, _parse_axes
 
-from fish_sorter.constants import FOV_WIDTH, FOV_HEIGHT, IMG_X_PX, IMG_Y_PX
+from fish_sorter.constants import CAM_X_PX, CAM_Y_PX
 
 # TODO is there an easier way to get the mosaic positions?
 
@@ -28,7 +28,14 @@ class Mosaic:
         self.viewer = viewer
         self.grid_list = None
 
-    def init_pos(self):
+    def init_pos(self, fov_w, fov_h):
+        """Setup the initial position
+
+        :param fov_w: field of view width
+        :type fov_w: float
+        :param fov_h: field of view height
+        :type fov_h: float
+        """
 
         sequence = MDASequence(            
             grid_plan = {
@@ -37,8 +44,8 @@ class Mosaic:
                 "bottom": 0.0,
                 "right": 0.0,
                 "overlap": 5.0,
-                "fov_width": FOV_WIDTH,
-                "fov_height": FOV_HEIGHT,
+                "fov_width": fov_w,
+                "fov_height": fov_h,
             },
             channels = [
                 {"config": "GFP","exposure": 300}, 
@@ -52,8 +59,8 @@ class Mosaic:
         else:
             # Convert if not already GridFromEdges
             grid_plan = GridFromEdges(
-                fov_width=FOV_WIDTH,
-                fov_height=FOV_HEIGHT,
+                fov_width=fov_w,
+                fov_height=fov_h,
                 overlap=(5.0, 5.0),
                 top=sequence.grid_plan.top,
                 left=sequence.grid_plan.left,
@@ -121,10 +128,10 @@ class Mosaic:
         num_rows, num_cols, num_channels, chan_names, overlap = self.get_mosaic_metadata(sequence)
 
         # Compute key distances
-        x_overlap = int(IMG_X_PX * overlap[0] / 100.0)
-        y_overlap = int(IMG_Y_PX * overlap[1] / 100.0)
-        x_translation = IMG_X_PX - x_overlap
-        y_translation = IMG_Y_PX - y_overlap
+        x_overlap = int(CAM_X_PX * overlap[0] / 100.0)
+        y_overlap = int(CAM_Y_PX * overlap[1] / 100.0)
+        x_translation = CAM_X_PX - x_overlap
+        y_translation = CAM_Y_PX - y_overlap
 
         # Get zarr array
         arr_data = self.viewer.layers[-1].data
@@ -133,8 +140,8 @@ class Mosaic:
         # TODO check that array has same dims as mosaic?
 
         # Initialize empty mosaic
-        mosaic_x_dim = int((IMG_X_PX * num_cols) - (x_overlap * (num_cols - 1)))
-        mosaic_y_dim = int((IMG_Y_PX * num_rows) - (y_overlap * (num_rows - 1)))
+        mosaic_x_dim = int((CAM_X_PX * num_cols) - (x_overlap * (num_cols - 1)))
+        mosaic_y_dim = int((CAM_Y_PX * num_rows) - (y_overlap * (num_rows - 1)))
         mosaic = np.zeros((num_channels, mosaic_y_dim, mosaic_x_dim), dtype=np.uint16)
 
         # Assemble mosaic
@@ -144,20 +151,20 @@ class Mosaic:
             for col in tqdm(range(num_cols), desc="Column"):
                 x_start = int(col * x_translation)
                 mirrored_col = (num_cols - 1) - col
-                mosaic[:, y_start : y_start + IMG_Y_PX, x_start : x_start + IMG_X_PX] += self.get_img(arr_data, row, mirrored_col)
+                mosaic[:, y_start : y_start + CAM_Y_PX, x_start : x_start + CAM_X_PX] += self.get_img(arr_data, row, mirrored_col)
 
         # Take average of overlapping areas
         logging.info("Taking average of overlapping areas")
         for row in tqdm(range(1, num_rows), desc="Row"):
             y_start = int(row * y_translation)
-            mosaic[:, y_start : y_start - y_translation + IMG_Y_PX, :] = np.floor_divide(
-                mosaic[:, y_start : y_start - y_translation + IMG_Y_PX, :],
+            mosaic[:, y_start : y_start - y_translation + CAM_Y_PX, :] = np.floor_divide(
+                mosaic[:, y_start : y_start - y_translation + CAM_Y_PX, :],
                 2
             ).astype(np.uint16)
         for col in tqdm(range(1, num_cols), desc="Column"):
             x_start = int(col * x_translation)
-            mosaic[:, :, x_start : x_start - x_translation + IMG_X_PX] = np.floor_divide(
-                mosaic[:, :, x_start : x_start - x_translation + IMG_X_PX],
+            mosaic[:, :, x_start : x_start - x_translation + CAM_X_PX] = np.floor_divide(
+                mosaic[:, :, x_start : x_start - x_translation + CAM_X_PX],
                 2
             ).astype(np.uint16)
 

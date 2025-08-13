@@ -10,10 +10,10 @@ from fish_sorter.helpers.mapping import Mapping
 
 # NOTE calibrate by setting positions in UI. Replace with dialogs? 
 class ImagingPlate(Mapping):
-    def __init__(self, mmc, mda, array_file):
+    def __init__(self, mmc, mda, array_file, pixel_size_um):
         self.mda = mda
         self.mmc = mmc
-        super().__init__(array_file)
+        super().__init__(array_file, pixel_size_um)
 
     def set_calib_pts(self, pipettor_cfg=None):
         seq = self.mda.value()

@@ -3,6 +3,7 @@ import json
 import logging
 import napari
 import numpy as np
+import re
 import os
 import types
 
@@ -28,6 +29,7 @@ from fish_sorter.GUI.selection_gui import SelectGUI
 from fish_sorter.GUI.setup_gui import SetupWidget
 from fish_sorter.hardware.imaging_plate import ImagingPlate
 from fish_sorter.hardware.picking_pipette import PickingPipette
+from fish_sorter.constants import CAM_PX_UM, CAM_X_PX, CAM_Y_PX
 from fish_sorter.helpers.mosaic import Mosaic
 
 # For simulation
@@ -46,9 +48,9 @@ class FishPicker:
         self.v = napari.Viewer()
         self.dw, self.main_window = self.v.window.add_plugin_dock_widget("napari-micromanager")
         
+        logging.info('Loading mmcore')
         self.core = self.main_window._mmc
 
-        logging.info('Loading mmcore')
         if sim:
             if FakeDemoCamera is not None:
                 # override snap to look at more realistic images from a microscoppe
@@ -73,8 +75,7 @@ class FishPicker:
         logging.info('Initialize picking hardware controller')
         self.phc = PickingPipette(self.cfg_dir)
         # Load sequence and Mosaic class
-        self.mosaic = Mosaic(self.v)
-        self.setup_MDA()
+        self.image_init()
         self.assign_widgets()
         self.main_window._show_dock_widget("MDA")
 
@@ -86,10 +87,23 @@ class FishPicker:
         self.setup = SetupWidget(self.cfg_dir)
         self.v.window.add_dock_widget(self.setup, name = 'Setup', area='right', tabify=True)
         self.setup.pick_setup.clicked.connect(self.setup_picker)
+    
+        # Picking GUI Widget
+        self.pick = Pick(self.phc)
+        self.pick_gui = PickGUI(self.pick)
+        self.pick_gui.new_expt.new_exp_req.connect(self._new_exp)
+        self.pick_gui.calib_pick.save_pick_h.connect(self._save_pick_h)
+        self.v.window.add_dock_widget(self.pick_gui, name='Picking', area='right', tabify=True)
+    
+    def image_init(self):
+        """Sets up the mosaic, MDA, and image tools widget
+        """
+
+        self.mosaic = Mosaic(self.v)
+        self.mda = None
 
         # Image Manipulation Widget
         self.img_tools = ImageWidget(self.v)
-
         self.wrap_widget = QWidget()
         self.ww_layout = QVBoxLayout()
         self.wrap_widget.setLayout(self.ww_layout)
@@ -99,13 +113,19 @@ class FishPicker:
 
         self.img_tools.mosaic_btn.clicked.connect(self.run)
         self.img_tools.class_btn.clicked.connect(self.run_class)
+        self.core.events.pixelSizeChanged.connect(self.main_mag)
 
-        # Picking GUI Widget
-        self.pick = Pick(self.phc)
-        self.pick_gui = PickGUI(self.pick)
-        self.pick_gui.new_expt.new_exp_req.connect(self._new_exp)
-        self.pick_gui.calib_pick.save_pick_h.connect(self._save_pick_h)
-        self.v.window.add_dock_widget(self.pick_gui, name='Picking', area='right', tabify=True)
+        self.main_mag()
+        self.setup_MDA()
+
+    def main_mag(self):
+        """Main level callback on the objective change (adjusts magnification and images)
+        """
+
+        self.img_tools.get_mag()
+
+        if 'crosshairs' in self.v.layers:
+            self.img_tools._create_crosshairs()
 
     def run_class(self):
         """Classification GUI startup from image widget class_btn
@@ -126,8 +146,18 @@ class FishPicker:
         """
 
         sequence = self.mda.value()
+        self.main_mag()
+        update_fov_gp = sequence.grid_plan.replace(fov_width=self.img_tools.fov_w, fov_height=self.img_tools.fov_h)
+        update_fov_seq = sequence.replace(grid_plan=update_fov_gp) 
+        new_seq = self.mda.setValue(update_fov_seq)
+
         self.expt_path = sequence.metadata['pymmcore_widgets']['save_dir'].strip()
         self.expt_prefix = sequence.metadata['pymmcore_widgets']['save_name'].removesuffix('.ome.zarr')
+        settings_path = Path(self.expt_path) / f'{self.expt_prefix}_settings'
+        mda = self.mda.value()
+        logging.info(f'Saving MDA sequence: {mda} to {settings_path}')
+        self.mda.save(settings_path)
+
         self.img_array = self.setup.get_img_array()
         self.dp_array = self.setup.get_dp_array()
         self.pick_type, offset, dtime, pick_h = self.setup.get_pick_type()
@@ -146,7 +176,7 @@ class FishPicker:
         self.setup_iplate()
 
         logging.info('Enabling full pick functionality')
-        self.pick.setup_exp(self.cfg_dir, self.expt_path, self.expt_prefix, offset, dtime, pick_h, self.iplate, self.dp_array)
+        self.pick.setup_exp(self.cfg_dir, self.expt_path, self.expt_prefix, offset, dtime, pick_h, self.iplate, self.dp_array, self.img_tools.pixel_size_um)
         self.pick_gui.update_pick_widgets(status=True)
         self._pick_selection_gui()
 
@@ -154,9 +184,9 @@ class FishPicker:
         """Setup the MDA from Picker setup information and the starting configuration
         """
 
-        sequence = self.mosaic.init_pos()
         self.main_window._show_dock_widget("MDA")
         self.mda = self.v.window._dock_widgets.get("MDA").widget()
+        sequence = self.mosaic.init_pos(self.img_tools.fov_w, self.img_tools.fov_h)
         self.mda.setValue(sequence)
         seq = self.mda.value()
         new_seq = MDASequence(
@@ -207,7 +237,7 @@ class FishPicker:
 
         array = self.cfg_dir / 'arrays' / self.img_array
         logging.info(f'{array}')
-        self.iplate = ImagingPlate(self.core, self.mda, array)
+        self.iplate = ImagingPlate(self.core, self.mda, array, self.img_tools.pixel_size_um)
         logging.info('Loaded image plate')
 
     def run(self):
@@ -278,7 +308,7 @@ class FishPicker:
 
         logging.info('Ready to classify')
         self.run_class()
-
+    
     def _new_exp(self):
         """Set up to start a new experiment after running one
         """

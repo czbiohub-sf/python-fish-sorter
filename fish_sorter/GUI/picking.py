@@ -50,7 +50,7 @@ class Pick():
         
         self.phc.reset()
 
-    def setup_exp(self, cfg_dir, pick_dir, prefix, offset, dtime, pick_h, iplate, dp_array):
+    def setup_exp(self, cfg_dir, pick_dir, prefix, offset, dtime, pick_h, iplate, dp_array, pixel_size_um):
         """Configuration for the user-input experiment parameters
 
         :param cfg_dir: parent path directory for all of the config files
@@ -69,6 +69,8 @@ class Pick():
         :type: image plate class instance
         :param dp_array: path to dispense plate array in config folder
         :type: path
+        :param pixel_size_um: calculation of pixel size in image based on magnification
+        :type pixel_size_um: float
 
         :raises FileNotFoundError: loggings critical if any of the files are not found
         """
@@ -76,7 +78,7 @@ class Pick():
         logging.info('Configure Pick class with experimental parameters')
         self.cfg = cfg_dir
         dplate_array = self.cfg / 'arrays' / dp_array
-        self.phc.define_dp(dplate_array)
+        self.phc.define_dp(dplate_array, pixel_size_um)
 
         self.pick_dir = pick_dir
         self.prefix = prefix

@@ -8,9 +8,8 @@ from abc import ABC, abstractmethod
 
 # TODO dynamically load pixel count
 from fish_sorter.constants import (
-    IMG_X_PX,
-    IMG_Y_PX,
-    PIXEL_SIZE_UM,
+    CAM_X_PX,
+    CAM_Y_PX,
 )
 
 # NOTE TL corner needs to have image center at corner,
@@ -18,16 +17,17 @@ from fish_sorter.constants import (
 # TODO add type hints
 
 class Mapping:
-    def __init__(self, array_file):
+    def __init__(self, array_file, pixel_size_um):
         # NOTE Does mda return z values?
         self.um_TL = None
         self.um_BR = None
+        self.px_sz_um = pixel_size_um
 
         # self.px2um = self.mmc.getPixelSizeUm() # Automatically load pixel size
         self.px_center_to_corner_offset = np.array(
                 [
-                    IMG_X_PX / 2,
-                    IMG_Y_PX / 2,
+                    CAM_X_PX / 2,
+                    CAM_Y_PX / 2,
                 ]
             )
 
@@ -100,7 +100,7 @@ class Mapping:
 
         if grid_list is not None:
             um_TL_array_to_TL_mosaic = self.um_TL - grid_list[0, 0, 1:3]
-            self.px_center_to_corner_offset += (um_TL_array_to_TL_mosaic / PIXEL_SIZE_UM)
+            self.px_center_to_corner_offset += (um_TL_array_to_TL_mosaic / self.px_sz_um)
             
         # Load metadata
         well_names = self.plate_data['wells']['well_names']
@@ -153,11 +153,11 @@ class Mapping:
 
     def px_to_rel_um(self, px_pos):
         # Wellplate coords to stage coords
-        return (px_pos - self.px_center_to_corner_offset) * PIXEL_SIZE_UM
+        return (px_pos - self.px_center_to_corner_offset) * self.px_sz_um
 
     def rel_um_to_px(self, rel_um_pos):
         # Wellplate coords to image coords        
-        return (rel_um_pos / PIXEL_SIZE_UM) + self.px_center_to_corner_offset
+        return (rel_um_pos / self.px_sz_um) + self.px_center_to_corner_offset
 
     def rel_um_to_abs_um(self, rel_um_pos):
         # Wellplate coords to stage coords
