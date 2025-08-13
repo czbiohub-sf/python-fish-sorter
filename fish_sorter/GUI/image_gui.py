@@ -43,11 +43,8 @@ class ImageWidget(QWidget):
         layout.addWidget(self.cross_btn)
         self.setLayout(layout)
         
-    def _create_crosshairs(self, magnification):
+    def _create_crosshairs(self):
         """Adds image center crosshairs to the napari viewer
-        
-        :param magnification: current objective magnification
-        :type magnification: float
         """
         
         self.viewer.reset_view()
@@ -60,12 +57,9 @@ class ImageWidget(QWidget):
         if preview_layer is None:
             return
 
-        fov_h = CAM_Y_PX * CAM_PX_UM / magnification
-        fov_w = CAM_X_PX * CAM_PX_UM / magnification
-
         lines = [
-            [[0, fov_h / 2], [fov_w, fov_h / 2]],
-            [[fov_w / 2, 0], [fov_w / 2, fov_h]]
+            [[0, self.fov_h / 2], [self.fov_w, self.fov_h / 2]],
+            [[self.fov_w / 2, 0], [self.fov_w / 2, self.fov_h]]
         ]
         
         if self.crosshair_layer in self.viewer.layers:
@@ -86,14 +80,21 @@ class ImageWidget(QWidget):
         """Helper function to get the current magnification of the microscope
         """
 
+        logging.info('Getting the magnification')
         obj_dev = self.mmc.guessObjectiveDevices()[0]
         obj_label = self.mmc.getStateLabel(obj_dev)
 
         match = re.search(r'([\d.]+)x', obj_label)
         if match:
-            return float(match.group(1))
-        logging.warning(f'Could not parse magnfication from label {obj_label}')
-        return 1.0
+            mag = float(match.group(1))
+            logging.info(f'Magnification: {mag}')
+        else:
+            mag = 1.0
+            logging.warning(f'Could not parse magnfication from label {obj_label}')
+
+        self.pixel_size_um = CAM_PX_UM / mag
+        self.fov_h = CAM_Y_PX * self.pixel_size_um
+        self.fov_w = CAM_X_PX * self.pixel_size_um
 
     def _toggle_crosshairs(self):
         """Toggles the crosshairs on the button press
@@ -102,4 +103,5 @@ class ImageWidget(QWidget):
         if self.crosshair_layer in self.viewer.layers:
             self.viewer.layers.remove(self.crosshair_layer)
         else:
-            self._create_crosshairs(self.get_mag())
+            self.get_mag()
+            self._create_crosshairs()

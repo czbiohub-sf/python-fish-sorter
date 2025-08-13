@@ -75,10 +75,7 @@ class FishPicker:
         logging.info('Initialize picking hardware controller')
         self.phc = PickingPipette(self.cfg_dir)
         # Load sequence and Mosaic class
-        self.mosaic = Mosaic(self.v)
-        self.mda = None
-        self.main_mag()
-        self.setup_MDA()
+        self.image_init()
         self.assign_widgets()
         self.main_window._show_dock_widget("MDA")
 
@@ -90,6 +87,20 @@ class FishPicker:
         self.setup = SetupWidget(self.cfg_dir)
         self.v.window.add_dock_widget(self.setup, name = 'Setup', area='right', tabify=True)
         self.setup.pick_setup.clicked.connect(self.setup_picker)
+    
+        # Picking GUI Widget
+        self.pick = Pick(self.phc)
+        self.pick_gui = PickGUI(self.pick)
+        self.pick_gui.new_expt.new_exp_req.connect(self._new_exp)
+        self.pick_gui.calib_pick.save_pick_h.connect(self._save_pick_h)
+        self.v.window.add_dock_widget(self.pick_gui, name='Picking', area='right', tabify=True)
+    
+    def image_init(self):
+        """Sets up the mosaic, MDA, and image tools widget
+        """
+
+        self.mosaic = Mosaic(self.v)
+        self.mda = None
 
         # Image Manipulation Widget
         self.img_tools = ImageWidget(self.v)
@@ -103,37 +114,18 @@ class FishPicker:
         self.img_tools.mosaic_btn.clicked.connect(self.run)
         self.img_tools.class_btn.clicked.connect(self.run_class)
         self.core.events.pixelSizeChanged.connect(self.main_mag)
-    
-        # Picking GUI Widget
-        self.pick = Pick(self.phc)
-        self.pick_gui = PickGUI(self.pick)
-        self.pick_gui.new_expt.new_exp_req.connect(self._new_exp)
-        self.pick_gui.calib_pick.save_pick_h.connect(self._save_pick_h)
-        self.v.window.add_dock_widget(self.pick_gui, name='Picking', area='right', tabify=True)
-    
+
+        self.main_mag()
+        self.setup_MDA()
+
     def main_mag(self):
-        """Main level call to get the objective and determine magnification
+        """Main level callback on the objective change (adjusts magnification and images)
         """
 
-        self.obj_dev = self.core.guessObjectiveDevices()[0]
-        obj_label = self.core.getStateLabel(self.obj_dev)
-
-        match = re.search(r'([\d.]+)x', obj_label)
-        if match:
-            mag = float(match.group(1))
-        else:
-            logging.warning(f'Could not parse magnfication from label {obj_label}')
-            mag = 1.0
+        self.img_tools.get_mag()
 
         if 'crosshairs' in self.v.layers:
-            self.img_tools._create_crosshairs(mag)
-
-        self.pixel_size_um = CAM_PX_UM / mag
-        self.fov_h = CAM_Y_PX * self.pixel_size_um
-        self.fov_w = CAM_X_PX * self.pixel_size_um
-        
-        if self.mda is not None:
-            self.update_MDA()
+            self.img_tools._create_crosshairs()
 
     def run_class(self):
         """Classification GUI startup from image widget class_btn
@@ -153,10 +145,19 @@ class FishPicker:
         """After collecting required setup information, setup the picker
         """
 
-        self.main_mag()
         sequence = self.mda.value()
+        self.main_mag()
+        update_fov_gp = sequence.grid_plan.replace(fov_width=self.img_tools.fov_w, fov_height=self.img_tools.fov_h)
+        update_fov_seq = sequence.replace(grid_plan=update_fov_gp) 
+        new_seq = self.mda.setValue(update_fov_seq)
+
         self.expt_path = sequence.metadata['pymmcore_widgets']['save_dir'].strip()
         self.expt_prefix = sequence.metadata['pymmcore_widgets']['save_name'].removesuffix('.ome.zarr')
+        settings_path = Path(self.expt_path) / f'{self.expt_prefix}_settings'
+        mda = self.mda.value()
+        logging.info(f'Saving MDA sequence: {mda} to {settings_path}')
+        self.mda.save(settings_path)
+
         self.img_array = self.setup.get_img_array()
         self.dp_array = self.setup.get_dp_array()
         self.pick_type, offset, dtime, pick_h = self.setup.get_pick_type()
@@ -175,7 +176,7 @@ class FishPicker:
         self.setup_iplate()
 
         logging.info('Enabling full pick functionality')
-        self.pick.setup_exp(self.cfg_dir, self.expt_path, self.expt_prefix, offset, dtime, pick_h, self.iplate, self.dp_array, self.pixel_size_um)
+        self.pick.setup_exp(self.cfg_dir, self.expt_path, self.expt_prefix, offset, dtime, pick_h, self.iplate, self.dp_array, self.img_tools.pixel_size_um)
         self.pick_gui.update_pick_widgets(status=True)
         self._pick_selection_gui()
 
@@ -185,7 +186,7 @@ class FishPicker:
 
         self.main_window._show_dock_widget("MDA")
         self.mda = self.v.window._dock_widgets.get("MDA").widget()
-        sequence = self.mosaic.init_pos(self.fov_w, self.fov_h)
+        sequence = self.mosaic.init_pos(self.img_tools.fov_w, self.img_tools.fov_h)
         self.mda.setValue(sequence)
         seq = self.mda.value()
         new_seq = MDASequence(
@@ -230,51 +231,13 @@ class FishPicker:
             self.core.mda.events.sequenceFinished.connect(_mda_finish)
             self._mda_finished_connect = True
 
-    def update_MDA(self):
-        """Updates the MDA when the magnification changes
-        """
-
-        seq = self.mda.value()
-        logging.info(f'{seq}')
-        new_seq = MDASequence(
-            axis_order = seq.axis_order,  
-            grid_plan = GridFromEdges(
-                fov_width=self.fov_w,
-                fov_height=self.fov_h,
-                overlap=(5.0,5.0),
-                top=seq.grid_plan.top,
-                left=seq.grid_plan.left,
-                bottom=seq.grid_plan.bottom,
-                right=seq.grid_plan.right,
-            ),  
-            channels=seq.channels,
-            metadata={
-                "pymmcore_widgets": {
-                "save_dir": str(seq.metadata['pymmcore_widgets']['save_dir']),
-                "save_name": str(seq.metadata['pymmcore_widgets']['save_name']),
-                "should_save": True,
-                },
-                "napari_micromanager": {
-                    "axis_order": ("g", "c"),
-                    "grid_plan": seq.grid_plan
-                }
-             }
-        )
-        self.mda.setValue(new_seq)
-        final_seq = self.mda.value()
-        logging.info(f'Updated MDA setup sequence: {final_seq}')
-        self.v.window._qt_viewer.console.push(
-            {"main_window": self.main_window, "mmc": self.core, "sequence": final_seq, "np": np}
-        )
-        self.v.reset_view()
-
     def setup_iplate(self):
         """Setup image plate instance to pass to Pick and Classify classes
         """
 
         array = self.cfg_dir / 'arrays' / self.img_array
         logging.info(f'{array}')
-        self.iplate = ImagingPlate(self.core, self.mda, array, self.pixel_size_um)
+        self.iplate = ImagingPlate(self.core, self.mda, array, self.img_tools.pixel_size_um)
         logging.info('Loaded image plate')
 
     def run(self):
@@ -343,7 +306,7 @@ class FishPicker:
 
         logging.info('Ready to classify')
         self.run_class()
-
+    
     def _new_exp(self):
         """Set up to start a new experiment after running one
         """

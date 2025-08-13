@@ -33,7 +33,7 @@ class Mosaic:
 
         :param fov_w: field of view width
         :type fov_w: float
-        :param fov_h: field of view width
+        :param fov_h: field of view height
         :type fov_h: float
         """
 
