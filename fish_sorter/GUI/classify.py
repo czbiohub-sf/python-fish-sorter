@@ -43,7 +43,6 @@ from tifffile import imread
 from typing import List, Optional, Tuple, Callable
 
 from fish_sorter.hardware.imaging_plate import ImagingPlate
-from fish_sorter.constants import PIXEL_SIZE_UM
 
 class Classify(QObject):
     """Add points layer of the well locations to the image mosaic in napari.
@@ -360,8 +359,12 @@ class Classify(QObject):
         :type padding: int
         """
 
-        width = int(round(self.iplate.wells["array_design"]["slot_length"] / PIXEL_SIZE_UM))
-        height = int(round(self.iplate.wells["array_design"]["slot_width"] / PIXEL_SIZE_UM))
+        w_h = np.array([self.iplate.wells['array_design']['slot_length'], self.iplate.wells['array_design']['slot_width']])
+        origin = self.iplate.px_to_rel_um(np.array([0, 0]))
+        abs_w_h = w_h + origin
+        convert_w_h = self.iplate.rel_um_to_px(abs_w_h)
+        width = int(round(convert_w_h[0]))
+        height = int(round(convert_w_h[1]))
 
         padded_width = width + 2 * padding
         padded_height = height + 2 * padding
@@ -505,7 +508,7 @@ class Classify(QObject):
         else:
             return [_extract_point(p) for p in points]
     
-    def find_fish(self, points, layer_name=None, sigma=0.25, drop=True):
+    def find_fish(self, points, layer_name=None, sigma=0.25):
         """Automatically detects fish and fish orientation.
 
         :param points: x, y coordinates for center location points defining the well locations
@@ -516,9 +519,6 @@ class Classify(QObject):
 
         :param sigma: threshold value to compare well intensities to background
         :type simga: float
-
-        :param drop: whether to drop the four corners from the detected fish list
-        :type drop: bool
         """
 
         img_data = self._extract_wells(points, img_flag=False, mask_layer=layer_name, parallel=True, sigma=sigma)
@@ -528,14 +528,6 @@ class Classify(QObject):
             well_class = [region_mean < well_mean for region_mean in wells_data]
         else:
             well_class = [region_mean > well_mean for region_mean in wells_data]
-
-        if drop:
-            tl = 0
-            tr = self.iplate.wells["array_design"]["columns"] - 1
-            bl = self.total_wells - self.iplate.wells["array_design"]["columns"]
-            br = self.total_wells - 1
-            for idx in [tl, tr, bl, br]:
-                well_class[idx] = False
 
         self.navigate_all = False
         self._update_found_fish(well_class)
