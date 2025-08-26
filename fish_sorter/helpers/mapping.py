@@ -82,6 +82,24 @@ class Mapping:
 
         self.transform_exp2actual = np.dot(theta_transform, scale_transform)
 
+    def calc_crops(self, px_pos, px_padding=[0, 0]):
+        width = int(round(
+            self.plate_data["array_design"]["slot_length"] / PIXEL_SIZE_UM
+        )) + (2 * px_padding[0])
+        height = int(round(
+            self.plate_data["array_design"]["slot_width"] / PIXEL_SIZE_UM
+        )) + (2 * px_padding[1])
+
+        half_width = int(width / 2)
+        half_height = int(height / 2)
+
+        # Returns corner bounds as x1 y1 x2 y2 
+        # where (x1, y1) are the TL corner
+        # and (x2, y2) are the BR corner
+        bounds_operation = np.array([-half_width, -half_height, half_width, half_height])
+
+        return np.hstack((px_pos, px_pos)) + bounds_operation
+    
     def get_transform(self):
         # Get transformation matrix and corresponding angle
         return self.transform_exp2actual
@@ -96,7 +114,7 @@ class Mapping:
     def actual_to_exp(self, pos):
         return np.matmul(pos, np.linalg.inv(self.transform_exp2actual))
 
-    def load_wells(self, grid_list=None, xflip=False, yflip=False):
+    def load_wells(self, grid_list=None, xflip=False, yflip=False, padding=[0,0]):
 
         if grid_list is not None:
             um_TL_array_to_TL_mosaic = self.um_TL - grid_list[0, 0, 1:3]
@@ -122,6 +140,7 @@ class Mapping:
         actual_rel_um = self.exp_to_actual(exp_rel_um)
         actual_abs_um = self.rel_um_to_abs_um(actual_rel_um)
         px_pos = self.rel_um_to_px(actual_rel_um)
+        px_crops = self.calc_crops(px_pos, px_padding=padding)
 
         # Load sequence
         self.wells = {
@@ -129,7 +148,8 @@ class Mapping:
             'names': well_names,
             'exp_rel_um' : exp_rel_um,
             "actual_abs_um": actual_abs_um,
-            "actual_px": px_pos, # NOTE px is unused for dispense plate
+            "actual_px": px_pos, # NOTE px is unused for dispense plate, given in (x, y) coords
+            "crop_px_coords" : px_crops,
         }
 
     def get_well_id(self, well_name: str):
