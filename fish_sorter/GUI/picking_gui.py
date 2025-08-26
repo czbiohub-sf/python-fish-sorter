@@ -132,8 +132,6 @@ class PickGUI(QWidget):
         self.single.setEnabled(status)
         self.pw.pause_button.setEnabled(status)
         self.pw.stop_button.setEnabled(status)
-        QMessageBox.information(self, 'Setup Complete', f'Ready to calibrate pipette and image.')
-
 
 class PipettePickCalibWidget(QPushButton):
     """A push button widget to calibrate the pick position for the pipette
@@ -520,9 +518,10 @@ class PickerThread(QThread):
             self.picking.pick.match_pick()
             self.status_update.emit('Start of picking')
 
-            for checkpoint in self.picking.pick.pick_me():
+            for checkpoint, log_me in self.picking.pick.pick_me():
                 self._check_state()
-                self.status_update.emit(checkpoint)
+                if log_me:
+                    self.status_update.emit(checkpoint)
             self.status_update.emit('Picking complete!')
         except Exception as e:
             self.status_update.emit(f'Exception {str(e)}')

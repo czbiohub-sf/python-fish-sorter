@@ -95,16 +95,18 @@ class PickingPipette():
         self.connect()
         self.define_dp(self.current_dp)
 
-    def define_dp(self, array_file):
+    def define_dp(self, array_file, pixel_size_um):
         """Define the dispense plate and create an instance of the
         Dispense plate class
 
         :param array_file: path to dispense plate pick type array in config folder
-        :type: path 
+        :type: path
+        :param pixel_size_um: calculation of pixel size in image based on magnification
+        :type pixel_size_um: float 
         """
 
         self.current_dp = array_file
-        self.dplate = DispensePlate(self.zc, self.current_dp)
+        self.dplate = DispensePlate(self.zc, self.current_dp, pixel_size_um)
         self.dplate.set_calib_pts(pipettor_cfg=self.pipettor_cfg)
         self.dplate.load_wells(xflip=True)
     

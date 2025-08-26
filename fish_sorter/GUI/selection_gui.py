@@ -1,6 +1,8 @@
+import json
 import logging
 import sys
-from json import load
+import os
+from datetime import datetime
 from pathlib import Path
 import pandas as pd
 from typing import List, Optional, Union
@@ -10,29 +12,22 @@ from qtpy.QtCore import (
     QSize,
     Qt
 )
-from PyQt6.QtCore import (
-    pyqtSignal,
-    QThread
-)
+from PyQt6.QtCore import QThread
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QCheckBox,
-    QComboBox,
-    QDoubleSpinBox, 
-    QGridLayout,
+    QComboBox, 
     QHBoxLayout, 
     QLabel,
     QMessageBox,
     QPushButton, 
     QSizePolicy, 
     QScrollArea, 
-    QSpinBox,
     QVBoxLayout, 
     QWidget
 )
 
 from fish_sorter.GUI.picking import Pick
-from fish_sorter.GUI.classify import Classify
 
 COLOR_TYPES = Union[
     QColor,
@@ -45,29 +40,20 @@ COLOR_TYPES = Union[
 
 class SelectGUI(QWidget):
 
-    def __init__(self, picker=None, classify=None, parent: QWidget | None=None):
+    def __init__(self, picker=None, pick_type=None, parent: QWidget | None=None):
         """Initialize Selection GUI
 
         :param picker: Pick class object to reference pick paramter information
         :type picker: class instance
-        :param classify: Classify class object to reference classification information
-        :type classify: class instance
-
+        :param pick_type: user-input pick type from pick type config options
+        :type pick_type: str
         """
         
         super().__init__(parent=parent)
         CMMCorePlus.instance()
 
         self.pick = picker
-        self.classify = classify
-
-        self.well = self.pick.phc.dplate.wells['names']
-        self.features = [
-            feat for feat in list(self.classify.headers_df.columns)
-            if feat != 'dispenseWell'
-        ]
-        self.deselect = list(self.classify.deselect_rules)
-        self.pickable_path = self.classify.pickable_file
+        self._setup(pick_type)
 
         self.rows = []
         self.hide = True
@@ -95,6 +81,42 @@ class SelectGUI(QWidget):
         self.layout.addLayout(btn_layout)
 
         self.add_row()
+
+    def _setup(self, pick_type):
+        """Setup the features
+
+        :param pick_type: user-input pick type from pick type config options
+        :type pick_type: str
+        """
+
+        self.well = self.pick.phc.dplate.wells['names']
+
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        pickable_file_name = f"{timestamp}_{self.pick.prefix}_pickable.csv"
+        self.pickable_path = os.path.normpath(os.path.join(self.pick.pick_dir, pickable_file_name))
+
+        feat_dir = self.pick.cfg / "pick"
+        feat_data = {}
+        for filename in os.listdir(feat_dir):
+            if filename.endswith('.json'):
+                file_path = os.path.join(feat_dir, filename)
+                try:
+                    with open(file_path, 'r') as file:
+                       data = json.load(file)
+                       feat_data = data[pick_type]
+                       logging.info('Loaded {} config file'.format(filename))
+                except FileNotFoundError:
+                    logging.critical("Config file not found")
+
+        self.deselect = list(
+            feat for feat in list(feat_data['well_class']['deselect'].keys())
+            if feat != 'description'
+        )
+        exclude = {'lHead', 'deselect'}
+        self.features = [
+            feat for feat in list(feat_data['well_class'].keys()) + list(feat_data['feature_class'].keys())
+            if feat not in exclude
+            ]
 
     def add_row(self):
         """Adds a row to the selection GUI
@@ -130,7 +152,7 @@ class SelectGUI(QWidget):
         """
 
         try:
-            header = list(self.classify.headers_df.columns)
+            header = ['dispenseWell'] + self.features
             rows = self.get_selection()
             df = pd.DataFrame(rows)[header]
             df.to_csv(self.pickable_path, index=False)

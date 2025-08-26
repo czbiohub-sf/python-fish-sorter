@@ -15,7 +15,6 @@ from napari.utils.colormaps import Colormap
 from pathlib import Path
 from pymmcore_plus import CMMCorePlus
 from PyQt6.QtCore import (
-    pyqtSignal,
     QObject,
     QSize,
     Qt,
@@ -44,13 +43,10 @@ from tifffile import imread
 from typing import List, Optional, Tuple, Callable
 
 from fish_sorter.hardware.imaging_plate import ImagingPlate
-from fish_sorter.constants import PIXEL_SIZE_UM
 
 class Classify(QObject):
     """Add points layer of the well locations to the image mosaic in napari.
     """
-
-    pick_selection = pyqtSignal()
     
     def __init__(self, cfg_dir, pick_type, prefix, expt_dir, iplate, viewer=None):
         """Load pymmcore-plus core, acquisition engine and napari viewer, and load classification features
@@ -111,16 +107,19 @@ class Classify(QObject):
         # self.viewer.window.add_dock_widget(self.contrast_widget, name= 'Contrast', area='left')
     
         pts = self._points()
-        self.points_layer = self.load_points(pts)
+        self.pts = np.array(pts)
+        self.points_layer = self.load_points(self.pts.copy())
         self.points_layer.mode = 'select'
+        self.points_layer.events.set_data.connect(self.refresh)
         self.points_layer.events.highlight.connect(self._selected_pt)
+
         
         self._key_binding()
         for key, feature in self.key_feature_map.items():
             self.viewer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) # Note: set to overwrite standard shortcuts in napari
             self.points_layer.bind_key(key, overwrite=True)(self._toggle_feature(feature)) # Note: set to overwrite points layer specific shortcuts
         
-        self.navigate_all = False
+        self.navigate_all = True
         
         # Prevents points from being deleted
         self.viewer.bind_key('Backspace', self._blank, overwrite=True)
@@ -137,8 +136,8 @@ class Classify(QObject):
         self.counter = None
 
         self._create_classify()
-        self.extract_fish(pts)
-        self._find_fish_widget(pts)
+        self.extract_fish(self.pts)
+        self._find_fish_widget(self.pts)
         self._start_async_extraction()
 
         self.prefix = prefix
@@ -200,6 +199,7 @@ class Classify(QObject):
         """Callback when a point is selected
         """
 
+        self.refresh()
         selected_data = self.points_layer.selected_data
         if selected_data:
             selected_idxs = list(selected_data)
@@ -246,6 +246,12 @@ class Classify(QObject):
                         feature_values = self.points_layer.features[feat]
                         feature_values.loc[selected_points] = False
                         self.points_layer.features[feat] = feature_values
+                    self.points_layer.refresh_colors(update_color_mapping=False)
+                    self._update_feature_display(self.current_well)
+                    self._update_counter()
+                    self._well_disp()
+                    self.points_layer.mode = 'select'
+                    return
                                             
             self.points_layer.refresh_colors(update_color_mapping=False)
             self._update_feature_display(self.current_well)
@@ -286,13 +292,6 @@ class Classify(QObject):
             classified = os.path.normpath(os.path.join(self.expt_dir, file_name))
             class_df.to_csv(classified, index=False)
             logging.info(f'Classification saved as {classified}')
-
-            pickable_file_name = f"{timestamp}_{self.prefix}_pickable.csv"
-            self.pickable_file = os.path.normpath(os.path.join(self.expt_dir, pickable_file_name))
-            self.headers_df = pd.DataFrame(columns=class_df.columns)
-            self.headers_df.drop(columns='lHead', inplace=True)
-            self.headers_df.rename(columns={'slotName': 'dispenseWell'}, inplace=True) 
-            self.pick_selection.emit()
             
         self.class_btn.clicked.connect(_save_it)
     
@@ -325,16 +324,18 @@ class Classify(QObject):
 
         if not hasattr(self, "_refreshing"):
             self._refreshing = False
-        
+
         if self._refreshing:
             return
 
         self._refreshing = True
 
         try:
-            new_data = self._points()
-            if not np.array_equal(self.points_layer.data, new_data):
-                self.points_layer.data = new_data
+            delta = self.points_layer.data - self.pts
+            max_diff = np.abs(delta).max()
+            if max_diff > 1e-6:
+                self.points_layer.data = self.pts.copy()
+            self.points_layer.mode = 'select'
             self.points_layer.refresh_colors(update_color_mapping=False)
             if self.feature_widget is not None:
                 self._update_feature_display(self.current_well)
@@ -358,8 +359,12 @@ class Classify(QObject):
         :type padding: int
         """
 
-        width = int(round(self.iplate.wells["array_design"]["slot_length"] / PIXEL_SIZE_UM))
-        height = int(round(self.iplate.wells["array_design"]["slot_width"] / PIXEL_SIZE_UM))
+        w_h = np.array([self.iplate.wells['array_design']['slot_length'], self.iplate.wells['array_design']['slot_width']])
+        origin = self.iplate.px_to_rel_um(np.array([0, 0]))
+        abs_w_h = w_h + origin
+        convert_w_h = self.iplate.rel_um_to_px(abs_w_h)
+        width = int(round(convert_w_h[0]))
+        height = int(round(convert_w_h[1]))
 
         padded_width = width + 2 * padding
         padded_height = height + 2 * padding
@@ -503,7 +508,7 @@ class Classify(QObject):
         else:
             return [_extract_point(p) for p in points]
     
-    def find_fish(self, points, layer_name=None, sigma=0.25, drop=True):
+    def find_fish(self, points, layer_name=None, sigma=0.25):
         """Automatically detects fish and fish orientation.
 
         :param points: x, y coordinates for center location points defining the well locations
@@ -514,9 +519,6 @@ class Classify(QObject):
 
         :param sigma: threshold value to compare well intensities to background
         :type simga: float
-
-        :param drop: whether to drop the four corners from the detected fish list
-        :type drop: bool
         """
 
         img_data = self._extract_wells(points, img_flag=False, mask_layer=layer_name, parallel=True, sigma=sigma)
@@ -527,20 +529,14 @@ class Classify(QObject):
         else:
             well_class = [region_mean > well_mean for region_mean in wells_data]
 
-        if drop:
-            tl = 0
-            tr = self.iplate.wells["array_design"]["columns"] - 1
-            bl = self.total_wells - self.iplate.wells["array_design"]["columns"]
-            br = self.total_wells - 1
-            for idx in [tl, tr, bl, br]:
-                well_class[idx] = False
-
+        self.navigate_all = False
         self._update_found_fish(well_class)
 
     def _reset_fish(self):
         """Resets the found fish to the empty state and deselects all classifications
         """
 
+        self.navigate_all = True
         self._feat()
         for feat in self.features:
             self.points_layer.features[feat] = self.features[feat]
@@ -570,6 +566,7 @@ class Classify(QObject):
             self.find_orientation()
         
         self._update_counter()
+        self._update_nav_mode()
 
     def find_orientation(self):
         """Determines orientation to select side of well for picking
@@ -775,7 +772,9 @@ class Classify(QObject):
         :type layer: str
         """
 
-        if layer == 'GFP':
+        if layer == 'DAPI':
+            return Colormap([[0, 0, 0], [0.16, 0.82, 0.79]], name='DAPI-cyan')
+        elif layer == 'GFP':
             return Colormap([[0, 0, 0], [0, 1, 0]], name='GFP-green')
         elif layer == 'TXR':
             return Colormap([[0, 0, 0], [1, 0.25, 0]], name='tiger-orange')
@@ -857,6 +856,8 @@ class Classify(QObject):
         """Updates the fish counter for the user to know which fish they are on and the total
         """
 
+        self._singlet_nav()
+
         if self.navigate_all:
             total = len(self.points_layer.data)
             pos = self.current_well + 1
@@ -870,7 +871,7 @@ class Classify(QObject):
             if len(singlet_idxs) == 0:
                 self.counter.setText('No Fish')
                 return
-        
+
             try:
                 pos = np.where(singlet_idxs == self.current_well)[0][0] + 1
 
@@ -887,7 +888,23 @@ class Classify(QObject):
         mode = 'All Wells' if self.navigate_all else 'Singlets'
         self.nav_mode_label.setText(f'Nav Mode <b>{mode} </b/> &nbsp; (press <b>T</b> to toggle)')
 
+    def _singlet_nav(self):
+        """Helper function during singlet navigation mode when a fish is reclassified as not a singlet
+        Does not reset the curret well to 0
+        """
 
+        if self.navigate_all:
+            return
+
+        singlet_idxs = np.where(self.points_layer.features['singlet'])[0]
+
+        if len(singlet_idxs) == 0:
+            return
+
+        if self.current_well not in singlet_idxs:
+            next_well = singlet_idxs[singlet_idxs > self.current_well]
+            self.current_well = next_well[0] if len(next_well) > 0 else singlet_idxs[0]
+    
     def _well_disp(self):
         """Force _update_well_display to run on main thread
         """
