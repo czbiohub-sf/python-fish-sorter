@@ -84,10 +84,10 @@ class Mapping:
 
     def calc_crops(self, px_pos, px_padding=[0, 0]):
         width = int(round(
-            self.plate_data["array_design"]["slot_length"] / PIXEL_SIZE_UM
+            self.plate_data["array_design"]["slot_length"] / self.px_sz_um
         )) + (2 * px_padding[0])
         height = int(round(
-            self.plate_data["array_design"]["slot_width"] / PIXEL_SIZE_UM
+            self.plate_data["array_design"]["slot_width"] / self.px_sz_um
         )) + (2 * px_padding[1])
 
         half_width = int(width / 2)
