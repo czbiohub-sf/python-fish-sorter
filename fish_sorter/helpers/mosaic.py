@@ -38,8 +38,8 @@ class Mosaic:
                 "bottom": grid_plan['bottom'],
                 "right": grid_plan['right'],
                 "overlap": (grid_plan['overlap'][0], grid_plan['overlap'][1]),
-                "fov_width": FOV_WIDTH,
-                "fov_height": FOV_HEIGHT,
+                "fov_width": grid_plan['fov_width'],
+                "fov_height": grid_plan['fov_height'],
             },
             channels = [
                 {"config": "GFP","exposure": 300}, 
