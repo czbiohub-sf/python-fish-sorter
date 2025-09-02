@@ -1,10 +1,93 @@
 # python-fish-sorter
 
-Software suite for control of Fish Sorter V2 using pymmcore+. Includes image acquisition and processing tools, such as mosaic capture/stitching. 
+Software suite for control of Fish Picker v2 using pymmcore+. Includes image acquisition and processing tools, such as mosaic capture/stitching. 
 
-## Installation
+## Installation with uv
 
-To install dependencies, run
-```console
-pip install -r requirements.txt
-```
+This package uses [uv](https://docs.astral.sh/uv/?utm_source=chatgpt.com) to manage reproducible installs and package dependencies.
+
+The ground truth package lock is based on the software installed for the fish picker v2 instrument running Windows with Python 3.12. The pinned versions are frozen in pyproject.toml + uv.lock.
+
+1. Prerequisites
+
+  * Python 3.12 installed on your system.
+
+  * [uv](https://docs.astral.sh/uv/?utm_source=chatgpt.com)
+
+    * Mac/Linux
+      ```
+        curl -LsSf https://astral.sh/uv/install.sh | sh
+      ```
+    * Add to PATH if needed
+      ```
+      echo 'export PATH="$HOME/.local/bin:$PATH"' >> ~/.zprofile
+      ```
+
+    * Windows (PowerShell)
+      ```
+      winget install --id=astral-sh.uv -e
+      ```
+    * Restart PowerShell or add $HOME\.local\bin to PATH
+
+2. Clone the repository
+
+    Clone into your preferred directory (e.g. ~/Documents/GitHub):
+
+    * Mac/Linux
+      ```
+      cd ~/Documents/GitHub
+      git clone https://github.com/<your-org-or-username>/python-fish-sorter.git
+      cd python-fish-sorter
+      ```
+
+    * Windows (PowerShell)
+      ```
+      cd $env:USERPROFILE\Documents\GitHub
+      git clone https://github.com/<your-org-or-username>/python-fish-sorter.git
+      cd python-fish-sorter
+      ```
+3. First-time setup
+   ```
+   uv sync
+   ```
+   
+4. Running the project
+
+    Inside the repo:
+    ```
+    uv run python -m fish_sorter
+    ```
+
+5. Running one-off scripts outside the project
+
+    If you keep helper scripts in a separate repo or folder (e.g. ~/Documents/GitHub/scripts), you can still run them using the fish_sorter environment:
+    ```
+    cd ~/Documents/GitHub/scripts
+    uv --project ../python-fish-sorter run python my_script.py
+    ```
+
+    or with an absolute path:
+    ```
+    uv --project ~/Documents/GitHub/python-fish-sorter run python ~/Documents/GitHub/scripts/my_script.py
+    ```
+
+6. Updating dependencies
+
+    Add a new package:
+      ```
+      uv add somepackage==1.2.3
+      uv lock
+      ```
+
+    Commit both ```pyproject.toml``` and ```uv.lock```.
+
+    Re-sync environment after changes:
+    ```
+    uv sync
+    ```
+
+7. Notes
+
+    * Always use Python 3.12.
+
+    * The fish picker v2 instrument environment is the “ground truth.” If you change dependencies, re-lock on instrument first ```uv lock```.
