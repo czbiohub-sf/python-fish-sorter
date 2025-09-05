@@ -28,6 +28,28 @@ class Mosaic:
         self.viewer = viewer
         self.grid_list = None
 
+    @staticmethod
+    def get_sequence(grid_plan):
+
+        sequence = MDASequence(            
+            grid_plan = {
+                "top": grid_plan['top'],
+                "left": grid_plan['left'],
+                "bottom": grid_plan['bottom'],
+                "right": grid_plan['right'],
+                "overlap": (grid_plan['overlap'][0], grid_plan['overlap'][1]),
+                "fov_width": grid_plan['fov_width'],
+                "fov_height": grid_plan['fov_height'],
+            },
+            channels = [
+                {"config": "GFP","exposure": 300}, 
+                {"config": "TXR", "exposure": 300}
+            ],
+            axis_order = "gc",
+        )
+    
+        return sequence
+    
     def init_pos(self, fov_w, fov_h):
         """Setup the initial position
 
@@ -86,6 +108,32 @@ class Mosaic:
         """
         meta = cast("dict", sequence.metadata.get(PYMMCW_METADATA_KEY, {}))
         return cast(str, meta.get('save_name', DEFAULT_NAME))
+
+    @staticmethod
+    def get_grid_list(sequence):
+        """Get mosaic info from the MDASequence metadata"""
+        # General metadata
+        num_chan = len(sequence.channels)
+        logging.info(f'num_chan: {num_chan}')
+        chan_names = [channel.config for channel in sequence.channels]
+        logging.info(f'chan_nam: {chan_names}')
+        overlap = sequence.grid_plan.overlap
+        logging.info(f'overlap: {overlap}')
+
+        # Get position at each id
+        event_iterator = sequence.iter_events()
+        pos_list = np.unique([[event.index['g'], event.x_pos, event.y_pos] for event in event_iterator], axis=0)
+        xpos_list, x_ids = np.unique(pos_list[:,1], return_inverse=True)
+        ypos_list, y_ids = np.unique(pos_list[:,2], return_inverse=True)
+        num_rows = len(np.unique(pos_list[:,2]))
+        num_cols = len(np.unique(pos_list[:,1]))
+
+        # Save order of positions
+        grid_list = np.zeros((num_cols, num_rows, 3), dtype=int)
+        for grid_pos, y_id, x_id in zip(pos_list, y_ids, x_ids):
+            grid_list[x_id, y_id] = grid_pos
+
+        return grid_list
 
     def get_mosaic_metadata(self, sequence: MDASequence):
         """Get mosaic info from the MDASequence metadata"""
