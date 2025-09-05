@@ -55,7 +55,7 @@ The ground truth package lock is based on the software installed for the fish pi
 
     Inside the repo:
     ```
-    uv run python -m fish_sorter
+    uv run python fish_sorter/GUI/fish_picker.py
     ```
 
 5. Running one-off scripts outside the project

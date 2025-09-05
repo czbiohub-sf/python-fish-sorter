@@ -16,7 +16,7 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget
 )
-from qtpy.QtCore import QTimer
+from qtpy.QtCore import Qt, QTimer
 from tifffile import imwrite
 from typing import overload
 from useq import GridFromEdges, MDASequence
@@ -47,6 +47,9 @@ class FishPicker:
         self.cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
         self.v = napari.Viewer()
         self.dw, self.main_window = self.v.window.add_plugin_dock_widget("napari-micromanager")
+        qtwindow = self.v.window._qt_window
+        qtwindow.addDockWidget(Qt.TopDockWidgetArea, self.dw)
+        self.dw.show()
         
         logging.info('Loading mmcore')
         self.core = self.main_window._mmc
