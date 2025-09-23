@@ -158,7 +158,7 @@ class Pick():
             pickable_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
             latest_pickable_file = pickable_files[0]
             self.pick_param_file = pd.read_csv(latest_pickable_file)
-            logging.info('Loaded latest pickable file: {os.path.basename(latest_pickable_file)}')
+            logging.info(f'Loaded latest pickable file: {os.path.basename(latest_pickable_file)}')
             logging.info(f'{self.pick_param_file}')
         else:
             logging.info('No Pickable files founds')
