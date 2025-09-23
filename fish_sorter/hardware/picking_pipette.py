@@ -93,7 +93,7 @@ class PickingPipette():
 
         self.disconnect()
         self.connect()
-        self.define_dp(self.current_dp)
+        self.define_dp(self.current_dp, self.pixel_size_um)
 
     def define_dp(self, array_file, pixel_size_um):
         """Define the dispense plate and create an instance of the
@@ -106,7 +106,8 @@ class PickingPipette():
         """
 
         self.current_dp = array_file
-        self.dplate = DispensePlate(self.zc, self.current_dp, pixel_size_um)
+        self.pixel_size_um = pixel_size_um
+        self.dplate = DispensePlate(self.zc, self.current_dp, self.pixel_size_um)
         self.dplate.set_calib_pts(pipettor_cfg=self.pipettor_cfg)
         self.dplate.load_wells(xflip=True)
     
