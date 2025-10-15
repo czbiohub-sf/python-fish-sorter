@@ -2,6 +2,16 @@
 
 Software suite for control of Fish Picker v2 using pymmcore+. Includes image acquisition and processing tools, such as mosaic capture/stitching. 
 
+This repository contains the Python application and custon __python-fish-sorter__ package. It has been designed for automated screening and selection of zebrafish embryos and larvae with desired features of interest as observed with an inverted epi-fluorescent microscope. 
+
+The fish picker was developed by the CZ Biohub - SF Bioengineering and Jacobo groups.
+
+Maintenance of this repo is the responsibility of Diane Wiener. Plese direct any communication via creation of an Issue at the project repo [here](https://github.com/czbiohub-sf/python-fish-sorter/issues).
+
+This source describes Open Hardware, which is licensed under the CERN-OHL-W v2. Software is licensed under BSD 3-Clause.
+
+Copyright Chan Zuckerberg Biohub - San Francisco 2025.
+
 ## Installation with uv
 
 This package uses [uv](https://docs.astral.sh/uv/?utm_source=chatgpt.com) to manage reproducible installs and package dependencies.
