@@ -33,6 +33,5 @@
 ::978f952a14a936cc963da21a135fa983
 @echo off
 cd /d "C:\Users\fishpicker\Documents\GitHub\python-fish-sorter"
-call "C:\Users\fishpicker\Documents\GitHub\python-fish-sorter\venv\Scripts\activate.bat"
-python fish_sorter/GUI/fish_picker.py
+uv run python fish_sorter/GUI/fish_picker.py
 pause
