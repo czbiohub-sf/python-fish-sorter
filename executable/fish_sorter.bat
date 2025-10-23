@@ -32,6 +32,11 @@
 ::
 ::978f952a14a936cc963da21a135fa983
 @echo off
-cd /d "C:\Users\fishpicker\Documents\GitHub\python-fish-sorter"
+setlocal
+cd /d "%~dp0\.."
+if not exist "fish_sorter/GUI/fish_picker.py" (
+ echo Could not find fish_sorter/GUI/fish_picker.py relative to "%cd%".
+ pause & exit /b 1
+)
 uv run python fish_sorter/GUI/fish_picker.py
 pause
