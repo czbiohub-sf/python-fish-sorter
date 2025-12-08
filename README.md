@@ -4,7 +4,7 @@ This repository contains the Python application and custon __python-fish-sorter_
 
 The Fish Sorter is a custom-built system for automated screening and selection of zebrafish embryos and larvae with desired features of interest. The system is built around a commercial inverted epi-fluorescent microscope for fish imaging, plus additional custom hardware for fish retrieval. 
 
-The fish picker was developed by the CZ Biohub SF Bioengineering and Jacobo groups.
+The fish sorter was developed by the CZ Biohub SF Bioengineering and Jacobo groups.
 
 Maintenance of this repo is the responsibility of Diane Wiener. Plese direct any communication via creation of an Issue at the project repo [here](https://github.com/czbiohub-sf/python-fish-sorter/issues).
 
@@ -16,7 +16,7 @@ Copyright 2025, Chan Zuckerberg Biohub San Francisco.
 
 This package uses [uv](https://docs.astral.sh/uv/?utm_source=chatgpt.com) to manage reproducible installs and package dependencies.
 
-The ground truth package lock is based on the software installed for the fish picker v2 instrument running Windows with Python 3.12. The pinned versions are frozen in pyproject.toml + uv.lock.
+The ground truth package lock is based on the software installed for the fish sorter v2 instrument running Windows with Python 3.12. The pinned versions are frozen in pyproject.toml + uv.lock.
 
 1. Prerequisites
 
@@ -100,4 +100,4 @@ The ground truth package lock is based on the software installed for the fish pi
 
     * Always use Python 3.12.
 
-    * The fish picker v2 instrument environment is the “ground truth.” If you change dependencies, re-lock on instrument first ```uv lock```.
+    * The fish sorter v2 instrument environment is the “ground truth.” If you change dependencies, re-lock on instrument first ```uv lock```.
