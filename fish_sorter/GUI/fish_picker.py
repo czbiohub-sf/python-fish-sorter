@@ -31,6 +31,7 @@ from fish_sorter.hardware.imaging_plate import ImagingPlate
 from fish_sorter.hardware.picking_pipette import PickingPipette
 from fish_sorter.constants import CAM_PX_UM, CAM_X_PX, CAM_Y_PX
 from fish_sorter.helpers.mosaic import Mosaic
+from fish_sorter.paths import MM_DIR
 
 # For simulation
 try:
@@ -38,8 +39,8 @@ try:
 except ModuleNotFoundError:
     FakeDemoCamera = None
 
-os.environ['MICROMANAGER_PATH'] = "C:/Program Files/Micro-Manager-2.0-20240130"
-micromanager_path = os.environ.get('MICROMANAGER_PATH')
+os.environ['MICROMANAGER_PATH'] = MM_DIR
+# micromanager_path = os.environ.get('MICROMANAGER_PATH')
 
 class FishPicker:
     def __init__(self, sim=False):

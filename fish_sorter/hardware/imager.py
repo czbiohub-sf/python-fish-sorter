@@ -8,10 +8,7 @@ from pathlib import Path
 from skimage import io
 from time import perf_counter
 
-# TODO move mm dir out to another config file
-mm_dir = Path("C:/Program Files/Micro-Manager-2.0-20240130")
-# TODO make save dir configurable
-save_dir = Path("C:/Users/Chan Zuckerberg/Documents/data_mk")
+from fish_sorter.paths import MM_DIR, SAVE_DIR
 
 cfg_dir = Path().absolute().parent / "micromanager-configs"
 # TODO make cfg file configurable
@@ -162,5 +159,5 @@ class Imager():
 
 
 if __name__ == "__main__":
-    imager = Imager(mm_dir, save_dir, cfg_path=cfg_path, prefix="test")
+    imager = Imager(MM_DIR, SAVE_DIR, cfg_path=cfg_path, prefix="test")
     imager.imageMosaic()

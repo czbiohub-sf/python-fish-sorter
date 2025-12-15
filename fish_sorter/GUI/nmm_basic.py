@@ -11,6 +11,7 @@ from pathlib import Path
 from useq import MDASequence, Position
 
 from fish_sorter.GUI.pipette_test_gui import PipetteWidget
+from fish_sorter.paths import MM_DIR
 
 # For simulation
 try:
@@ -18,9 +19,8 @@ try:
 except ModuleNotFoundError:
     FakeDemoCamera = None
 
-os.environ['MICROMANAGER_PATH'] = "C:/Program Files/Micro-Manager-2.0-20240130"
-micromanager_path = os.environ.get('MICROMANAGER_PATH')
-
+os.environ['MICROMANAGER_PATH'] = MM_DIR
+# micromanager_path = os.environ.get('MICROMANAGER_PATH')
 
 class nmm:
     def __init__(self, sim=False):
