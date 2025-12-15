@@ -10,10 +10,6 @@ from time import perf_counter
 
 from fish_sorter.paths import MM_DIR, SAVE_DIR
 
-cfg_dir = Path().absolute().parent / "micromanager-configs"
-# TODO make cfg file configurable
-cfg_file = "20240222 - LeicaDMI - AndorZyla.cfg"
-cfg_path = cfg_dir / cfg_file
 
 class Imager():
 
@@ -135,5 +131,5 @@ class Imager():
 
 
 if __name__ == "__main__":
-    imager = Imager(MM_DIR, SAVE_DIR, cfg_path=cfg_path, prefix="test")
+    imager = Imager(MM_DIR, SAVE_DIR, prefix="test")
     imager.imageMosaic()
