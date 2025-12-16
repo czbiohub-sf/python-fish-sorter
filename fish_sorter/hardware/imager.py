@@ -7,6 +7,7 @@ from pymmcore_plus import CMMCorePlus
 from pathlib import Path
 from skimage import io
 from time import perf_counter
+from typing import Dict, List
 
 from fish_sorter.paths import MM_DIR, SAVE_DIR
 
