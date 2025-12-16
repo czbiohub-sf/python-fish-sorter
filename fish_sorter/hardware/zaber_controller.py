@@ -81,7 +81,7 @@ class ZaberController():
             elif name == self.config['name']['y']:
                 self.stage_alias[stage] = 'y'
                 stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['y'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)
-            elif name == self.config['name']['z']:
+            elif name == self.config['name']['p']:
                 self.stage_alias[stage] = 'p'
                 stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['p'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)       
         logging.info('Done setting axis')
