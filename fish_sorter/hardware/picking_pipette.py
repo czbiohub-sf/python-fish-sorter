@@ -50,7 +50,7 @@ class PickingPipette():
 
         self.pipettor_cfg = hardware_dir / 'picker_config.json'
 
-        self.connect(zv=zc)
+        self.connect(zc=zc)
 
     def connect(self, zc=None, env='prod'):
         """Connect to hardware
