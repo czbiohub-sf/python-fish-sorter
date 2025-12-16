@@ -52,7 +52,7 @@ class Imager():
 
     def image_mosaic(
         self,
-        channels: Dict[str],
+        channels: Dict[str, str],
         corners_px: List[float], # [TL x, TL y, BR x, BR y]
         fov_dims_px: tuple,
         overlap_frac: float,
