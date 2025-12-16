@@ -45,7 +45,7 @@ os.environ['MICROMANAGER_PATH'] = MM_DIR
 class FishPicker:
     def __init__(self, sim=False):
         self.expt_parent_dir = Path("D:/fishpicker_expts/")
-        self.cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
+        self.cfg_dir = Path(__file__).parent.parent.absolute() / "configs/"
         self.v = napari.Viewer()
         self.dw, self.main_window = self.v.window.add_plugin_dock_widget("napari-micromanager")
         qtwindow = self.v.window._qt_window

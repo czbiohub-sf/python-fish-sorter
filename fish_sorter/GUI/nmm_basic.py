@@ -38,7 +38,7 @@ class nmm:
                 # make sure we start in a valid channel group
                 self.core.setConfig("Channel", "Cy5")
         else:
-            self.cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
+            self.cfg_dir = Path(__file__).parent.parent.absolute() / "configs/"
             mm_dir = self.cfg_dir / "micromanager"
             if mm_dir.exists() and mm_dir.is_dir():
                 mm_cfg_files = list(mm_dir.glob("*.cfg"))
