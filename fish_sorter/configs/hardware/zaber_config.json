@@ -4,7 +4,7 @@
         "name": {
             "x": "T-LSQ150D",
             "y": "A-LSQ150A-E01",
-            "z": "T-LSQ075B",
+            "p": "T-LSQ075B",
             "description": "Stage name (typically matches serial number)"
         },
         "home": {
