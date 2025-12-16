@@ -170,7 +170,7 @@ class ZaberTestWidget(QPushButton):
 
     def _zaber_test(self)->None:
 
-        cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/hardware"
+        cfg_dir = Path(__file__).parent.parent.absolute() / "configs/hardware"
         zaber_cfg_file = "zaber_config.json"
         zaber_cfg_path = cfg_dir / zaber_cfg_file
         picker_cfg_file = "picker_config.json"
