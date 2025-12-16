@@ -1,3 +1,1 @@
-from pathlib import Path
-
 MM_DIR = "C:/Program Files/Micro-Manager-2.0-20240130"
