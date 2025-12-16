@@ -255,12 +255,12 @@ class PipetteDrawWidget(QPushButton):
         array_file = Path(__file__).parent.parent.absolute() / "configs/arrays/6well_plate20250325.json"
         try:
             phc = PickingPipette(cfg_dir, array_file)
-
-            logging.info('Pipette is Drawing')
-            phc.draw()
-            phc.disconnect()
         except Exception as e:
             logging.info("Could not initialize and connect hardware controller")
+
+        logging.info('Pipette is Drawing')
+        phc.draw()
+        phc.disconnect()
 
 class PipetteExpelWidget(QPushButton):
     """A push button widget to connect to the valve controller to actuate the expel function
