@@ -75,13 +75,13 @@ class ZaberController():
         for stage in self.stages:
             name = stage.name
             logging.info(stage.name)
-            if name == 'T-LSQ150D':
+            if name == self.config['name']['x']:
                 self.stage_alias[stage] = 'x'
                 stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['x'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)
-            elif name == 'A-LSQ150A-E01':
+            elif name == self.config['name']['y']:
                 self.stage_alias[stage] = 'y'
                 stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['y'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)
-            elif name == 'T-LSQ075B':
+            elif name == self.config['name']['p']:
                 self.stage_alias[stage] = 'p'
                 stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['p'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)       
         logging.info('Done setting axis')

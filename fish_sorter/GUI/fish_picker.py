@@ -31,6 +31,7 @@ from fish_sorter.hardware.imaging_plate import ImagingPlate
 from fish_sorter.hardware.picking_pipette import PickingPipette
 from fish_sorter.constants import CAM_PX_UM, CAM_X_PX, CAM_Y_PX
 from fish_sorter.helpers.mosaic import Mosaic
+from fish_sorter.paths import MM_DIR
 
 # For simulation
 try:
@@ -38,13 +39,13 @@ try:
 except ModuleNotFoundError:
     FakeDemoCamera = None
 
-os.environ['MICROMANAGER_PATH'] = "C:/Program Files/Micro-Manager-2.0-20240130"
-micromanager_path = os.environ.get('MICROMANAGER_PATH')
+os.environ['MICROMANAGER_PATH'] = MM_DIR
+# micromanager_path = os.environ.get('MICROMANAGER_PATH')
 
 class FishPicker:
     def __init__(self, sim=False):
         self.expt_parent_dir = Path("D:/fishpicker_expts/")
-        self.cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
+        self.cfg_dir = Path(__file__).parent.parent.absolute() / "configs/"
         self.v = napari.Viewer()
         self.dw, self.main_window = self.v.window.add_plugin_dock_widget("napari-micromanager")
         qtwindow = self.v.window._qt_window

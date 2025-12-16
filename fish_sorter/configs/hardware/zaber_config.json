@@ -1,6 +1,12 @@
 {
     "zaber_config": {
         "port": "COM4",
+        "name": {
+            "x": "T-LSQ150D",
+            "y": "A-LSQ150A-E01",
+            "p": "T-LSQ075B",
+            "description": "Stage name (typically matches serial number)"
+        },
         "home": {
             "x": 0,
             "y": 0,

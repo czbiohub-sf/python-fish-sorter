@@ -109,7 +109,7 @@ class GenerateArray(QWidget):
 
             date_stamp = datetime.now().strftime("%Y%m%d")
             array_file = f"{num_wells}{shape}{date_stamp}.json"
-            array_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays"
+            array_dir = Path(__file__).parent.parent.absolute() / "configs/arrays"
             array_path = os.path.join(array_dir, array_file)
 
             with open(array_path, 'w') as json_file:

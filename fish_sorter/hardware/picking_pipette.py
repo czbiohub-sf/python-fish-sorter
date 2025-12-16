@@ -50,12 +50,9 @@ class PickingPipette():
 
         self.pipettor_cfg = hardware_dir / 'picker_config.json'
 
-        if zc is None:
-            self.connect()
-        else:
-            self.zc = zc
-    
-    def connect(self, env='prod'):
+        self.connect(zc=zc)
+
+    def connect(self, zc=None, env='prod'):
         """Connect to hardware
         
         :param env: environment as to whether in production or test mode
@@ -66,7 +63,10 @@ class PickingPipette():
             # Change this depending on computer
             logging.info("Loaded test environment")
 
-        self.zc = ZaberController(self.hardware_data['zaber_config'], env)
+        if zc is None:
+            self.zc = ZaberController(self.hardware_data['zaber_config'], env)
+        else:
+            self.zc = zc
         self.vc = ValveController(self.hardware_data['pneumatic_config'], env)
 
         logging.info('Setting pneumatics idle to Atmospheric')

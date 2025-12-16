@@ -10,14 +10,16 @@ import types
 from pathlib import Path
 from useq import MDASequence, Position
 
+from fish_sorter.paths import MM_DIR
+
 # For simulation
 try:
     from mda_simulator.mmcore import FakeDemoCamera
 except ModuleNotFoundError:
     FakeDemoCamera = None
 
-os.environ['MICROMANAGER_PATH'] = "C:/Program Files/Micro-Manager-2.0-20240130"
-micromanager_path = os.environ.get('MICROMANAGER_PATH')
+os.environ['MICROMANAGER_PATH'] = MM_DIR
+# micromanager_path = os.environ.get('MICROMANAGER_PATH')
 
 
 class nmm:
@@ -36,7 +38,7 @@ class nmm:
                 # make sure we start in a valid channel group
                 self.core.setConfig("Channel", "Cy5")
         else:
-            self.cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
+            self.cfg_dir = Path(__file__).parent.parent.absolute() / "configs/"
             mm_dir = self.cfg_dir / "micromanager"
             if mm_dir.exists() and mm_dir.is_dir():
                 mm_cfg_files = list(mm_dir.glob("*.cfg"))

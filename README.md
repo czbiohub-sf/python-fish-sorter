@@ -101,3 +101,10 @@ The ground truth package lock is based on the software installed for the fish so
     * Always use Python 3.12.
 
     * The fish sorter v2 instrument environment is the “ground truth.” If you change dependencies, re-lock on instrument first ```uv lock```.
+
+## Local configuration
+In case of hardware or software installation differences, the following config files may need updating:
+* In case of different Zaber stages, update the stage names in `fish_sorter/configs/hardware/zaber_config.json`
+* In case of different micromanager configuration, update `MM_DIR` in `fish_sorter/paths.py`
+
+NOTE: The stage control class in `zaber_controller.py` is intended to work with Zaber's binary library for compatibility with older stages. Newer stages may have compatibility issues with the binary library and require Zaber's ASCII library instead.

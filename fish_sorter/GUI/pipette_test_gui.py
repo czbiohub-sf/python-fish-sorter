@@ -71,7 +71,7 @@ class ZaberImageWidget(QPushButton):
 
     def _zaber_image(self)->None:
 
-        cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/hardware"
+        cfg_dir = Path(__file__).parent.parent.absolute() / "configs/hardware"
         zaber_cfg_file = "zaber_config.json"
         zaber_cfg_path = cfg_dir / zaber_cfg_file
         picker_cfg_file = "picker_config.json"
@@ -123,7 +123,7 @@ class ZaberHomeWidget(QPushButton):
 
     def _zaber_home(self)->None:
 
-        cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/hardware"
+        cfg_dir = Path(__file__).parent.parent.absolute() / "configs/hardware"
         cfg_file = "zaber_config.json"
         cfg_path = cfg_dir / cfg_file
         # Initialize and connect to hardware controller
@@ -170,7 +170,7 @@ class ZaberTestWidget(QPushButton):
 
     def _zaber_test(self)->None:
 
-        cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/hardware"
+        cfg_dir = Path(__file__).parent.parent.absolute() / "configs/hardware"
         zaber_cfg_file = "zaber_config.json"
         zaber_cfg_path = cfg_dir / zaber_cfg_file
         picker_cfg_file = "picker_config.json"
@@ -251,8 +251,8 @@ class PipetteDrawWidget(QPushButton):
 
     def _draw(self)->None:
         # Initialize and connect to hardware controller
-        cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
-        array_file = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays/6well_plate20250325.json"
+        cfg_dir = Path(__file__).parent.parent.absolute() / "configs/"
+        array_file = Path(__file__).parent.parent.absolute() / "configs/arrays/6well_plate20250325.json"
         try:
             phc = PickingPipette(cfg_dir, array_file)
         except Exception as e:
@@ -286,8 +286,8 @@ class PipetteExpelWidget(QPushButton):
 
     def _expel(self)->None:
         # Initialize and connect to hardware controller
-        cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/"
-        array_file = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays/6well_plate20250325.json"
+        cfg_dir = Path(__file__).parent.parent.absolute() / "configs/"
+        array_file = Path(__file__).parent.parent.absolute() / "configs/arrays/6well_plate20250325.json"
         try:
             phc = PickingPipette(cfg_dir, array_file)
         except Exception as e:
@@ -322,8 +322,8 @@ class PipettePressureWidget(QPushButton):
 
     def _pressure(self)->None:
         # Initialize and connect to hardware controller
-        cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/" 
-        array_file = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays/6well_plate20250325.json"
+        cfg_dir = Path(__file__).parent.parent.absolute() / "configs/" 
+        array_file = Path(__file__).parent.parent.absolute() / "configs/arrays/6well_plate20250325.json"
         try:
             phc = PickingPipette(cfg_dir, array_file)
         except Exception as e:
@@ -359,8 +359,8 @@ class PipetteVacuumWidget(QPushButton):
 
     def _vacuum(self)->None:
         # Initialize and connect to hardware controller
-        cfg_dir = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/" 
-        array_file = Path().absolute().parent / "python-fish-sorter/fish_sorter/configs/arrays/6well_plate20250325.json"
+        cfg_dir = Path(__file__).parent.parent.absolute() / "configs/" 
+        array_file = Path(__file__).parent.parent.absolute() / "configs/arrays/6well_plate20250325.json"
         try:
             phc = PickingPipette(cfg_dir, array_file)
         except Exception as e:
