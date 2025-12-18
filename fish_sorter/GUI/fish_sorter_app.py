@@ -1,5 +1,4 @@
 import argparse
-import datetime
 import json
 import logging
 import napari
@@ -23,6 +22,7 @@ from tifffile import imwrite
 from typing import overload
 from useq import GridFromEdges, MDASequence
 
+from fish_sorter.constants import CAM_PX_UM, CAM_X_PX, CAM_Y_PX
 from fish_sorter.GUI.classify import Classify
 from fish_sorter.GUI.image_gui import ImageWidget
 from fish_sorter.GUI.picking import Pick
@@ -31,8 +31,8 @@ from fish_sorter.GUI.selection_gui import SelectGUI
 from fish_sorter.GUI.setup_gui import SetupWidget
 from fish_sorter.hardware.imaging_plate import ImagingPlate
 from fish_sorter.hardware.picking_pipette import PickingPipette
-from fish_sorter.constants import CAM_PX_UM, CAM_X_PX, CAM_Y_PX
 from fish_sorter.helpers.mosaic import Mosaic
+from fish_sorter.logger_setup import setup_logger
 from fish_sorter.paths import MM_DIR
 
 # For simulation
@@ -44,23 +44,8 @@ except ModuleNotFoundError:
 os.environ['MICROMANAGER_PATH'] = MM_DIR
 # micromanager_path = os.environ.get('MICROMANAGER_PATH')
 
-# Setup logger
-log_dir = "../log"
-Path(log_dir).mkdir(parents=True, exist_ok=True)
-LOGGING_DATETIME = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-log = logging.getLogger(__name__)
-log.addHandler(logging.NullHandler())
-logging.basicConfig(filename=f"{log_dir}/{LOGGING_DATETIME}_log", filemode='a',
-                    format='%(asctime)s - %(message)s', level=logging.INFO,
-                    datefmt='%Y-%m-%d %H:%M:%S')
-log.setLevel(logging.INFO)
-
-# Logging to terminal
-handler = logging.StreamHandler(sys.stdout)
-handler.setLevel(logging.INFO)
-formatter = logging.Formatter('%(asctime)s - %(message)s', '%Y-%m-%d %H: %M: %S')
-handler.setFormatter(formatter)
-log.addHandler(handler)
+log = setup_logger(__name__)
+log.info("Start the fish sorter")
 
 class FishSorter:
     def __init__(self, sim=False):

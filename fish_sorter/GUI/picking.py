@@ -13,6 +13,8 @@ from fish_sorter.hardware.picking_pipette import PickingPipette
 from fish_sorter.hardware.imaging_plate import ImagingPlate
 from fish_sorter.hardware.dispense_plate import DispensePlate
 
+log = logging.getLogger(__name__)
+
 class Pick():
     """Loads files of classifications and pick parameters, iterates through pick parameters,
     and coordiates all hardware operations to pick from the source to the destination locations

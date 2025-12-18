@@ -6,6 +6,8 @@ from zaber_motion.binary import Connection, Device, CommandCode
 from zaber_motion.exceptions.connection_failed_exception import ConnectionFailedException
 from zaber_motion.exceptions.movement_failed_exception import MovementFailedException
 
+log = logging.getLogger(__name__)
+
 class ZaberController():
     """Communicate with Zaber devices over serial to move the stages
         Note that this class is using the zaber_motion.binary library instead of 

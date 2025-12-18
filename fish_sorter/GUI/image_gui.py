@@ -16,6 +16,7 @@ from qtpy.QtWidgets import (
 
 from fish_sorter.constants import CAM_PX_UM, CAM_X_PX, CAM_Y_PX
 
+log = logging.getLogger(__name__)
 
 class ImageWidget(QWidget):
 

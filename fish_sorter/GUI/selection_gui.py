@@ -38,6 +38,8 @@ COLOR_TYPES = Union[
     "tuple[int, int, int]"
 ]
 
+log = logging.getLogger(__name__)
+
 class SelectGUI(QWidget):
 
     def __init__(self, picker=None, pick_type=None, parent: QWidget | None=None):

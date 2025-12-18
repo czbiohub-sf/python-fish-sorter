@@ -10,6 +10,8 @@ from fish_sorter.hardware.zaber_controller import ZaberController
 from fish_sorter.hardware.valve_controller import ValveController
 from fish_sorter.hardware.dispense_plate import DispensePlate
 
+log = logging.getLogger(__name__)
+
 class PickingPipette():
     """Coordinated control of Pipette movement, pneumatics, and dispense plate
         It uses the ZaberController and ValveController classes

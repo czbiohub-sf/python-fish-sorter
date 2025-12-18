@@ -13,7 +13,7 @@ MM_TO_UM = 1000.0
 
 # TODO create widget
 
-# QUESTION should we switch to mm instead of um?
+log = logging.getLogger(__name__)
 
 class DispensePlate(Mapping):
     def __init__(self, zc, array_file, pixel_size_um):
