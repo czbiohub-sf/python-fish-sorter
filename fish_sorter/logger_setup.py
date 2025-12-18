@@ -18,17 +18,16 @@ def setup_logger(name: str=None):
     root.setLevel(logging.INFO)
 
     if not root.handlers:
-        return logger
 
-    file_handler = logging.FileHandler(log_file)
-    file_formatter = logging.FOrmatter(
-        "%(asctime)s - %(levelnames)s - %(message)s",
-        "%Y-%m-%d %H:%M:%S"
-    )
-    file_handler.setFormatter(file_formatter)
-    rott.addHandler(file_handler)
+        file_handler = logging.FileHandler(log_file)
+        file_formatter = logging.Formatter(
+            "%(asctime)s - %(levelname)s - %(message)s",
+            "%Y-%m-%d %H:%M:%S"
+        )
+        file_handler.setFormatter(file_formatter)
+        root.addHandler(file_handler)
 
-    stream_handler.setFormatter(stream_formatter)
-    root.addHandler(stream_handler)
+        stream_handler.setFormatter(stream_formatter)
+        root.addHandler(stream_handler)
 
     return logging.getLogger(name or __name__)
