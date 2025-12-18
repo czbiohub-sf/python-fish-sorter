@@ -62,7 +62,7 @@ formatter = logging.Formatter('%(asctime)s - %(message)s', '%Y-%m-%d %H: %M: %S'
 handler.setFormatter(formatter)
 log.addHandler(handler)
 
-class FishPicker:
+class FishSorter:
     def __init__(self, sim=False):
         self.expt_parent_dir = Path("D:/fishpicker_expts/")
         self.cfg_dir = Path(__file__).parent.parent.absolute() / "configs/"
@@ -400,4 +400,4 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--sim', action='store_true')
     args = parser.parse_args()
 
-    FishPicker(sim=args.sim)
+    FishSorter(sim=args.sim)
