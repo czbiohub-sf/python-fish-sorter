@@ -34,9 +34,9 @@
 @echo off
 setlocal
 cd /d "%~dp0\.."
-if not exist "fish_sorter/GUI/fish_picker.py" (
- echo Could not find fish_sorter/GUI/fish_picker.py relative to "%cd%".
+if not exist "fish_sorter/GUI/fish_sorter.py" (
+ echo Could not find fish_sorter/GUI/fish_sorter.py relative to "%cd%".
  pause & exit /b 1
 )
-uv run python fish_sorter/GUI/fish_picker.py
+uv run python fish_sorter/GUI/fish_sorter.py
 pause

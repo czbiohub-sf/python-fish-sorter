@@ -1,4 +1,5 @@
 import argparse
+import datetime
 import json
 import logging
 import napari
@@ -41,6 +42,24 @@ except ModuleNotFoundError:
 
 os.environ['MICROMANAGER_PATH'] = MM_DIR
 # micromanager_path = os.environ.get('MICROMANAGER_PATH')
+
+# Setup logger
+log_dir = "../log"
+Path(log_dir).mkdir(parents=True, exist_ok=True)
+LOGGING_DATETIME = datetime.dateime.now().strftime("%Y-%m-%d_%H-%M-%S")
+log = logging.getLogger(__name__)
+log.addHandler(logging.NullHandler())
+logging.basicConfig(filename=f"{log_dir}/{LOGGING_DATETIME}_log", filemode='a',
+                    format='%(asctime)s - %(message)s', level=logging.INFO,
+                    datefmt='%Y-%m-%d %H:%M:%S')
+logging.setLeve(logging.INFO)
+
+# Logging to terminal
+handler = logging.StreamHandler(sys.stdout)
+handler.setLevel(logging.INFO)
+formatter = logging.Formatter('%(asctime)s - %(message)s', '%Y-%m-%d %H: %M: %S')
+handler.setFormatter(formatter)
+log.addHandler(handler)
 
 class FishPicker:
     def __init__(self, sim=False):
