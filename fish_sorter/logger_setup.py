@@ -14,11 +14,13 @@ def setup_logger(name: str=None):
     log_file = log_dir / f"{ts}_fish_sorter.log"
     
     # Get module-specific logger
-    root = logging.getLogger(name or __name__)
+    root = logging.getLogger()
     root.setLevel(logging.INFO)
 
-    if not root.handlers:
+    curr_file_log = any(isinstance(h, logging.FileHandler) for h in root.handlers)
+    curr_stream_log = any(isinstance(h, logging.StreamHandler) for h in root.handlers)
 
+    if not curr_file_log:
         file_handler = logging.FileHandler(log_file)
         file_formatter = logging.Formatter(
             "%(asctime)s - %(levelname)s - %(message)s",
@@ -27,6 +29,7 @@ def setup_logger(name: str=None):
         file_handler.setFormatter(file_formatter)
         root.addHandler(file_handler)
 
+    if not curr_stream_log:
         stream_handler = logging.StreamHandler(sys.stdout)
         stream_formatter = logging.Formatter(
             "%(asctime)s - %(levelname)s - %(message)s",
