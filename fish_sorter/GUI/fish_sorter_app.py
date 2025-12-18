@@ -3,8 +3,9 @@ import json
 import logging
 import napari
 import numpy as np
-import re
 import os
+import re
+import sys
 import types
 
 from napari.utils.colormaps import Colormap
@@ -21,6 +22,7 @@ from tifffile import imwrite
 from typing import overload
 from useq import GridFromEdges, MDASequence
 
+from fish_sorter.constants import CAM_PX_UM, CAM_X_PX, CAM_Y_PX
 from fish_sorter.GUI.classify import Classify
 from fish_sorter.GUI.image_gui import ImageWidget
 from fish_sorter.GUI.picking import Pick
@@ -29,8 +31,8 @@ from fish_sorter.GUI.selection_gui import SelectGUI
 from fish_sorter.GUI.setup_gui import SetupWidget
 from fish_sorter.hardware.imaging_plate import ImagingPlate
 from fish_sorter.hardware.picking_pipette import PickingPipette
-from fish_sorter.constants import CAM_PX_UM, CAM_X_PX, CAM_Y_PX
 from fish_sorter.helpers.mosaic import Mosaic
+from fish_sorter.logger_setup import setup_logger
 from fish_sorter.paths import MM_DIR
 
 # For simulation
@@ -42,7 +44,10 @@ except ModuleNotFoundError:
 os.environ['MICROMANAGER_PATH'] = MM_DIR
 # micromanager_path = os.environ.get('MICROMANAGER_PATH')
 
-class FishPicker:
+log = setup_logger(__name__)
+log.info("Start the fish sorter")
+
+class FishSorter:
     def __init__(self, sim=False):
         self.expt_parent_dir = Path("D:/fishpicker_expts/")
         self.cfg_dir = Path(__file__).parent.parent.absolute() / "configs/"
@@ -380,4 +385,4 @@ if __name__ == "__main__":
     parser.add_argument('-s', '--sim', action='store_true')
     args = parser.parse_args()
 
-    FishPicker(sim=args.sim)
+    FishSorter(sim=args.sim)

@@ -9,6 +9,9 @@ from pymmcore_plus import CMMCorePlus
 from fish_sorter.helpers.mapping import Mapping
 
 # NOTE calibrate by setting positions in UI. Replace with dialogs? 
+
+log = logging.getLogger(__name__)
+
 class ImagingPlate(Mapping):
     def __init__(self, mmc, mda, array_file, pixel_size_um):
         self.mda = mda

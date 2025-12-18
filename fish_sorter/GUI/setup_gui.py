@@ -28,6 +28,8 @@ from qtpy.QtWidgets import (
     QWidget,
 )
 
+log = logging.getLogger(__name__)
+
 class SetupWidget(QWidget):
     """A napari micromanager widget to input setup parameters,
     including the file path for image storage, the imaging plate config,

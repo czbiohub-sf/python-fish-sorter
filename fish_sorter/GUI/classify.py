@@ -44,6 +44,8 @@ from typing import List, Optional, Tuple, Callable
 
 from fish_sorter.hardware.imaging_plate import ImagingPlate
 
+log = logging.getLogger(__name__)
+
 class Classify(QObject):
     """Add points layer of the well locations to the image mosaic in napari.
     """

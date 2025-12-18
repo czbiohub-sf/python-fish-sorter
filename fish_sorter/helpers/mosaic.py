@@ -13,6 +13,8 @@ from fish_sorter.constants import CAM_X_PX, CAM_Y_PX
 
 # TODO is there an easier way to get the mosaic positions?
 
+log = logging.getLogger(__name__)
+
 try:
     from pymmcore_widgets.useq_widgets import PYMMCW_METADATA_KEY as PYMMCW_METADATA_KEY
 except ImportError:

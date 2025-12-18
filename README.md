@@ -103,6 +103,10 @@ The ground truth package lock is based on the software installed for the fish so
     * The fish sorter v2 instrument environment is the “ground truth.” If you change dependencies, re-lock on instrument first ```uv lock```.
 
 ## Local configuration
+Follow setup for [napari-micromanager](https://github.com/pymmcore-plus/napari-micromanager) to configure to the specific microscope hardware:
+* Use `fish_sorter/GUI/nmm.py` to test run napari-micromanager microscope control
+* Use `fish_sorter/GUI/nmm_basic.py` to test run napari-micromanager microscope control with basic ancillary hardware control 
+
 In case of hardware or software installation differences, the following config files may need updating:
 * In case of different Zaber stages, update the stage names in `fish_sorter/configs/hardware/zaber_config.json`
 * In case of different micromanager configuration, update `MM_DIR` in `fish_sorter/paths.py`

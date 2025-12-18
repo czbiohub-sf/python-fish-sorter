@@ -252,9 +252,8 @@ class PipetteDrawWidget(QPushButton):
     def _draw(self)->None:
         # Initialize and connect to hardware controller
         cfg_dir = Path(__file__).parent.parent.absolute() / "configs/"
-        array_file = Path(__file__).parent.parent.absolute() / "configs/arrays/6well_plate20250325.json"
         try:
-            phc = PickingPipette(cfg_dir, array_file)
+            phc = PickingPipette(cfg_dir)
         except Exception as e:
             logging.info("Could not initialize and connect hardware controller")
 
@@ -287,9 +286,8 @@ class PipetteExpelWidget(QPushButton):
     def _expel(self)->None:
         # Initialize and connect to hardware controller
         cfg_dir = Path(__file__).parent.parent.absolute() / "configs/"
-        array_file = Path(__file__).parent.parent.absolute() / "configs/arrays/6well_plate20250325.json"
         try:
-            phc = PickingPipette(cfg_dir, array_file)
+            phc = PickingPipette(cfg_dir)
         except Exception as e:
             logging.critical("Could not initialize and connect hardware controller")
 
@@ -323,9 +321,8 @@ class PipettePressureWidget(QPushButton):
     def _pressure(self)->None:
         # Initialize and connect to hardware controller
         cfg_dir = Path(__file__).parent.parent.absolute() / "configs/" 
-        array_file = Path(__file__).parent.parent.absolute() / "configs/arrays/6well_plate20250325.json"
         try:
-            phc = PickingPipette(cfg_dir, array_file)
+            phc = PickingPipette(cfg_dir)
         except Exception as e:
             logging.critical("Could not initialize and connect hardware controller")
 
@@ -360,9 +357,8 @@ class PipetteVacuumWidget(QPushButton):
     def _vacuum(self)->None:
         # Initialize and connect to hardware controller
         cfg_dir = Path(__file__).parent.parent.absolute() / "configs/" 
-        array_file = Path(__file__).parent.parent.absolute() / "configs/arrays/6well_plate20250325.json"
         try:
-            phc = PickingPipette(cfg_dir, array_file)
+            phc = PickingPipette(cfg_dir)
         except Exception as e:
             logging.critical("Could not initialize and connect hardware controller")
 

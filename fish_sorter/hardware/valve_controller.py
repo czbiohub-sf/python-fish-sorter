@@ -2,6 +2,8 @@ import json
 import logging
 from pymodbus.client import ModbusTcpClient
 
+log = logging.getLogger(__name__)
+
 class ValveController():
     """Communicate with Wago valve controller to actuate the pressure and vacuum valves
     Note that the Wago controller was programmed with CoDeSys to receive specific function codes
