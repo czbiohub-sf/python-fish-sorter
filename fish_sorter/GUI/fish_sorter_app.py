@@ -4,8 +4,9 @@ import json
 import logging
 import napari
 import numpy as np
-import re
 import os
+import re
+import sys
 import types
 
 from napari.utils.colormaps import Colormap
