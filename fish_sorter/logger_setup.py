@@ -43,24 +43,24 @@ def setup_logger(name: str=None):
     logging.captureWarnings(True)
     warnings.simplefilter("default")
 
-def handle_exception(exc_type, exc_value, exc_traceback):
+    def handle_exception(exc_type, exc_value, exc_traceback):
 
-    if issubclass(exc_type, KeyboardInterrupt):
-        sys.__excepthook__(exc_type, exc_value, exc_traceback)
-        return
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
     
-    logger.logging.getLogger(__name__)
-    logger.error(
-        "Uncaught Exception",
-        exc_info=(exc_type, exc_value, exc_traceback)
-    )
+        logger.logging.getLogger(__name__)
+        logger.error(
+            "Uncaught Exception",
+            exc_info=(exc_type, exc_value, exc_traceback)
+        )
 
-    sys.__excepthook__(exc_type, exc_value, exc_traceback)
+        sys.__excepthook__(exc_type, exc_value, exc_traceback)
 
-sys.excepthook = handle_exception
+    sys.excepthook = handle_exception
 
-root.__fish_sorter_configured = True
+    root.__fish_sorter_configured = True
 
-root.info(f"Logging initialized. Log file {log_file}")
+    root.info(f"Logging initialized. Log file {log_file}")
 
-return logging.getLogger(name or __name__)
+    return logging.getLogger(name or __name__)
