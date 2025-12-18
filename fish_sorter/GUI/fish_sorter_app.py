@@ -52,7 +52,7 @@ log.addHandler(logging.NullHandler())
 logging.basicConfig(filename=f"{log_dir}/{LOGGING_DATETIME}_log", filemode='a',
                     format='%(asctime)s - %(message)s', level=logging.INFO,
                     datefmt='%Y-%m-%d %H:%M:%S')
-logging.setLevel(logging.INFO)
+log.setLevel(logging.INFO)
 
 # Logging to terminal
 handler = logging.StreamHandler(sys.stdout)
