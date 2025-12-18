@@ -46,7 +46,7 @@ os.environ['MICROMANAGER_PATH'] = MM_DIR
 # Setup logger
 log_dir = "../log"
 Path(log_dir).mkdir(parents=True, exist_ok=True)
-LOGGING_DATETIME = datetime.dateime.now().strftime("%Y-%m-%d_%H-%M-%S")
+LOGGING_DATETIME = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
 log = logging.getLogger(__name__)
 log.addHandler(logging.NullHandler())
 logging.basicConfig(filename=f"{log_dir}/{LOGGING_DATETIME}_log", filemode='a',
