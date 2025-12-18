@@ -8,7 +8,7 @@ def setup_logger(name: str=None):
     Creates and returns a logger configured to log to both file and stdout.
     """
 
-    log_dir = Path.home() / "fish_sorter_logs"
+    log_dir = Path(__File__).resolve().parent.parent / "log"
     log_dir.mkdir(parents=True, exist_ok=True)
     ts = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
     log_file = log_dir / f"{ts}_fish_sorter.log"
