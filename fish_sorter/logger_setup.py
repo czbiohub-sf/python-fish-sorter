@@ -27,6 +27,12 @@ def setup_logger(name: str=None):
         file_handler.setFormatter(file_formatter)
         root.addHandler(file_handler)
 
+        stream_handler = logging.StreamHandler(sys.stdout)
+        stream_formatter = logging.Formatter(
+            "%(asctime)s - %(levelname)s - %(message)s",
+            "%Y-%m-%d %H:%M:%S"
+        )
+
         stream_handler.setFormatter(stream_formatter)
         root.addHandler(stream_handler)
 
