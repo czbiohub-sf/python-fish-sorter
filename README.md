@@ -105,7 +105,9 @@ The ground truth package lock is based on the software installed for the fish so
 ## Local configuration
 Follow setup for [napari-micromanager](https://github.com/pymmcore-plus/napari-micromanager) to configure to the specific microscope hardware:
 * Use `fish_sorter/GUI/nmm.py` to test run napari-micromanager microscope control
-* Use `fish_sorter/GUI/nmm_basic.py` to test run napari-micromanager microscope control with basic ancillary hardware control 
+* Use `fish_sorter/GUI/nmm_basic.py` to test run napari-micromanager microscope control with basic ancillary hardware control
+
+An executable file, `fish_sorter.bat`, with icon, `zebrari2_Zbb_icon.ico` are located in the executable folder. 
 
 In case of hardware or software installation differences, the following config files may need updating:
 * In case of different Zaber stages, update the stage names in `fish_sorter/configs/hardware/zaber_config.json`
