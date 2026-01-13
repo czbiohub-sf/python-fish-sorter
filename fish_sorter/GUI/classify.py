@@ -201,11 +201,18 @@ class Classify(QObject):
         """Callback when a point is selected
         """
 
-        self.refresh()
-        selected_data = self.points_layer.selected_data
-        if selected_data:
-            selected_idx = list(selected_data)[0]
-            self._goto_well(selected_idx)
+        if getattr(self, "_handling_select", False):
+            return
+        self._handling_select = True
+        try:
+            self.refresh()
+            selected_data = self.points_layer.selected_data
+            if selected_data:
+                selected_idx = int(next(iter(selected_data)))
+                if selected_idx != self.current_well:
+                    self._goto_well(selected_idx)
+        finally:
+            self._handling_select = False
 
     def _selected_current_pt(self):
         """Select the point for the current well in the points layer
@@ -561,14 +568,14 @@ class Classify(QObject):
             self.points_layer.features.loc[singlets, feat] = False                                 
         self.refresh()
         self.points_layer.mode = 'select'
-        self.current_wells = singlets_idxs[0]
+        self.current_well = int(singlets_idxs[0])
 
         if self.picking == 'larvae':
             logging.info('Determining fish orientation for picking larvae')
             self.find_orientation()
-        
-        self._update_counter()
+    
         self._update_nav_mode()
+        self._goto_well(self.current_well)
 
     def find_orientation(self):
         """Determines orientation to select side of well for picking
@@ -797,7 +804,7 @@ class Classify(QObject):
         if self.points_layer is None:
             return
 
-        self.current_well = idx
+        self.current_well = int(idx)
 
         self.viewer.layers.selection.active = self.points_layer
         self.points_layer.mode = "select"
@@ -808,11 +815,10 @@ class Classify(QObject):
         self._update_feature_display(self.current_well)
         self._update_counter()
 
-        QTimer.singleShot(0, self._refocus_viewer())
-
-        QTimer.singleShot(0, lambda: self.viewer.window._qt_window.activateWindow())
-        QTimer.singleShot(0, lambda: self.viewer.window._qt_window.raise_())
-        QTimer.singleShot(0, lambda: self.viewer.window._qt_window.setFocus())
+        QTimer.singleShot(0, self._refocus_viewer)
+        QTimer.singleShot(0, self.viewer.window._qt_window.activateWindow)
+        QTimer.singleShot(0, self.viewer.window._qt_window.raise_)
+        QTimer.singleShot(0, self.viewer.window._qt_window.setFocus)
 
     
     def _next_well(self, event=None):
@@ -920,7 +926,7 @@ class Classify(QObject):
             next_well = singlet_idxs[singlet_idxs > self.current_well]
             next_singlet = next_well[0] if len(next_well) > 0 else singlet_idxs[0]
             if next_singlet != self.current_well:
-                self._goto_well(next_singlet)
+                QTimer.singleShot(0, lambda: i=int(next_singlet): self._goto_well(i))
     
     def _well_disp(self):
         """Force _update_well_display to run on main thread
