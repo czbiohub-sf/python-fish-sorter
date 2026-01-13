@@ -250,14 +250,14 @@ class Classify(QObject):
                     self._update_counter()
                     self._well_disp()
                     self.points_layer.mode = 'select'
+                    self._singlet_nav()
                     return
                                             
             self.points_layer.refresh_colors(update_color_mapping=False)
             self._update_feature_display(self.current_well)
             self.points_layer.mode = 'select'
 
-            if (not self.navigate_all) and feature_name == "singlet":
-                self._singlet_nav()
+            self._singlet_nav()
 
         return _toggle_annotation
 
@@ -787,44 +787,33 @@ class Classify(QObject):
         else:
             return Colormap([[0, 0, 0], [0.5, 0.5, 0.5]], name='gray')
     
-    def _goto_well(self, idx: int, *, update_disp: bool=True, refocus: bool=True):
+    def _goto_well(self, idx: int):
         """Helper function to update the viewer window and maintain the selection/focus
 
         :param idx: well index number
         :type idx: int
-        :param update_disp: whether to refresh the display and features
-        :type update_dip: bool
-        :param refocus: keep the main viewer window and points layer in focus for hotkeys
-        :type refocus: bool
         """
 
         if self.points_layer is None:
             return
 
-        if len(self.points_layer.data) == 0:
-            logging.info(f'No wells were found')
-            return
-        
         self.current_well = idx
 
-        self.points_layer.mode = "select"
         self.viewer.layers.selection.active = self.points_layer
+        self.points_layer.mode = "select"
         self.points_layer.selected_data = {self.current_well}
 
-        if update_disp:
-            self._well_disp()
-            self._update_feature_display(self.current_well)
-        
+
+        self._well_disp()
+        self._update_feature_display(self.current_well)
         self._update_counter()
 
-        if refocus:
-            self._refocus_viewer()
-            try:
-                self.viewer.window._qt_window.activateWindow()
-                self.viewer.window._qt_window.raise_()
-                self.viewer.window._qt_window.setFocus()
-            except Exception:
-                pass
+        QTimer.singleShot(0, self._refocus_viewer())
+
+        QTimer.singleShot(0, lambda: self.viewer.window._qt_window.activateWindow())
+        QTimer.singleShot(0, lambda: self.viewer.window._qt_window.raise_())
+        QTimer.singleShot(0, lambda: self.viewer.window._qt_window.setFocus())
+
     
     def _next_well(self, event=None):
         """Updates the viewer window with the next well when the right arrow key is pressed
@@ -924,14 +913,14 @@ class Classify(QObject):
             return
 
         singlet_idxs = np.where(self.points_layer.features['singlet'])[0]
-
         if len(singlet_idxs) == 0:
             return
 
         if self.current_well not in singlet_idxs:
             next_well = singlet_idxs[singlet_idxs > self.current_well]
             next_singlet = next_well[0] if len(next_well) > 0 else singlet_idxs[0]
-            self._goto_well(next_singlet)
+            if next_singlet != self.current_well:
+                self._goto_well(next_singlet)
     
     def _well_disp(self):
         """Force _update_well_display to run on main thread
