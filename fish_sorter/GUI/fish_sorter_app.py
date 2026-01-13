@@ -147,8 +147,7 @@ class FishSorter:
         if getattr(self, 'classify', None) is not None:
             try:
                 widgets_present = [self.v.window._dock_widgets.get(n) is not None for n in classify_widget_names]
-                all_present = all(widgets_present)
-                if all_present:
+                if all(widgets_present):
                     for n in classify_widget_names:
                         d = self.v.window._dock_widgets.get(n)
                         if d is None:
@@ -162,20 +161,12 @@ class FishSorter:
                     return
 
                 logging.info('Not all classify dock instance exists')
-
                 try:
                     self.classify.cleanup()
                 except Exception as e:
                     logging.info(f'Classify cleanup failed during recreate: {e}')
                 self.classify = None
 
-                for n in classify_widget_names:
-                    d = self.v.window._dock_widgets.get(n)
-                    if d is not None:
-                        try:
-                            d.close()
-                        except Exception:
-                            pass
             except Exception as e:
                 logging.info(f'Error checking/raising classify widgets. Recreating widgets. Error: {e}')
                 try:
@@ -183,14 +174,8 @@ class FishSorter:
                 except Exception:
                     pass
                 self.classify = None
-
-                for n in classify_widget_names:
-                    d = self.v.window._dock_widgets.get(n)
-                    if d is not None:
-                        try:
-                            d.close()
-                        except Exception:
-                            pass
+        
+        self._clear_classify()
   
         sequence = self.mda.value()
         mosaic_metadata = self.mosaic.get_mosaic_metadata(sequence)
@@ -377,6 +362,26 @@ class FishSorter:
         logging.info('Ready to classify')
         self.run_class()
     
+    def _clear_classify(self):
+        """Helper function to remove any classification widgets/layers from viewer if 
+        duplication occurs from multiple button presses / closed windows
+        """
+
+        widget_names = ("Classification", "Save", "Finding Nemo")
+        for name in widget_names:
+            dw = self.v.window._dock_widgets.get(name)
+            if dw is not None:
+                try:
+                    dw.close()
+                except Exception:
+                    pass
+        for layer in list(self.v.layers):
+            if getattr(layer, "name", None) == "Well Locations":
+                try:
+                    self.v.layers.remove(layer)
+                except Exception:
+                    pass
+    
     def _new_exp(self):
         """Set up to start a new experiment after running one
         """
@@ -384,16 +389,20 @@ class FishSorter:
         logging.info('Starting New Experiment! Clearing UI and state')
         
         for layer in list(self.v.layers):
-            self.v.layers.remove(layer)
-            logging.info(f'Removed layer {layer}')
+            try:
+                self.v.layers.remove(layer)
+                logging.info(f'Removed layer {layer}')
+            except Exception as e:
+                logging.info(f'Could not remove layer {layer} with error: {e}')
+
+        self._clear_classify()
         
-        for widget_name in ('Classification', 'Save', 'Finding Nemo', 'Pick Selection'):
-            dock_widget = self.v.window._dock_widgets.get(widget_name)
-            if dock_widget is not None:
-                try:
-                    dock_widget.close()
-                except Exception:
-                    pass
+        dw = self.v.window._dock_widgets.get('Pick Selection')
+        if dw is not None:
+            try:
+                dw.close()
+            except Exception:
+                pass
         if getattr(self, 'classify', None) is not None:
             try:
                 self.classify.cleanup()
