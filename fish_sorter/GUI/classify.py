@@ -926,7 +926,7 @@ class Classify(QObject):
             next_well = singlet_idxs[singlet_idxs > self.current_well]
             next_singlet = next_well[0] if len(next_well) > 0 else singlet_idxs[0]
             if next_singlet != self.current_well:
-                QTimer.singleShot(0, lambda: i=int(next_singlet): self._goto_well(i))
+                QTimer.singleShot(0, lambda i=int(next_singlet): self._goto_well(i))
     
     def _well_disp(self):
         """Force _update_well_display to run on main thread
