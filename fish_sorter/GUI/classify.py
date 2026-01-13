@@ -204,11 +204,8 @@ class Classify(QObject):
         self.refresh()
         selected_data = self.points_layer.selected_data
         if selected_data:
-            selected_idxs = list(selected_data)
-            selected_idx = selected_idxs[0]
-            self.current_well = selected_idx
-            self._well_disp()
-            self._update_feature_display(self.current_well)
+            selected_idx = list(selected_data)[0]
+            self._goto_well(selected_idx)
 
     def _selected_current_pt(self):
         """Select the point for the current well in the points layer
@@ -258,6 +255,9 @@ class Classify(QObject):
             self.points_layer.refresh_colors(update_color_mapping=False)
             self._update_feature_display(self.current_well)
             self.points_layer.mode = 'select'
+
+            if (not self.navigate_all) and feature_name == "singlet":
+                self._singlet_nav()
 
         return _toggle_annotation
 
@@ -787,6 +787,45 @@ class Classify(QObject):
         else:
             return Colormap([[0, 0, 0], [0.5, 0.5, 0.5]], name='gray')
     
+    def _goto_well(self, idx: int, *, update_disp: bool=True, refocus: bool=True):
+        """Helper function to update the viewer window and maintain the selection/focus
+
+        :param idx: well index number
+        :type idx: int
+        :param update_disp: whether to refresh the display and features
+        :type update_dip: bool
+        :param refocus: keep the main viewer window and points layer in focus for hotkeys
+        :type refocus: bool
+        """
+
+        if self.points_layer is None:
+            return
+
+        if len(self.points_layer.data) == 0:
+            logging.info(f'No wells were found')
+            return
+        
+        self.current_well = idx
+
+        self.points_layer.mode = "select"
+        self.viewer.layers.selection.active = self.points_layer
+        self.points_layer.selected_data = {self.current_well}
+
+        if update_disp:
+            self._well_disp()
+            self._update_feature_display(self.current_well)
+        
+        self._update_counter()
+
+        if refocus:
+            self._refocus_viewer()
+            try:
+                self.viewer.window._qt_window.activateWindow()
+                self.viewer.window._qt_window.raise_()
+                self.viewer.window._qt_window.setFocus()
+            except Exception:
+                pass
+    
     def _next_well(self, event=None):
         """Updates the viewer window with the next well when the right arrow key is pressed
 
@@ -806,13 +845,7 @@ class Classify(QObject):
         except IndexError:
             next_idx = 0
             
-        self.current_well = idxs[next_idx]
-        self._well_disp()
-        self._refocus_viewer()
-        self._select_current_point()
-        self._update_feature_display(self.current_well)
-        self._selected_current_pt()
-        self._update_counter()
+        self._goto_well(idxs[next_idx])
     
     def _previous_well(self, event=None):
         """Updates the viewer window with the previous well when the left arrow key is pressed
@@ -833,13 +866,7 @@ class Classify(QObject):
         except IndexError:
             prev_idx = len(idxs) - 1
 
-        self.current_well = idxs[prev_idx]
-        self._well_disp()
-        self._refocus_viewer()
-        self._select_current_point()
-        self._update_feature_display(self.current_well)
-        self._selected_current_pt()
-        self._update_counter()
+        self._goto_well(idxs[prev_idx])
 
     def _toggle_navigation(self, event=None):
         """Changes left right navigation from singlets to all fish
@@ -857,8 +884,6 @@ class Classify(QObject):
     def _update_counter(self):
         """Updates the fish counter for the user to know which fish they are on and the total
         """
-
-        self._singlet_nav()
 
         if self.navigate_all:
             total = len(self.points_layer.data)
@@ -905,7 +930,8 @@ class Classify(QObject):
 
         if self.current_well not in singlet_idxs:
             next_well = singlet_idxs[singlet_idxs > self.current_well]
-            self.current_well = next_well[0] if len(next_well) > 0 else singlet_idxs[0]
+            next_singlet = next_well[0] if len(next_well) > 0 else singlet_idxs[0]
+            self._goto_well(next_singlet)
     
     def _well_disp(self):
         """Force _update_well_display to run on main thread
@@ -968,19 +994,44 @@ class Classify(QObject):
                 color = "white"
             value_label.setStyleSheet(f"color: {color}; font-weight: bold;")
 
-    def _select_current_point(self):
-        """Select the point for the well currently in view for classification
-        """
-
-        if self.points_layer is not None:
-            self.points_layer.selected_data = {self.current_well}
-
     def _refocus_viewer(self):
         """Needed so that classification can be done in the main window
         """
 
         self.viewer.layers.selection.active = self.points_layer
         self.viewer.window._qt_window.setFocus()
+
+    def cleanup(self):
+        """Disconnect callbacks and threading"""
+
+        try:
+            if getattr(self, 'points_layer', None) is not None:
+                try:
+                    self.points_layer.events.set_data.disconnect(self.refresh)
+                except Exception:
+                    pass
+                try:
+                    self.points_layer.events.highlight.disconnect(self._selected_pt)
+                except Exception:
+                    pass
+            if getattr(self, 'contrast_callbacks', None):
+                for layer_name, cb in list(self.contrast_callbacks.items()):
+                    main_layer = self._get_main_layer(layer_name)
+                    if main_layer is not None:
+                        try:
+                            main_layer.events.contrast_limits.disconnect(cb)
+                        except Exception:
+                            pass
+                self.contrast_callbacks.clear()
+
+            if getattr(self, 'executor', None) is not None:
+                try:
+                    self.executor.shutdown(wait=False, cancel_futures=True)
+                except TypeError:
+                    self.executor.shutdown(wait=False)
+        except Exception as e:
+            logging.info(f'Classify cleanup exception: {e}')
+
        
 class QtViewerWrap(QtViewer):
     

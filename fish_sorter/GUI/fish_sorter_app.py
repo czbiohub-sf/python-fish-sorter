@@ -141,6 +141,57 @@ class FishSorter:
         """
             
         logging.info('Start Classification')
+
+        classify_widget_names = ('Classification', 'Finding Nemo', 'Save')
+
+        if getattr(self, 'classify', None) is not None:
+            try:
+                widgets_present = [self.v.window._dock_widgets.get(n) is not None for n in classify_widget_names]
+                all_present = all(widgets_present)
+                if all_present:
+                    for n in classify_widget_names:
+                        d = self.v.window._dock_widgets.get(n)
+                        if d is None:
+                            continue
+                        d.show()
+                        d.raise_()
+
+                    self.v.window._qt_window.activateWindow()
+                    self.v.window._qt_window.raise_()
+                    self.v.window._qt_window.setFocus()
+                    return
+
+                logging.info('Not all classify dock instance exists')
+
+                try:
+                    self.classify.cleanup()
+                except Exception as e:
+                    logging.info(f'Classify cleanup failed during recreate: {e}')
+                self.classify = None
+
+                for n in classify_widget_names:
+                    d = self.v.window._dock_widgets.get(n)
+                    if d is not None:
+                        try:
+                            d.close()
+                        except Exception:
+                            pass
+            except Exception as e:
+                logging.info(f'Error checking/raising classify widgets. Recreating widgets. Error: {e}')
+                try:
+                    self.classify.cleanup()
+                except Exception:
+                    pass
+                self.classify = None
+
+                for n in classify_widget_names:
+                    d = self.v.window._dock_widgets.get(n)
+                    if d is not None:
+                        try:
+                            d.close()
+                        except Exception:
+                            pass
+  
         sequence = self.mda.value()
         mosaic_metadata = self.mosaic.get_mosaic_metadata(sequence)
 
@@ -149,6 +200,14 @@ class FishSorter:
 
         self.classify = Classify(self.cfg_dir, self.pick_type, self.expt_prefix, self.expt_path, self.iplate, self.v)
         self.v.reset_view()
+
+        for n in classify_widget_names:
+            try:
+                d = self.v.window._dock_widgets.get(n)
+                if d is not None:
+                    d.destroyed.connect(lambda *_: setattr(self, 'classify', None))
+            except Exception as e:
+                logging.info(f'Could not connect destroyed signal for Classification dock widget {n}: {e}')
 
     def setup_picker(self):
         """After collecting required setup information, setup the picker
@@ -322,29 +381,25 @@ class FishSorter:
         """Set up to start a new experiment after running one
         """
 
-        logging.info('Remove all layers')
+        logging.info('Starting New Experiment! Clearing UI and state')
+        
         for layer in list(self.v.layers):
-            logging.info(f'Layer {layer}')
             self.v.layers.remove(layer)
             logging.info(f'Removed layer {layer}')
         
-        if hasattr(self, 'classify') and self.classify is not None:
+        for widget_name in ('Classification', 'Save', 'Finding Nemo', 'Pick Selection'):
+            dock_widget = self.v.window._dock_widgets.get(widget_name)
+            if dock_widget is not None:
+                try:
+                    dock_widget.close()
+                except Exception:
+                    pass
+        if getattr(self, 'classify', None) is not None:
             try:
-                if hasattr(self.classify, 'classify_widget'):
-                    self.v.window.remove_dock_widget(self.classify.classify_widget)
-                if hasattr(self.classify, 'save_widget'):
-                    self.v.window.remove_dock_widget(self.classify.save_widget)
-                if hasattr(self.classify, 'fish_widget'):
-                    self.v.window.remove_dock_widget(self.classify.fish_widget)
+                self.classify.cleanup()
             except Exception as e:
-                logging.warning(f'Could not remove classify dock widget: {e}')
+                logging.warning(f'Classify cleanup failed: {e}')
         self.classify = None
-
-        if hasattr(self, 'selection') and self.selection is not None:
-            try:
-                    self.v.window.remove_dock_widget(self.selection)
-            except Exception as e:
-                logging.warning(f'Could not remove selection dock widget: {e}')
         self.selection = None
 
     def _save_pick_h(self):
