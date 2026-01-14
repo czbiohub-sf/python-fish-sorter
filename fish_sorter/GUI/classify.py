@@ -228,7 +228,7 @@ class Classify(QObject):
         :type feature_name: str
 
         :returns: callback function that toggles a feature on keypress
-        :rtype: Callable[[Event], None]
+        :rtype: Callable[[napari.utils.events.Event], None]
         """ 
 
         def _toggle_annotation(event):
@@ -242,31 +242,43 @@ class Classify(QObject):
             """
 
             selected_points = list(self.points_layer.selected_data)
-            if len(selected_points) > 0:
-                feature_values = self.points_layer.features[feature_name]
-                feature_values.loc[selected_points] = ~feature_values.loc[selected_points]
-                self.points_layer.features.loc[:, feature_name] = feature_values
+            if not selected_points:
+                return
+            feature_values = self.points_layer.features[feature_name]
+            feature_values.loc[selected_points] = ~feature_values.loc[selected_points]
+            self.points_layer.features.loc[:, feature_name] = feature_values
 
-                if feature_name in self.deselect_rules and feature_values[selected_points].iloc[0]:
-                    for feat in self.deselect_rules[feature_name]:
-                        feature_values = self.points_layer.features[feat]
-                        feature_values.loc[selected_points] = False
-                        self.points_layer.features[feat] = feature_values
-                    self.points_layer.refresh_colors(update_color_mapping=False)
-                    self._update_feature_display(self.current_well)
-                    self._update_counter()
-                    self._well_disp()
-                    self.points_layer.mode = 'select'
-                    self._singlet_nav()
-                    return
-                                            
+            feature_true = bool(feature_values.loc[selected_points].iloc[0])
+            if feature_name in self.fish_feat and feature_true:
+                self._select_singlet(selected_points)
+
+            if feature_true:
+                for feat in self.deselect_rules.get(feature_name, []):
+                    self.points_layer.features.loc[selected_points,feat] = False
+
+            self._update_counter()                   
             self.points_layer.refresh_colors(update_color_mapping=False)
             self._update_feature_display(self.current_well)
+            self._well_disp()
             self.points_layer.mode = 'select'
 
             self._singlet_nav()
 
         return _toggle_annotation
+
+    def _select_singlet(self, points: list[int]):
+        """Automatically selects singlet in the features if a fish feature is classified
+
+        :param points: list of points that are currently selected
+        :type points: list of ints
+        """
+
+        if not points:
+            return
+
+        self.points_layer.features.loc[points, 'singlet'] = True
+        for feat in self.deselect_rules.get('singlet', []):
+            self.points_layer.features.loc[points,feat] = False
 
     def save_data(self):
         """Saves the classification once the user pushes the button
