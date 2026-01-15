@@ -254,7 +254,12 @@ class Classify(QObject):
 
             if feature_true:
                 for feat in self.deselect_rules.get(feature_name, []):
-                    self.points_layer.features.loc[selected_points,feat] = False
+                    self.points_layer.features.loc[selected_points, feat] = False
+
+            if feature_name == 'singlet' and not feature_true:
+                self.points_layer.features.loc[selected_points, 'empty'] = True
+                for feat in self.deselect_rules.get('empty', []):
+                    self.points_layer.features.loc[selected_points, feat] = False
 
             self._update_counter()                   
             self.points_layer.refresh_colors(update_color_mapping=False)
