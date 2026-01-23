@@ -101,6 +101,7 @@ class FishSorter:
         self.pick = Pick(self.phc)
         self.pick_gui = PickGUI(self.pick)
         self.pick_gui.new_expt.new_exp_req.connect(self._new_exp)
+        self.pick_gui.new_exp_clear.new_exp_clear_req.connect(self._new_exp_clear)
         self.pick_gui.calib_pick.save_pick_h.connect(self._save_pick_h)
         self.v.window.add_dock_widget(self.pick_gui, name='Picking', area='right', tabify=True)
     
@@ -411,6 +412,42 @@ class FishSorter:
         self.classify = None
         self.selection = None
 
+    def _new_exp_clear(self):
+        """Set up to start a new experiment after running one, clearing the MDA save info
+        but keeping the MDA grid info
+        """
+
+        self._new_exp()
+
+        logging.info('Clearing MDA save info; keeping the MDA Grid and Channels')
+
+        seq = self.mda.value()
+        
+        new_seq = MDASequence(
+            axis_order = seq.axis_order,  
+            grid_plan=seq.grid_plan,  
+            channels=seq.channels,
+            metadata={
+                "pymmcore_widgets": {
+                "save_dir": str(self.expt_parent_dir),
+                "save_name": '',
+                "should_save": True,
+                },
+                "napari_micromanager": {
+                    "axis_order": ("g", "c"),
+                    "grid_plan": seq.grid_plan
+                }
+             }
+        )
+        self.mda.setValue(new_seq)
+        final_seq = self.mda.value()
+        logging.info(f'MDA sequence reset, keeping only the grid and channels: {final_seq}')
+        self.v.window._qt_viewer.console.push(
+            {"main_window": self.main_window, "mmc": self.core, "sequence": final_seq, "np": np}
+        )
+        self.v.reset_view()
+
+        
     def _save_pick_h(self):
         """Saves the calibrated pick height for the specific pick type to the pick type config
         """

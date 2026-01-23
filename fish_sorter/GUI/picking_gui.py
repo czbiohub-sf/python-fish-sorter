@@ -76,6 +76,7 @@ class PickGUI(QWidget):
         self.pw.pause_button.setEnabled(False)
         self.pw.stop_button.setEnabled(False)
         self.new_expt = NewExptWidget(self)
+        self.new_expt_clear = NewExptClearWidget(self)
         reset = ResetWidget(self)
         
         draw = PipetteDrawWidget(self)
@@ -110,7 +111,8 @@ class PickGUI(QWidget):
         layout.addWidget(self.pw.pause_button, 9, 1)
         layout.addWidget(self.pw.stop_button, 9, 2)
         layout.addWidget(self.new_expt, 10, 0)
-        layout.addWidget(reset, 10, 1)
+        layout.addWidget(self.new_expt_clear, 10, 1)
+        layout.addWidget(reset, 10, 2)
 
     def _update_calib_status(self):
         """Update the GUI that the pick and or dispense heights
@@ -671,7 +673,7 @@ class NewExptWidget(QPushButton):
 
     def _create_button(self)->None:
         
-        self.setText("New Experiment")
+        self.setText("New Expt - Keep All")
         self.clicked.connect(self._new)
 
     def _new(self):
@@ -679,6 +681,37 @@ class NewExptWidget(QPushButton):
 
         self.picking.update_pick_widgets(False)
         self.new_exp_req.emit()
+
+
+class NewExptClearWidget(QPushButton):
+    """A push button widget to start a new experiment
+    """
+    
+    new_exp_clear_req = pyqtSignal()
+
+    def __init__(self, picking, parent: QWidget | None=None):
+        
+        super().__init__(parent=parent)
+
+        self.setSizePolicy(
+            QSizePolicy(QSizePolicy.Policy.Minimum, QSizePolicy.Policy.Fixed)
+        )
+
+        self.picking = picking
+        self._mmc = CMMCorePlus.instance()
+
+        self._create_button()
+
+    def _create_button(self)->None:
+        
+        self.setText("New Expt - Clear Name")
+        self.clicked.connect(self._new)
+
+    def _new(self):
+        logging.info('Start new experiment; Clear everything but the grid')
+
+        self.picking.update_pick_widgets(False)
+        self.new_exp_clear_req.emit()
 
 
 class ResetWidget(QPushButton):
