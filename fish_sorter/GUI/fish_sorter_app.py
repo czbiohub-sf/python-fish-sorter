@@ -101,7 +101,7 @@ class FishSorter:
         self.pick = Pick(self.phc)
         self.pick_gui = PickGUI(self.pick)
         self.pick_gui.new_expt.new_exp_req.connect(self._new_exp)
-        self.pick_gui.new_exp_clear.new_exp_clear_req.connect(self._new_exp_clear)
+        self.pick_gui.new_expt_clear.new_exp_clear_req.connect(self._new_exp_clear)
         self.pick_gui.calib_pick.save_pick_h.connect(self._save_pick_h)
         self.v.window.add_dock_widget(self.pick_gui, name='Picking', area='right', tabify=True)
     
