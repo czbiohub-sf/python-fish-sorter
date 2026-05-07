@@ -35,7 +35,7 @@ The ground truth package lock is based on the software installed for the fish so
 
     * Windows (PowerShell)
       ```
-      winget install --id=astral-sh.uv -e
+      winget install --id=astral-sh.uv --source=winget -e
       ```
     * Restart PowerShell or add $HOME\.local\bin to PATH
 
