@@ -16,11 +16,11 @@ Copyright 2025, Chan Zuckerberg Biohub San Francisco.
 
 This package uses [uv](https://docs.astral.sh/uv/?utm_source=chatgpt.com) to manage reproducible installs and package dependencies.
 
-The ground truth package lock is based on the software installed for the fish sorter v2 instrument running Windows with Python 3.12. The pinned versions are frozen in pyproject.toml + uv.lock.
+The ground truth package lock is based on the software installed for the fish sorter v2 instrument running Windows with Python 3.12.0. The pinned versions are frozen in pyproject.toml + uv.lock.
 
 1. Prerequisites
 
-  * Python 3.12 installed on your system.
+  * Python 3.12.0 installed on your system.
 
   * [uv](https://docs.astral.sh/uv/?utm_source=chatgpt.com)
 
