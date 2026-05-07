@@ -104,7 +104,7 @@ The ground truth package lock is based on the software installed for the fish so
 
 ## Local configuration
 Follow setup for [napari-micromanager](https://github.com/pymmcore-plus/napari-micromanager) to configure to the specific microscope hardware. 
-Micromanager configuration was configured with Micromanager 2.0 20240130:
+Micromanager configuration was configured with Micromanager 2.0 20240130. It is recommended to use thate nightly build:
 * Use `fish_sorter/GUI/nmm.py` to test run napari-micromanager microscope control
 * Use `fish_sorter/GUI/nmm_basic.py` to test run napari-micromanager microscope control with basic ancillary hardware control
 
