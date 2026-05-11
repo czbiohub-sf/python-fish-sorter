@@ -16,11 +16,11 @@ Copyright 2025, Chan Zuckerberg Biohub San Francisco.
 
 This package uses [uv](https://docs.astral.sh/uv/?utm_source=chatgpt.com) to manage reproducible installs and package dependencies.
 
-The ground truth package lock is based on the software installed for the fish sorter v2 instrument running Windows with Python 3.12. The pinned versions are frozen in pyproject.toml + uv.lock.
+The ground truth package lock is based on the software installed for the fish sorter v2 instrument running Windows with Python 3.12.0. The pinned versions are frozen in pyproject.toml + uv.lock.
 
 1. Prerequisites
 
-  * Python 3.12 installed on your system.
+  * Python 3.12.0 installed on your system.
 
   * [uv](https://docs.astral.sh/uv/?utm_source=chatgpt.com)
 
@@ -35,7 +35,7 @@ The ground truth package lock is based on the software installed for the fish so
 
     * Windows (PowerShell)
       ```
-      winget install --id=astral-sh.uv -e
+      winget install --id=astral-sh.uv --source=winget -e
       ```
     * Restart PowerShell or add $HOME\.local\bin to PATH
 
@@ -103,7 +103,8 @@ The ground truth package lock is based on the software installed for the fish so
     * The fish sorter v2 instrument environment is the “ground truth.” If you change dependencies, re-lock on instrument first ```uv lock```.
 
 ## Local configuration
-Follow setup for [napari-micromanager](https://github.com/pymmcore-plus/napari-micromanager) to configure to the specific microscope hardware:
+Follow setup for [napari-micromanager](https://github.com/pymmcore-plus/napari-micromanager) to configure to the specific microscope hardware. 
+Micromanager configuration was configured with Micromanager 2.0 20240130. It is recommended to use thate nightly build:
 * Use `fish_sorter/GUI/nmm.py` to test run napari-micromanager microscope control
 * Use `fish_sorter/GUI/nmm_basic.py` to test run napari-micromanager microscope control with basic ancillary hardware control
 
