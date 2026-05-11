@@ -40,7 +40,6 @@ dependencies = [
   "QtPy==2.4.2",
   "Pillow==11.1.0",
   "tqdm==4.67.1",
-  "iter-tools==0.0.2",
   "zaber_motion==7.3.0",
 ]
 
