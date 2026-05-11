@@ -31,8 +31,7 @@ def main() -> bool:
         pick_cfg_file = "picker_config.json"
         pick_cfg_path = pick_cfg_dir / pick_cfg_file
         with open(pick_cfg_path, 'r') as f:
-            p = load(f)
-            pick_config = p['defaults']
+            pick_config = load(f)
 
         print("pick file started")
 
@@ -53,32 +52,32 @@ def main() -> bool:
             zc.move_arm(stage, zaber_config['home'][stage])
             sleep(2)
 
-        # print('Move pipette to set locations')
-        # print('Swing height')
-        # zc.move_arm('p',  pick_config['pipette']['stage']['pipette_swing']['p'])
-        # sleep(2)
-        # zc.move_arm('p', zaber_config['home']['p'])
-        # sleep(2)
+        print('Move pipette to set locations')
+        print('Swing height')
+        zc.move_arm('p',  pick_config['pipette']['stage']['pipette_swing']['p'])
+        sleep(2)
+        zc.move_arm('p', zaber_config['home']['p'])
+        sleep(2)
         
-        # print('Pick height')
-        # zc.move_arm('p', pick_config['pipette']['stage']['pick']['p'])
-        # sleep(2)
-        # zc.move_arm('p', zaber_config['home']['p'])
-        # sleep(2)
+        print('Pick height')
+        zc.move_arm('p', pick_config['pipette']['stage']['pick']['p'])
+        sleep(2)
+        zc.move_arm('p', zaber_config['home']['p'])
+        sleep(2)
 
-        # print('Clearance height')
-        # zc.move_arm('p', pick_config['pipette']['stage']['clearance']['p'])
-        # sleep(2)
-        # zc.move_arm('p', zaber_config['home']['p'])
-        # sleep(2)
+        print('Clearance height')
+        zc.move_arm('p', pick_config['pipette']['stage']['clearance']['p'])
+        sleep(2)
+        zc.move_arm('p', zaber_config['home']['p'])
+        sleep(2)
 
-        # print('Dispense height')
-        # zc.move_arm('p', pick_config['pipette']['stage']['dispense']['p'])
-        # sleep(2)
-        # zc.move_arm('p', zaber_config['home']['p'])
-        # sleep(2)
+        print('Dispense height')
+        zc.move_arm('p', pick_config['pipette']['stage']['dispense']['p'])
+        sleep(2)
+        zc.move_arm('p', zaber_config['home']['p'])
+        sleep(2)
 
-        # print('Test complete')
+        print('Test complete')
         zc.disconnect()
 
     return proceed
