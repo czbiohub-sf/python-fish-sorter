@@ -1,8 +1,13 @@
 import logging
-import napari
-import napari_micromanager
 import numpy as np
 import os
+
+from fish_sorter.paths import MM_DIR
+os.environ['MICROMANAGER_PATH'] = MM_DIR
+
+import napari
+import napari_micromanager
+
 import pymmcore_plus
 import argparse
 import types
@@ -10,16 +15,12 @@ import types
 from pathlib import Path
 from useq import MDASequence, Position
 
-from fish_sorter.paths import MM_DIR
 
 # For simulation
 try:
     from mda_simulator.mmcore import FakeDemoCamera
 except ModuleNotFoundError:
     FakeDemoCamera = None
-
-os.environ['MICROMANAGER_PATH'] = MM_DIR
-# micromanager_path = os.environ.get('MICROMANAGER_PATH')
 
 
 class nmm:
