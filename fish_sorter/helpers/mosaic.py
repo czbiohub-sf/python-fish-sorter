@@ -9,7 +9,7 @@ from typing import cast
 from useq import MDASequence, Position, GridFromEdges
 from useq._iter_sequence import _used_axes, _iter_axis, _parse_axes
 
-from fish_sorter.constants import CAM_X_PX, CAM_Y_PX
+from fish_sorter.constants import CAM_X_PX, CAM_Y_PX, MIRROR_X
 
 # TODO is there an easier way to get the mosaic positions?
 
@@ -162,10 +162,14 @@ class Mosaic:
 
         return num_rows, num_cols, num_chan, chan_names, overlap
 
-    def get_img(self, zarr, row, col):
+    def get_img(self, zarr, row, col, mirror_x = MIRROR_X):
         """Get img for a given row and column"""
         idx = int(self.grid_list[col, row, 0])
-        return zarr[0, idx, :, :, :]
+        img = zarr[0, idx, :, :, :]
+        if mirror_x:
+            return np.flip(img, axis=2)
+        else:
+            return img
 
     def stitch_mosaic(self, sequence : MDASequence, img_arr):
         """
