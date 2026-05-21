@@ -20,9 +20,9 @@
             "description": "The max stage axis position in mm"
         },
         "max_speed": {
-            "x": 1800000,
-            "y": 1800000,
-            "p": 1000000,
+            "x": 1500000,
+            "y": 1500000,
+            "p": 500000,
             "description": "The speed of the stages for all general movements in command data units"
         }
     }
