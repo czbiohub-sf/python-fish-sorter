@@ -52,6 +52,8 @@ class PickingPipette():
 
         self.pipettor_cfg = hardware_dir / 'picker_config.json'
 
+        self.piezo(state=True) # Open piezo valve by default
+
         self.connect(zc=zc)
 
     def connect(self, zc=None, env='prod'):
@@ -179,6 +181,32 @@ class PickingPipette():
         else:
             func_code = self.hardware_data['pneumatic_config']['function_codes']['vac_off']
             logging.info(f'Setting Vacuum Off with function code {func_code}')
+        
+        self._valve_cmd(address_offset, func_code)
+
+    def piezo(self, state: bool=False):
+        """Toggles the piezo valve according to state
+
+        :param state: On/Off state of piezo valve
+        :type state: bool
+        """
+        address_offset = self.hardware_data['pneumatic_config']['register']['func_add_offset']
+
+        logging.info(f'Piezo state requested: {state}')
+        
+        if state:
+            # Return if piezo valve not configured
+            if not 'piezo_on' in self.hardware_data['pneumatic_config']['function_codes']:
+                return
+            func_code = self.hardware_data['pneumatic_config']['function_codes']['piezo_on']
+            logging.info(f'Setting Piezo On with function code {func_code}')
+        else:
+            # Return if piezo valve not configured
+            if not 'piezo_off' in self.hardware_data['pneumatic_config']['function_codes']:
+                return
+
+            func_code = self.hardware_data['pneumatic_config']['function_codes']['piezo_off']
+            logging.info(f'Setting Piezo Off with function code {func_code}')
         
         self._valve_cmd(address_offset, func_code)
 

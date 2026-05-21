@@ -24,6 +24,8 @@
             "vac_on": 16,
             "vac_off": 17,
             "func_idle": 128,
+            "piezo_off": 0,
+            "piezo_on": 1,
             "description": "Function codes for Wago valve controller states"
         }
     }
