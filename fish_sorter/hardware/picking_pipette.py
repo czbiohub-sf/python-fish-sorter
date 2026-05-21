@@ -52,9 +52,8 @@ class PickingPipette():
 
         self.pipettor_cfg = hardware_dir / 'picker_config.json'
 
-        self.piezo(state=True) # Open piezo valve by default
-
         self.connect(zc=zc)
+        self.piezo(state=True) # Open piezo valve by default
 
     def connect(self, zc=None, env='prod'):
         """Connect to hardware
@@ -86,6 +85,7 @@ class PickingPipette():
         self.zc.home_arm(['x','y'])
         self.move_pipette(pos='pipette_swing')
         self._valve_cmd(self.hardware_data['pneumatic_config']['register']['func_idle_type'], self.hardware_data['pneumatic_config']['function_codes']['idle_atm'])
+        self.piezo(state=False) # Close piezo valve for shutoff
         self.zc.disconnect()
         logging.info('Closed stage connnection')
         self.vc.disconnect()
