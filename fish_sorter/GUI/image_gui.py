@@ -31,16 +31,21 @@ class ImageWidget(QWidget):
         self.viewer = viewer
 
         self.mosaic_btn = QPushButton("Stitch mosaic")
-        self.class_btn = QPushButton("Classify")
+        self.nemo_btn = QPushButton("Finding Nemo")
+        self.dory_btn = QPushButton("Finding Dory")
         self.cross_btn = QPushButton('Crosshairs')
-       
+
+        self.nemo_btn.setToolTip('Threshold-based classification (the original workflow).')
+        self.dory_btn.setToolTip('Embedding + UMAP-based labelling.')
+
         self.crosshair_layer = 'crosshairs'
         self.cross_btn.setToolTip('Toggle crosshairs')
         self.cross_btn.clicked.connect(self._toggle_crosshairs)
 
         layout = QHBoxLayout()
         layout.addWidget(self.mosaic_btn)
-        layout.addWidget(self.class_btn)
+        layout.addWidget(self.nemo_btn)
+        layout.addWidget(self.dory_btn)
         layout.addWidget(self.cross_btn)
         self.setLayout(layout)
         

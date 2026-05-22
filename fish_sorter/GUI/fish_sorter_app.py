@@ -13,6 +13,7 @@ from pathlib import Path
 from qtpy.QtWidgets import (
     QGroupBox,
     QHBoxLayout,
+    QMessageBox,
     QTabWidget,
     QVBoxLayout,
     QWidget
@@ -122,7 +123,8 @@ class FishSorter:
         self.dw.setWidget(self.wrap_widget)
 
         self.img_tools.mosaic_btn.clicked.connect(self.run)
-        self.img_tools.class_btn.clicked.connect(self.run_class)
+        self.img_tools.nemo_btn.clicked.connect(self.run_nemo)
+        self.img_tools.dory_btn.clicked.connect(self.run_dory)
         self.core.events.pixelSizeChanged.connect(self.main_mag)
 
         self.main_mag()
@@ -137,10 +139,16 @@ class FishSorter:
         if 'crosshairs' in self.v.layers:
             self.img_tools._create_crosshairs()
 
-    def run_class(self):
-        """Classification GUI startup from image widget class_btn
+    def _ensure_classify(self):
+        """Return a live `Classify` instance, creating one if needed.
+
+        If a prior instance exists and all of its docks are still present,
+        raise them and return. Otherwise tear down the stale instance and
+        construct a fresh one. Shared by `run_nemo` and (eventually) `run_dory`
+        so both classify workflows see the same wells, points layer, and
+        `Classification` side dock.
         """
-            
+
         logging.info('Start Classification')
 
         classify_widget_names = ('Classification', 'Finding Nemo', 'Save')
@@ -159,7 +167,7 @@ class FishSorter:
                     self.v.window._qt_window.activateWindow()
                     self.v.window._qt_window.raise_()
                     self.v.window._qt_window.setFocus()
-                    return
+                    return self.classify
 
                 logging.info('Not all classify dock instance exists')
                 try:
@@ -175,9 +183,9 @@ class FishSorter:
                 except Exception:
                     pass
                 self.classify = None
-        
+
         self._clear_classify()
-  
+
         sequence = self.mda.value()
         mosaic_metadata = self.mosaic.get_mosaic_metadata(sequence)
 
@@ -194,6 +202,20 @@ class FishSorter:
                     d.destroyed.connect(lambda *_: setattr(self, 'classify', None))
             except Exception as e:
                 logging.info(f'Could not connect destroyed signal for Classification dock widget {n}: {e}')
+
+        return self.classify
+
+    def run_nemo(self):
+        """Finding Nemo: threshold-based classification (the original workflow)."""
+        self._ensure_classify()
+
+    def run_dory(self):
+        """Finding Dory: embedding-based labelling (stub — implemented in a later chunk)."""
+        QMessageBox.information(
+            self.v.window._qt_window,
+            "Finding Dory",
+            "Finding Dory is coming soon.",
+        )
 
     def setup_picker(self):
         """After collecting required setup information, setup the picker
@@ -361,7 +383,7 @@ class FishSorter:
             logging.info(f'Saved layer {layer}')
 
         logging.info('Ready to classify')
-        self.run_class()
+        self.run_nemo()
     
     def _clear_classify(self):
         """Helper function to remove any classification widgets/layers from viewer if 
