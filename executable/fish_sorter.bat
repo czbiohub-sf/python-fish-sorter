@@ -38,6 +38,6 @@ if not exist "fish_sorter/GUI/fish_sorter_app.py" (
  echo Could not find fish_sorter/GUI/fish_sorter_app.py relative to "%cd%".
  pause & exit /b 1
 )
-set QT_OPENGL=angle
+set QT_OPENGL=software
 uv run python fish_sorter/GUI/fish_sorter_app.py
 pause
