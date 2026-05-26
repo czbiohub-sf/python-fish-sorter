@@ -1,0 +1,41 @@
+{
+  "dinov3_repo_path": "/PATH/TO/dinov3",
+  "dinov3_weights_dir": "/PATH/TO/dinov3_weights",
+  "device": "auto",
+  "fish_line_fallback": "unknown",
+  "umap": { "n_neighbors": 15, "min_dist": 0.1 },
+  "clustering": {
+    "method": "hdbscan",
+    "params": { "min_cluster_size": 10, "min_samples": null }
+  },
+  "pick_type_to_mode": {
+    "larvae": "fish",
+    "eggs": "egg"
+  },
+  "models": {
+    "fish": {
+      "checkpoint_path": "/PATH/TO/fish/best.ckpt",
+      "model_arch": "dinov3_vits16",
+      "embedding_dim": 384,
+      "pooling": "gem",
+      "crop_size": [416, 1808],
+      "resize_to": null,
+      "contrast": {
+        "BF":     { "low_percentile": 0.1, "high_percentile": 99.9,  "asinh_knee": 0.0, "adaptive_high": false },
+        "_FLUOR": { "low_percentile": 0.5, "high_percentile": 99.97, "asinh_knee": 5.0, "adaptive_high": true,  "high_gate_percentile": 99.5, "high_trim_percentile": 99.99 }
+      }
+    },
+    "egg": {
+      "checkpoint_path": "/PATH/TO/egg/best.ckpt",
+      "model_arch": "dinov3_vits16",
+      "embedding_dim": 384,
+      "pooling": "gem",
+      "crop_size": [672, 672],
+      "resize_to": null,
+      "contrast": {
+        "BF":     { "low_percentile": 0.1, "high_percentile": 99.9,  "asinh_knee": 0.0, "adaptive_high": false },
+        "_FLUOR": { "low_percentile": 0.5, "high_percentile": 99.95, "asinh_knee": 5.0, "adaptive_high": true,  "high_gate_percentile": 99.5, "high_trim_percentile": 99.99 }
+      }
+    }
+  }
+}
