@@ -9,9 +9,15 @@ first-time-setup dialog create it for you via file pickers.
 
 1. **A trained model checkpoint (`best.ckpt`)** for each mode (egg / fish)
    you plan to use. These come from the zebra-classify training pipeline.
-2. **The DINOv3 git repo** cloned locally (needed by `torch.hub.load`).
-3. **The DINOv3 pretrained weights** (e.g. `dinov3_vits16.pth`) placed in
-   a single directory.
+2. **The DINOv3 git repo** cloned locally (needed by `torch.hub.load` to
+   construct the ViT class — it loads Python source, not weights, so the
+   clone is small).
+3. (**Optional**) **The DINOv3 pretrained weights** (e.g. `dinov3_vits16.pth`).
+   These are only used as a fallback for keys your trained checkpoint
+   doesn't cover. A normal BYOL checkpoint covers the entire backbone, so
+   you can leave `dinov3_weights_dir: null` in the config and skip this
+   download. Watch the load log: if `missing_keys` is large (hundreds, not
+   <10), point at a weights dir as a backstop.
 
 Finding Dory does not download anything. If a path is wrong, the GUI will
 prompt you to pick the right file.

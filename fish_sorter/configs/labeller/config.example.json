@@ -1,6 +1,6 @@
 {
   "dinov3_repo_path": "/PATH/TO/dinov3",
-  "dinov3_weights_dir": "/PATH/TO/dinov3_weights",
+  "dinov3_weights_dir": null,
   "device": "auto",
   "fish_line_fallback": "unknown",
   "umap": { "n_neighbors": 15, "min_dist": 0.1 },

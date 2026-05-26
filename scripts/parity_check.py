@@ -53,6 +53,32 @@ def _cosine(a: np.ndarray, b: np.ndarray) -> np.ndarray:
     return (a * b).sum(axis=1) / np.maximum(na * nb, 1e-12)
 
 
+def _load_reference_embedding(path: str, ch: str):
+    """Load a (N, D) reference embedding for `ch` from `.npy` or `.npz`.
+
+    `.npy`: assumed to be the raw (N, D) array.
+    `.npz`: looked up by key `emb_<ch>` first, falling back to the only key
+            present if there's just one.
+    """
+    p = Path(path)
+    if not p.exists():
+        print(f"[{ch}] FAIL: reference file not found: {path}", file=sys.stderr)
+        return None
+    if p.suffix == ".npy":
+        return np.load(path).astype(np.float32)
+    with np.load(path) as ref:
+        key = f"emb_{ch}"
+        if key in ref.files:
+            return ref[key].astype(np.float32)
+        if len(ref.files) == 1:
+            return ref[ref.files[0]].astype(np.float32)
+        print(
+            f"[{ch}] FAIL: {path} has no key {key!r}; available: {ref.files}",
+            file=sys.stderr,
+        )
+        return None
+
+
 def main() -> int:
     ap = argparse.ArgumentParser(description="fish-sorter vs zebra embedding parity")
     ap.add_argument("--config", required=True, help="Path to parity.json")
@@ -86,13 +112,10 @@ def main() -> int:
         if ref_path is None:
             print(f"[{ch}] skipped — no zebra reference configured")
             continue
-        with np.load(ref_path) as ref:
-            key = f"emb_{ch}"
-            if key not in ref.files:
-                print(f"[{ch}] FAIL: {ref_path} has no key {key!r}; available: {ref.files}", file=sys.stderr)
-                any_fail = True
-                continue
-            ref_emb = ref[key].astype(np.float32)
+        ref_emb = _load_reference_embedding(ref_path, ch)
+        if ref_emb is None:
+            any_fail = True
+            continue
         if ref_emb.shape != ours_emb.shape:
             print(
                 f"[{ch}] FAIL: shape mismatch ours={ours_emb.shape} vs zebra={ref_emb.shape}. "
