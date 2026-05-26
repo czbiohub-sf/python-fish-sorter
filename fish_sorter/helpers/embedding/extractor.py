@@ -155,24 +155,50 @@ class EmbeddingExtractor:
             ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
         sd = ckpt.get("state_dict", ckpt) if isinstance(ckpt, dict) else ckpt
 
-        # Lightning saves the FishDINOv3 under "online_network.backbone." for BYOL.
-        # If a different training entry point is used, callers can adjust by
-        # passing a pre-stripped state_dict via the config in the future.
-        prefix = "online_network.backbone."
-        stripped = {k[len(prefix):]: v for k, v in sd.items() if k.startswith(prefix)}
-        if not stripped:
-            # Maybe the ckpt is already at the FishDINOv3 root — try as-is.
-            log.warning(
-                f"No keys with prefix {prefix!r} in checkpoint. "
-                f"Loading raw state_dict (strict=False)."
-            )
-            stripped = dict(sd)
+        # Try common prefixes; pick whichever gives a non-empty stripped dict.
+        # Lightning typically saves the FishDINOv3 under "online_network.backbone."
+        # for BYOL, but other entry points can wrap differently.
+        candidate_prefixes = (
+            "online_network.backbone.",
+            "model.online_network.backbone.",
+            "module.online_network.backbone.",
+            "backbone.",
+            "",  # already at FishDINOv3 root
+        )
+        stripped: Dict = {}
+        chosen = ""
+        if sd:
+            for prefix in candidate_prefixes:
+                sub = {k[len(prefix):]: v for k, v in sd.items() if k.startswith(prefix)}
+                if sub:
+                    stripped = sub
+                    chosen = prefix
+                    break
+            if not stripped:
+                log.error(
+                    f"No candidate prefix matched any keys. First 10 ckpt keys: "
+                    f"{list(sd.keys())[:10]}"
+                )
+                raise RuntimeError("Could not find a usable key prefix in checkpoint.")
 
         result = self.backbone.load_state_dict(stripped, strict=False)
-        if result.missing_keys:
-            log.info(f"Checkpoint missing {len(result.missing_keys)} keys (expected for training-only heads).")
-        if result.unexpected_keys:
-            log.info(f"Checkpoint had {len(result.unexpected_keys)} unexpected keys (likely BYOL projector/predictor).")
+        log.info(
+            f"checkpoint loaded with prefix={chosen!r}: "
+            f"{len(stripped) - len(result.unexpected_keys)} keys applied, "
+            f"{len(result.missing_keys)} missing, "
+            f"{len(result.unexpected_keys)} unexpected"
+        )
+        # Loud diagnostic: if nearly nothing loaded, the prefix is wrong and
+        # the model is still at random init — embeddings will be meaningless.
+        backbone_param_count = sum(1 for _ in self.backbone.state_dict())
+        applied = len(stripped) - len(result.unexpected_keys)
+        if applied < backbone_param_count * 0.5:
+            log.warning(
+                f"Only {applied}/{backbone_param_count} backbone params got "
+                f"weights from the ckpt — the model is mostly at random init. "
+                f"Embeddings will not match a properly-trained reference. "
+                f"First 10 ckpt keys: {list(sd.keys())[:10]}"
+            )
 
     # -- public API ----------------------------------------------------------
 

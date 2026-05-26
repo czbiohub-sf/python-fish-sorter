@@ -93,6 +93,13 @@ def _load_reference_embedding(path: str, ch: str):
 def main() -> int:
     ap = argparse.ArgumentParser(description="fish-sorter vs zebra embedding parity")
     ap.add_argument("--config", required=True, help="Path to parity.json")
+    ap.add_argument(
+        "--limit",
+        type=int,
+        default=None,
+        help="Embed only the first N wells (matches the first N rows of zebra's "
+        "embedding too). Use a small N (1-10) for a quick parity sanity check.",
+    )
     args = ap.parse_args()
 
     with open(args.config) as f:
@@ -139,10 +146,23 @@ def main() -> int:
     well_indices_to_embed = None
     if indices_path:
         well_indices_to_embed = np.load(indices_path).astype(np.int64)
-        print(
-            f"Filtering to {len(well_indices_to_embed)} wells "
+        log.info(
+            f"filtering to {len(well_indices_to_embed)} wells "
             f"(of {len(well_centers)} total) per {indices_path}"
         )
+
+    if args.limit is not None:
+        n_orig = (
+            len(well_indices_to_embed)
+            if well_indices_to_embed is not None
+            else len(well_centers)
+        )
+        n_keep = min(args.limit, n_orig)
+        if well_indices_to_embed is not None:
+            well_indices_to_embed = well_indices_to_embed[:n_keep]
+        else:
+            well_indices_to_embed = np.arange(n_keep, dtype=np.int64)
+        log.info(f"--limit {args.limit}: embedding first {n_keep} wells only")
 
     ours, idx_by_ch = extractor.extract_from_mosaic(
         mosaics=mosaics,
@@ -161,6 +181,8 @@ def main() -> int:
         if ref_emb is None:
             any_fail = True
             continue
+        if args.limit is not None:
+            ref_emb = ref_emb[: args.limit]
         if ref_emb.shape != ours_emb.shape:
             print(
                 f"[{ch}] FAIL: shape mismatch ours={ours_emb.shape} vs zebra={ref_emb.shape}.\n"
