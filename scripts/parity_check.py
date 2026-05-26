@@ -100,10 +100,24 @@ def main() -> int:
     well_centers = np.load(parity["well_centers_npy"])
     well_crop_px = tuple(parity["well_crop_px"])
 
-    ours, _ = extractor.extract_from_mosaic(
+    # If zebra filtered out empty wells before embedding, its embedding array is
+    # shorter than well_centers. Point this at the (M,) int array of indices
+    # into well_centers that zebra kept (usually saved as idx_<ch> in zebra's
+    # cache .npz, or `np.where(classification_csv['empty'] == 0)[0]`).
+    indices_path = parity.get("well_indices_npy")
+    well_indices_to_embed = None
+    if indices_path:
+        well_indices_to_embed = np.load(indices_path).astype(np.int64)
+        print(
+            f"Filtering to {len(well_indices_to_embed)} wells "
+            f"(of {len(well_centers)} total) per {indices_path}"
+        )
+
+    ours, idx_by_ch = extractor.extract_from_mosaic(
         mosaics=mosaics,
         well_centers_px=well_centers,
         well_crop_px=well_crop_px,
+        well_indices_to_embed=well_indices_to_embed,
     )
 
     any_fail = False
@@ -118,8 +132,11 @@ def main() -> int:
             continue
         if ref_emb.shape != ours_emb.shape:
             print(
-                f"[{ch}] FAIL: shape mismatch ours={ours_emb.shape} vs zebra={ref_emb.shape}. "
-                "Same array JSON / well ordering?",
+                f"[{ch}] FAIL: shape mismatch ours={ours_emb.shape} vs zebra={ref_emb.shape}.\n"
+                f"  If zebra filtered empty wells before embedding "
+                f"(typical for `fish-classify analyze`), populate the "
+                f"`well_indices_npy` field in parity.json with the indices zebra kept "
+                f"so fish-sorter embeds the same subset in the same order.",
                 file=sys.stderr,
             )
             any_fail = True
