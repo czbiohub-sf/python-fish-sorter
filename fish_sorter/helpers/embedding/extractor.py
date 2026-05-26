@@ -111,8 +111,22 @@ class EmbeddingExtractor:
         if not Path(ckpt_path).exists():
             raise FileNotFoundError(f"Model checkpoint not found at {ckpt_path}")
         log.info(f"Loading checkpoint: {ckpt_path}")
-        ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-        sd = ckpt.get("state_dict", ckpt)
+        # weights_only=True restricts the unpickler to tensors + plain Python
+        # types — avoids importing training-time classes (torchmetrics,
+        # pytorch-lightning hyperparameter objects, etc.) that aren't installed
+        # in this venv. Fall back to a full load if the ckpt has objects the
+        # safe loader rejects; in that case the user will need the relevant
+        # training deps installed.
+        try:
+            ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=True)
+        except Exception as e:
+            log.warning(
+                f"weights_only=True load failed ({type(e).__name__}: {e}); "
+                f"falling back to full pickle load. If this raises "
+                f"ModuleNotFoundError, install the named training dep in this venv."
+            )
+            ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
+        sd = ckpt.get("state_dict", ckpt) if isinstance(ckpt, dict) else ckpt
 
         # Lightning saves the FishDINOv3 under "online_network.backbone." for BYOL.
         # If a different training entry point is used, callers can adjust by
