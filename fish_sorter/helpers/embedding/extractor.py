@@ -35,9 +35,33 @@ log = logging.getLogger(__name__)
 
 
 def _resolve_device(device_arg: str) -> torch.device:
-    """Map `device_arg` ('auto' | 'cuda' | 'mps' | 'cpu') to a torch.device."""
+    """Map `device_arg` ('auto' | 'cuda' | 'mps' | 'cpu') to a torch.device.
+
+    Explicit choices (`cuda` / `mps`) are validated up-front; if the requested
+    accelerator isn't available, we raise instead of silently falling back —
+    you almost certainly don't want a CPU inference run by accident.
+    """
+    if device_arg == "cuda":
+        if not torch.cuda.is_available():
+            raise RuntimeError(
+                "config device='cuda' but CUDA is not available. "
+                "Check NVIDIA driver + torch CUDA wheel install, or set device='auto' "
+                "(falls back to MPS or CPU) or device='cpu'."
+            )
+        return torch.device("cuda")
+    if device_arg == "mps":
+        if not (getattr(torch.backends, "mps", None) is not None
+                and torch.backends.mps.is_available()):
+            raise RuntimeError(
+                "config device='mps' but MPS is not available. "
+                "Set device='auto' or device='cpu' instead."
+            )
+        return torch.device("mps")
+    if device_arg == "cpu":
+        return torch.device("cpu")
     if device_arg != "auto":
         return torch.device(device_arg)
+    # 'auto': prefer cuda > mps > cpu
     if torch.cuda.is_available():
         return torch.device("cuda")
     if getattr(torch.backends, "mps", None) is not None and torch.backends.mps.is_available():
@@ -66,7 +90,9 @@ class EmbeddingExtractor:
         self.resize_to: Optional[Tuple[int, int]] = (
             tuple(resize_to) if resize_to is not None else None
         )
-        self.device = _resolve_device(cfg.get("device", "auto"))
+        device_arg = cfg.get("device", "auto")
+        self.device = _resolve_device(device_arg)
+        log.info(f"EmbeddingExtractor device: {self.device} (config: {device_arg!r})")
         self.batch_size = batch_size or _BATCH_DEFAULTS.get(self.device.type, 8)
 
         # Per-channel contrast bundles.

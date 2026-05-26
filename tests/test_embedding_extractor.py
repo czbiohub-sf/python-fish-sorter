@@ -19,6 +19,7 @@ from fish_sorter.helpers.embedding.extractor import (
     EmbeddingExtractor,
     _center_crop,
     _crop_wells_uint16,
+    _resolve_device,
     load_config,
 )
 from fish_sorter.helpers.embedding.normalize import (
@@ -118,6 +119,36 @@ def test_center_crop_larger_target_pads():
     # Center should still be 7; edges should be 0.
     assert out[0, 4, 4] == 7.0
     assert out[0, 0, 0] == 0.0
+
+
+# ---------------------------------------------------------------------------
+# Device resolution
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_device_cpu_is_always_available():
+    assert _resolve_device("cpu").type == "cpu"
+
+
+def test_resolve_device_cuda_raises_when_unavailable(monkeypatch):
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    with pytest.raises(RuntimeError, match="CUDA is not available"):
+        _resolve_device("cuda")
+
+
+def test_resolve_device_mps_raises_when_unavailable(monkeypatch):
+    # Force mps unavailable regardless of host
+    fake_mps = type("F", (), {"is_available": staticmethod(lambda: False)})()
+    monkeypatch.setattr(torch.backends, "mps", fake_mps, raising=False)
+    with pytest.raises(RuntimeError, match="MPS is not available"):
+        _resolve_device("mps")
+
+
+def test_resolve_device_auto_falls_back_cleanly(monkeypatch):
+    monkeypatch.setattr(torch.cuda, "is_available", lambda: False)
+    fake_mps = type("F", (), {"is_available": staticmethod(lambda: False)})()
+    monkeypatch.setattr(torch.backends, "mps", fake_mps, raising=False)
+    assert _resolve_device("auto").type == "cpu"
 
 
 # ---------------------------------------------------------------------------
