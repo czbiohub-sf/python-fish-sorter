@@ -18,6 +18,7 @@ from __future__ import annotations
 
 import json
 import logging
+import time
 from pathlib import Path
 from typing import Callable, Dict, List, Optional, Tuple
 
@@ -231,15 +232,43 @@ class EmbeddingExtractor:
                 raise TypeError(
                     f"Channel {channel_name!r}: expected uint16 mosaic, got {mosaic.dtype}"
                 )
+            ch_t0 = time.perf_counter()
+            log.info(f"[{channel_name}] mosaic shape={mosaic.shape} dtype={mosaic.dtype}")
+
             cfg = self.contrast_for(channel_name)
+            t0 = time.perf_counter()
             low, high = compute_channel_stats(mosaic, cfg)
+            log.info(
+                f"[{channel_name}] percentiles low={low:.1f} high={high:.1f} "
+                f"asinh_knee={cfg.asinh_knee} ({time.perf_counter()-t0:.2f}s)"
+            )
+
+            t0 = time.perf_counter()
             crops_u16 = _crop_wells_uint16(mosaic, well_centers_px[keep], slot_h, slot_w)
+            log.info(
+                f"[{channel_name}] cropped {len(keep)} wells "
+                f"(slot {slot_h}x{slot_w}, buf {crops_u16.nbytes/1e6:.1f} MB, "
+                f"{time.perf_counter()-t0:.2f}s)"
+            )
+
+            t0 = time.perf_counter()
             crops_f32 = apply_normalization(crops_u16, low, high, cfg.asinh_knee)
             crops_f32 = _center_crop(crops_f32, target_h, target_w)
+            log.info(
+                f"[{channel_name}] normalized + center-cropped to {target_h}x{target_w} "
+                f"({time.perf_counter()-t0:.2f}s)"
+            )
 
-            embeddings = self._forward(crops_f32)
+            t0 = time.perf_counter()
+            embeddings = self._forward(crops_f32, log_prefix=f"[{channel_name}]")
+            log.info(
+                f"[{channel_name}] forward pass {embeddings.shape} "
+                f"({time.perf_counter()-t0:.2f}s total)"
+            )
+
             per_channel_embeddings[channel_name] = embeddings
             per_channel_indices[channel_name] = keep.copy()
+            log.info(f"[{channel_name}] DONE ({time.perf_counter()-ch_t0:.2f}s)")
 
             step += 1
             if progress_cb is not None:
@@ -249,7 +278,7 @@ class EmbeddingExtractor:
 
     # -- forward pass --------------------------------------------------------
 
-    def _forward(self, crops: np.ndarray) -> np.ndarray:
+    def _forward(self, crops: np.ndarray, log_prefix: str = "") -> np.ndarray:
         """Run the backbone over `crops` of shape (N, H, W) float32 in [0, 1]."""
         n = crops.shape[0]
         out: List[np.ndarray] = []
@@ -262,7 +291,15 @@ class EmbeddingExtractor:
             autocast_dtype = torch.bfloat16
         # MPS stays fp32 (autocast for ViT is still flaky).
 
-        for start in range(0, n, bs):
+        n_batches = (n + bs - 1) // bs
+        log.info(
+            f"{log_prefix} forward: {n} wells, batch_size={bs}, "
+            f"{n_batches} batches on {self.device} "
+            f"(autocast={autocast_dtype})"
+        )
+
+        for batch_idx, start in enumerate(range(0, n, bs), start=1):
+            t0 = time.perf_counter()
             batch = crops[start : start + bs]
             x = torch.from_numpy(batch).unsqueeze(1)  # (B, 1, H, W)
             x = x.to(self.device, non_blocking=True)
@@ -272,7 +309,15 @@ class EmbeddingExtractor:
                         emb = self.backbone(x)
                 else:
                     emb = self.backbone(x)
+            if self.device.type == "cuda":
+                torch.cuda.synchronize()
             out.append(emb.float().cpu().numpy())
+            dt = time.perf_counter() - t0
+            log.info(
+                f"{log_prefix}  batch {batch_idx}/{n_batches} "
+                f"({batch.shape[0]} wells) in {dt:.2f}s "
+                f"→ {batch.shape[0]/dt:.1f} wells/s"
+            )
         if not out:
             return np.zeros((0, self.backbone.get_embedding_dim()), dtype=np.float32)
         return np.concatenate(out, axis=0)

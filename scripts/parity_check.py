@@ -38,13 +38,24 @@ from __future__ import annotations
 
 import argparse
 import json
+import logging
 import sys
+import time
 from pathlib import Path
 
 import numpy as np
+import torch
 from tifffile import imread
 
 from fish_sorter.helpers.embedding.extractor import EmbeddingExtractor, load_config
+
+logging.basicConfig(
+    level=logging.INFO,
+    format="%(asctime)s [%(levelname)s] %(name)s: %(message)s",
+    datefmt="%H:%M:%S",
+    stream=sys.stdout,
+)
+log = logging.getLogger("parity")
 
 
 def _cosine(a: np.ndarray, b: np.ndarray) -> np.ndarray:
@@ -87,15 +98,35 @@ def main() -> int:
     with open(args.config) as f:
         parity = json.load(f)
     threshold = float(parity.get("threshold", 0.999))
+    log.info(f"parity config: {args.config}")
+    log.info(f"threshold: {threshold}")
 
+    log.info(f"torch={torch.__version__} cuda_available={torch.cuda.is_available()}")
+    if torch.cuda.is_available():
+        log.info(f"cuda device: {torch.cuda.get_device_name(0)}")
+
+    t0 = time.perf_counter()
     fs_cfg = load_config(Path(parity["fish_sorter_config"]))
+    log.info(f"labeller config loaded from {parity['fish_sorter_config']}")
     extractor = EmbeddingExtractor(fs_cfg, mode=parity["mode"])
+    log.info(
+        f"EmbeddingExtractor constructed ({time.perf_counter()-t0:.2f}s); "
+        f"device={extractor.device}, batch_size={extractor.batch_size}, "
+        f"crop_size={extractor.crop_size}"
+    )
 
-    mosaics = {ch: imread(path) for ch, path in parity["mosaics"].items()}
-    for ch, m in mosaics.items():
+    mosaics = {}
+    for ch, path in parity["mosaics"].items():
+        t0 = time.perf_counter()
+        m = imread(path)
+        log.info(
+            f"loaded mosaic {ch} from {path} "
+            f"shape={m.shape} dtype={m.dtype} ({time.perf_counter()-t0:.2f}s)"
+        )
         if m.dtype != np.uint16:
-            print(f"FAIL: channel {ch} mosaic is {m.dtype}, expected uint16", file=sys.stderr)
+            log.error(f"channel {ch} mosaic is {m.dtype}, expected uint16")
             return 1
+        mosaics[ch] = m
 
     well_centers = np.load(parity["well_centers_npy"])
     well_crop_px = tuple(parity["well_crop_px"])
