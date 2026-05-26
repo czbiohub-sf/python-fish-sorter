@@ -12,7 +12,7 @@ authors = [{ name = "CZ Biohub SF - Diane Wiener & Michelle Khoo" }]
 license = { text = "BSD 3-Clause License, CERN Open Hardware Licence Version 2 - Weakly Reciprocal" }
 
 dependencies = [
-  "numpy==1.26.4",
+  "numpy>=1.26.4,<3",
   "scipy==1.15.1",
   "pandas==2.2.3",
   "scikit-image==0.25.1",
@@ -55,3 +55,18 @@ include = ["fish_sorter", "fish_sorter.*"]
 
 [project.optional-dependencies]
 dev = ["pytest", "pytest-cov", "ruff", "mypy"]
+
+# CUDA-enabled torch wheel on Linux/Windows; default PyPI (CPU/MPS) on macOS.
+# Bump the index URL if PyTorch publishes a cu13x wheel for your torch version.
+[[tool.uv.index]]
+name = "pytorch-cuda"
+url = "https://download.pytorch.org/whl/cu121"
+explicit = true
+
+[tool.uv.sources]
+torch = [
+  { index = "pytorch-cuda", marker = "sys_platform != 'darwin'" },
+]
+torchvision = [
+  { index = "pytorch-cuda", marker = "sys_platform != 'darwin'" },
+]
