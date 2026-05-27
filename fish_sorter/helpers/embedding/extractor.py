@@ -95,6 +95,10 @@ class EmbeddingExtractor:
         self.device = _resolve_device(device_arg)
         log.info(f"EmbeddingExtractor device: {self.device} (config: {device_arg!r})")
         self.batch_size = batch_size or _BATCH_DEFAULTS.get(self.device.type, 8)
+        # Default True for speed; set false at top-level config to force fp32
+        # forward (useful for parity checks or on Pascal where fp16 has no
+        # Tensor Core acceleration anyway).
+        self.use_autocast = bool(cfg.get("autocast", True))
 
         # Per-channel contrast bundles.
         contrast_block = model_cfg.get("contrast", {})
@@ -335,11 +339,12 @@ class EmbeddingExtractor:
         bs = self.batch_size
 
         autocast_dtype = None
-        if self.device.type == "cuda":
-            autocast_dtype = torch.float16
-        elif self.device.type == "cpu":
-            autocast_dtype = torch.bfloat16
-        # MPS stays fp32 (autocast for ViT is still flaky).
+        if self.use_autocast:
+            if self.device.type == "cuda":
+                autocast_dtype = torch.float16
+            elif self.device.type == "cpu":
+                autocast_dtype = torch.bfloat16
+            # MPS stays fp32 (autocast for ViT is still flaky).
 
         n_batches = (n + bs - 1) // bs
         log.info(
