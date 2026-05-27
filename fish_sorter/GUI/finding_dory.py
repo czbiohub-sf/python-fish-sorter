@@ -579,24 +579,38 @@ def _build_finding_dory():
         def _start_embedding(self):
             self.status_signal.emit("Loading model…")
 
-            # If Finding Nemo has already populated `singlet` on the shared
-            # points_layer (i.e. the user ran find_fish before clicking Finding
-            # Dory), use those flags to skip empty wells during embedding.
-            # Otherwise embed every well.
             self._keep_indices: Optional[np.ndarray] = None
             try:
                 feat = self.classify.points_layer.features
+                # If Finding Nemo hasn't already populated singlet, run
+                # find_fish here ourselves — it's just intensity thresholding,
+                # not the model, so it's fast (~1s) and avoids the manual
+                # button click.
+                already_run = (
+                    "singlet" in feat.columns
+                    and np.asarray(feat["singlet"], dtype=bool).any()
+                )
+                if not already_run:
+                    self.status_label.setText("Finding fish (intensity threshold)…")
+                    try:
+                        self.classify.find_fish(self.classify._points())
+                    except Exception as e:
+                        log.warning(f"auto find_fish failed: {e}; embedding all wells.")
+                    feat = self.classify.points_layer.features  # refresh after find_fish
+
                 if "singlet" in feat.columns:
                     mask = np.asarray(feat["singlet"], dtype=bool)
                     if mask.any():
                         keep = np.where(mask)[0].astype(np.int64)
                         self._keep_indices = keep
                         log.info(
-                            f"using points_layer.features['singlet'] from Finding Nemo: "
-                            f"{len(keep)} of {len(self.well_ids)} wells will be embedded."
+                            f"embedding {len(keep)} of {len(self.well_ids)} wells "
+                            f"(filtered by singlet from Finding Nemo)."
                         )
+                    else:
+                        log.info("no singlets detected; embedding all wells.")
             except Exception as e:
-                log.warning(f"singlet lookup from points_layer skipped: {e}; embedding all wells.")
+                log.warning(f"singlet pre-filter skipped: {e}; embedding all wells.")
 
             # lHead values also come from Finding Nemo's pass (via find_orientation
             # chained off find_fish). Refresh here so Save can include them.
@@ -607,32 +621,55 @@ def _build_finding_dory():
             self.future.add_done_callback(self._on_future_done)
 
         def _embed_threaded(self):
-            """Heavy work: build extractor, embed every channel, UMAP for current."""
-            self.status_signal.emit("Loading checkpoint…")
-            extractor = EmbeddingExtractor(self.cfg, mode=self.mode)
-            self.status_signal.emit("Computing embeddings…")
+            """Heavy work: build extractor, embed every channel, UMAP for current.
 
-            mosaics: Dict[str, np.ndarray] = {}
-            for layer in self.viewer.layers:
-                if not isinstance(layer, napari.layers.Image):
-                    continue
-                if layer.name not in self.channels:
-                    continue
-                mosaics[layer.name] = np.asarray(layer.data)
+            Honors `cfg["dev_mock_embeddings"]=true`, which skips the model
+            forward pass entirely and emits random vectors of the model's
+            output dim. Useful for iterating on the dock UI without waiting
+            tens of minutes per click. Embeddings are meaningless under mock,
+            so clusters and assignments are toy-quality — never enable in
+            production.
+            """
+            mock = bool(self.cfg.get("dev_mock_embeddings", False))
 
-            centers = self.classify._points()
-            well_crop_px = tuple(self.classify.mask.shape)
+            if mock:
+                self.status_signal.emit("Mock embeddings (dev mode)…")
+                n_total = len(self.classify._points())
+                keep = self._keep_indices if self._keep_indices is not None else np.arange(n_total)
+                # Use the configured output dim (FishDINOv3 with gem pooling = 2 * embed_dim).
+                model_cfg = self.cfg["models"][self.mode]
+                emb_dim = 2 * int(model_cfg.get("embedding_dim", 384))
+                rng = np.random.default_rng(0)
+                embeds = {ch: rng.standard_normal((len(keep), emb_dim)).astype(np.float32)
+                          for ch in self.channels}
+                idx = {ch: np.asarray(keep, dtype=np.int64) for ch in self.channels}
+                extractor = None
+            else:
+                self.status_signal.emit("Loading checkpoint…")
+                extractor = EmbeddingExtractor(self.cfg, mode=self.mode)
+                self.status_signal.emit("Computing embeddings…")
 
-            def _progress_cb(step, total):
-                self.progress_signal.emit(step, total)
+                mosaics: Dict[str, np.ndarray] = {}
+                for layer in self.viewer.layers:
+                    if not isinstance(layer, napari.layers.Image):
+                        continue
+                    if layer.name not in self.channels:
+                        continue
+                    mosaics[layer.name] = np.asarray(layer.data)
 
-            embeds, idx = extractor.extract_from_mosaic(
-                mosaics=mosaics,
-                well_centers_px=centers,
-                well_crop_px=well_crop_px,
-                well_indices_to_embed=self._keep_indices,
-                progress_cb=_progress_cb,
-            )
+                centers = self.classify._points()
+                well_crop_px = tuple(self.classify.mask.shape)
+
+                def _progress_cb(step, total):
+                    self.progress_signal.emit(step, total)
+
+                embeds, idx = extractor.extract_from_mosaic(
+                    mosaics=mosaics,
+                    well_centers_px=centers,
+                    well_crop_px=well_crop_px,
+                    well_indices_to_embed=self._keep_indices,
+                    progress_cb=_progress_cb,
+                )
             # UMAP for the currently selected channel only — others lazy.
             xy, cluster_labels = self._compute_umap(embeds[self.current_channel])
 
