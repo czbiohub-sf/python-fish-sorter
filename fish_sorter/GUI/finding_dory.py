@@ -667,6 +667,18 @@ def _build_finding_dory():
                 self.executor.shutdown(wait=False)
             except Exception:
                 pass
+            if self.label_tool is not None:
+                try:
+                    self.label_tool.cleanup()
+                except Exception:
+                    log.exception("label_tool cleanup failed")
+
+        def closeEvent(self, event):
+            # Closing the dock fires the widget's close event before
+            # ``destroyed`` — restore viewer state here so the host's mosaics
+            # and "Well Locations" points become visible again.
+            self.cleanup()
+            super().closeEvent(event)
 
     return FindingDory
 

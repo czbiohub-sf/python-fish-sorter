@@ -284,6 +284,13 @@ def _build_label_tool():
             self.lasso_layer = None
             self._point_size = 0.5
 
+            # On first scatter draw we hide the host's existing layers (the
+            # stitched mosaics and Finding Nemo's well-locations Points) so
+            # the UMAP isn't competing with them for screen space. The prior
+            # visibility is stashed here and restored in ``cleanup``.
+            self._saved_layer_visibility: Dict[int, bool] = {}
+            self._host_layers_hidden = False
+
             self._crop_full_pixmap = None
             self._assign_crop_labels: List[Tuple[QLabel, QLabel, Optional[QPixmap]]] = []
 
@@ -301,6 +308,25 @@ def _build_label_tool():
             ``napari.run()``; the parent app owns the event loop now).
             """
             return self
+
+        def cleanup(self):
+            """Restore the napari viewer to its pre-LabelTool state.
+
+            Called by ``FindingDory.cleanup`` when the parent dock is being
+            torn down. Restores host-layer visibility and removes the top
+            toolbar dock so the user isn't left with orphaned widgets.
+            """
+            try:
+                self._restore_host_layers()
+            except Exception:
+                log.exception("layer visibility restore failed")
+            dock = getattr(self, "_toolbar_dock", None)
+            if dock is not None:
+                try:
+                    self.viewer.window.remove_dock_widget(dock)
+                except Exception:
+                    log.exception("toolbar dock removal failed")
+                self._toolbar_dock = None
 
         # ------------------------------------------------------------------
         # Helpers
@@ -830,6 +856,8 @@ def _build_label_tool():
                     name="UMAP",
                 )
                 self.points_layer.mouse_drag_callbacks.append(self._on_point_click)
+                self._hide_host_layers()
+                self._frame_camera_on_umap(display_coords[valid])
             else:
                 self.points_layer.data = display_coords
                 self.points_layer.face_color = colors
@@ -854,6 +882,53 @@ def _build_label_tool():
                 self._crop_size_slider.setValue(100)
                 self._crop_size_slider.blockSignals(False)
                 self._crop_size_label.setText("100%")
+
+        def _hide_host_layers(self):
+            """Hide pre-existing layers so the UMAP gets the whole canvas.
+
+            Keyed by ``id(layer)`` because layer names can collide and
+            ``viewer.layers`` order can shift. Idempotent.
+            """
+            if self._host_layers_hidden:
+                return
+            for layer in list(self.viewer.layers):
+                if layer is self.points_layer:
+                    continue
+                self._saved_layer_visibility[id(layer)] = bool(layer.visible)
+                layer.visible = False
+            self._host_layers_hidden = True
+
+        def _restore_host_layers(self):
+            """Restore the visibility we stashed in ``_hide_host_layers``."""
+            if not self._host_layers_hidden:
+                return
+            for layer in list(self.viewer.layers):
+                if layer is self.points_layer:
+                    continue
+                prev = self._saved_layer_visibility.get(id(layer))
+                if prev is not None:
+                    layer.visible = prev
+            self._saved_layer_visibility.clear()
+            self._host_layers_hidden = False
+
+        def _frame_camera_on_umap(self, valid_display: np.ndarray):
+            """Center & zoom the napari camera on the UMAP scatter bounds."""
+            if len(valid_display) == 0:
+                return
+            try:
+                y_min, x_min = valid_display.min(axis=0)
+                y_max, x_max = valid_display.max(axis=0)
+                cy = float((y_min + y_max) / 2.0)
+                cx = float((x_min + x_max) / 2.0)
+                extent = float(max(y_max - y_min, x_max - x_min, 1e-6))
+                # Pad ~10% so points at the edge aren't clipped.
+                # Canvas size isn't known here; napari treats zoom as
+                # pixels-per-data-unit, so we approximate with a typical
+                # 800-px canvas and let the user zoom afterwards.
+                self.viewer.camera.center = (cy, cx)
+                self.viewer.camera.zoom = 800.0 / (extent * 1.2)
+            except Exception:
+                log.exception("could not frame camera on UMAP")
 
         def _build_colors(self):
             n = len(self._view_umap)
