@@ -202,6 +202,65 @@ def test_wide_csv_singlet_inference_off(tmp_path):
     assert df["singlet"].tolist() == [0]
 
 
+def test_wide_csv_well_defaults_override_globals(tmp_path):
+    """When `well_defaults` is supplied (Finding Dory's mode), it wins over LabelStore.
+
+    Finding Nemo owns empty/singlet/multiple/deformed/lHead; Finding Dory
+    passes those values through `points_layer.features` and they should appear
+    verbatim in the CSV, even if LabelStore globals say something different.
+    """
+    wells = ["expA_A01", "expA_A02"]
+    store = _make_store(wells)
+    fish_line = "myo6b"
+
+    # LabelStore says A01 is empty — but the points_layer override says otherwise.
+    store.assign(fish_line, "GFP", ["expA_A01"], "empty")
+
+    out = tmp_path / "out.csv"
+    write_wide_csv(
+        store=store,
+        well_order=wells,
+        lhead_map={},
+        channels=["GFP"],
+        fish_line=fish_line,
+        path=str(out),
+        well_defaults={
+            "expA_A01": {"empty": 0, "singlet": 1, "multiple": 0, "deformed": 0, "lHead": 1},
+            "expA_A02": {"empty": 1, "singlet": 0, "multiple": 0, "deformed": 0, "lHead": 0},
+        },
+    )
+    df = pd.read_csv(out).set_index("well_name")
+
+    assert df.loc["A01", "empty"] == 0    # override wins over LabelStore global
+    assert df.loc["A01", "singlet"] == 1
+    assert df.loc["A01", "lHead"] == 1
+    assert df.loc["A02", "empty"] == 1
+
+
+def test_wide_csv_well_defaults_partial_falls_back(tmp_path):
+    """If well_defaults supplies only some columns, the rest follow normal rules."""
+    wells = ["expA_A01"]
+    store = _make_store(wells)
+    fish_line = "myo6b"
+
+    out = tmp_path / "out.csv"
+    write_wide_csv(
+        store=store,
+        well_order=wells,
+        lhead_map={"expA_A01": True},  # fallback for lHead
+        channels=["GFP"],
+        fish_line=fish_line,
+        path=str(out),
+        well_defaults={
+            # Only lHead specified; the rest fall through to defaults.
+            "expA_A01": {"lHead": 0},
+        },
+    )
+    df = pd.read_csv(out).set_index("well_name")
+    assert df.loc["A01", "lHead"] == 0  # explicit override beats lhead_map
+    assert df.loc["A01", "singlet"] == 1  # inferred from no globals
+
+
 def test_wide_csv_row_order_matches_well_order(tmp_path):
     wells = ["expA_B02", "expA_A01", "expA_A02"]
     store = _make_store(wells)

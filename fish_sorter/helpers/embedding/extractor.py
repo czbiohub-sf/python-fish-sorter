@@ -245,7 +245,7 @@ class EmbeddingExtractor:
         """Compute per-channel embeddings for the requested wells.
 
         Args:
-            mosaics: Channel-name → full uint16 mosaic from the napari viewer.
+            mosaics: Channel-name -> full uint16 mosaic from the napari viewer.
             well_centers_px: (N, 2) array of well centers in mosaic pixels,
                 ordered (y, x).
             well_crop_px: (h, w) of the per-well crop drawn from the mosaic,
@@ -371,7 +371,7 @@ class EmbeddingExtractor:
             log.info(
                 f"{log_prefix}  batch {batch_idx}/{n_batches} "
                 f"({batch.shape[0]} wells) in {dt:.2f}s "
-                f"→ {batch.shape[0]/dt:.1f} wells/s"
+                f"-> {batch.shape[0]/dt:.1f} wells/s"
             )
         if not out:
             return np.zeros((0, self.backbone.get_embedding_dim()), dtype=np.float32)

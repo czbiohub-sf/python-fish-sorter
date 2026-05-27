@@ -238,7 +238,11 @@ class FishSorter:
             return
 
         # Lazy import — defers Qt/matplotlib/napari/umap until first click.
-        from fish_sorter.GUI.finding_dory import FindingDory
+        from fish_sorter.GUI.finding_dory import FindingDory, ensure_labeller_config
+
+        # First-time setup if labeller config is missing or unparseable.
+        if not ensure_labeller_config(self.cfg_dir, parent=self.v.window._qt_window):
+            return
 
         try:
             dory = FindingDory(cfg_dir=self.cfg_dir, classify=self.classify)

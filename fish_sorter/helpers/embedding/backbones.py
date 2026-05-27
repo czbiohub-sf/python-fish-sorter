@@ -91,7 +91,7 @@ class FishDINOv3(nn.Module):
     """DINOv3 backbone for inference on zebrafish well crops.
 
     Loads a DINOv3 ViT/ConvNeXt via local `torch.hub` and routes single- or
-    multi-channel crops through `UnifiedChannelAdapter` → ImageNet normalize →
+    multi-channel crops through `UnifiedChannelAdapter` -> ImageNet normalize ->
     backbone. Pooling concatenates the CLS token with GeM-pooled patch tokens.
     """
 

@@ -3,8 +3,8 @@
 `FindingDory(QWidget)` is the napari dock content for the "Finding Dory"
 workflow:
 
-  Click Finding Dory → embeddings compute in background → UMAP scatter renders
-  → user lassoes wells, assigns named groups, toggles lHead per well, saves
+  Click Finding Dory -> embeddings compute in background -> UMAP scatter renders
+  -> user lassoes wells, assigns named groups, toggles lHead per well, saves
   CSV.
 
 It shares the active `Classify` instance (and therefore the napari viewer,
@@ -20,8 +20,11 @@ used both by this dock's Save button and by tests in `tests/test_wide_csv.py`.
 from __future__ import annotations
 
 import concurrent.futures
+import json
 import logging
 import os
+import shutil
+import warnings
 from datetime import datetime
 from pathlib import Path
 from typing import Dict, Iterable, List, Optional, Tuple
@@ -32,6 +35,16 @@ import pandas as pd
 from fish_sorter.helpers.labelling.store import GLOBAL_GROUPS, LabelStore
 
 log = logging.getLogger(__name__)
+
+# umap-learn prints a TensorFlow warning at import advertising the parametric
+# UMAP feature, which we don't use. Silence it so the dock log stays focused
+# on actionable messages.
+warnings.filterwarnings(
+    "ignore", message=".*tensorflow.*parametric.*", module=r"umap.*"
+)
+warnings.filterwarnings(
+    "ignore", message=".*Tensorflow not installed.*", module=r"umap.*"
+)
 
 
 # ---------------------------------------------------------------------------
@@ -59,6 +72,7 @@ def write_wide_csv(
     fish_line: str,
     path: str,
     infer_singlet: bool = True,
+    well_defaults: Optional[Dict[str, Dict[str, int]]] = None,
 ) -> str:
     """Write a classify-compatible wide CSV from a `LabelStore` snapshot.
 
@@ -68,10 +82,21 @@ def write_wide_csv(
         {channel0}_{custom_group0}, {channel0}_{custom_group1}, ...,
         {channel1}_{custom_group0}, ...
 
-    All scoring columns are int (0/1). See `tests/test_wide_csv.py` for the
-    exhaustive contract.
+    Sources for the default columns:
+      - If `well_defaults[well_id]` provides a column (`empty`, `singlet`,
+        `multiple`, `deformed`, `lHead`), that wins. This is how Finding Dory
+        passes Finding Nemo's `points_layer.features` through.
+      - Otherwise:
+          * `empty`/`multiple`/`deformed` derive from LabelStore global-group
+            assignments (legacy default).
+          * `singlet`, when `infer_singlet=True`, is the complement of the
+            three globals.
+          * `lHead` comes from `lhead_map`.
+
+    All scoring columns are int (0/1).
     """
     channels = list(channels)
+    well_defaults = well_defaults or {}
 
     custom_by_channel: Dict[str, List[str]] = {}
     for ch in channels:
@@ -85,25 +110,42 @@ def write_wide_csv(
 
     rows = []
     for wid in well_order:
-        flags = {g: 0 for g in ("empty", "multiple", "deformed")}
-        for ch in channels:
-            assigned = store.assignments(fish_line, ch).get(wid)
-            if assigned in flags:
-                flags[assigned] = 1
+        ext = well_defaults.get(wid, {})
 
-        singlet = (
-            int(not (flags["empty"] or flags["multiple"] or flags["deformed"]))
-            if infer_singlet
-            else 0
-        )
+        if "empty" in ext or "multiple" in ext or "deformed" in ext:
+            empty_v = int(bool(ext.get("empty", 0)))
+            multiple_v = int(bool(ext.get("multiple", 0)))
+            deformed_v = int(bool(ext.get("deformed", 0)))
+        else:
+            # Legacy fallback: derive from LabelStore globals.
+            store_flags = {g: 0 for g in ("empty", "multiple", "deformed")}
+            for ch in channels:
+                assigned = store.assignments(fish_line, ch).get(wid)
+                if assigned in store_flags:
+                    store_flags[assigned] = 1
+            empty_v = store_flags["empty"]
+            multiple_v = store_flags["multiple"]
+            deformed_v = store_flags["deformed"]
+
+        if "singlet" in ext:
+            singlet_v = int(bool(ext["singlet"]))
+        elif infer_singlet:
+            singlet_v = int(not (empty_v or multiple_v or deformed_v))
+        else:
+            singlet_v = 0
+
+        if "lHead" in ext:
+            lhead_v = int(bool(ext["lHead"]))
+        else:
+            lhead_v = int(bool(lhead_map.get(wid, False)))
 
         row = {
             "well_name": well_name_by_id.get(wid, wid),
-            "empty": flags["empty"],
-            "singlet": singlet,
-            "multiple": flags["multiple"],
-            "deformed": flags["deformed"],
-            "lHead": int(bool(lhead_map.get(wid, False))),
+            "empty": empty_v,
+            "singlet": singlet_v,
+            "multiple": multiple_v,
+            "deformed": deformed_v,
+            "lHead": lhead_v,
         }
 
         for ch in channels:
@@ -115,8 +157,157 @@ def write_wide_csv(
 
     df = pd.DataFrame(rows)
     df.to_csv(path, index=False)
-    log.info(f"wrote wide CSV {df.shape[0]} rows x {df.shape[1]} cols → {path}")
+    log.info(f"wrote wide CSV {df.shape[0]} rows x {df.shape[1]} cols -> {path}")
     return path
+
+
+# ---------------------------------------------------------------------------
+# First-time setup dialog
+# ---------------------------------------------------------------------------
+
+
+def ensure_labeller_config(cfg_dir: Path, parent=None) -> bool:
+    """Ensure `<cfg_dir>/labeller/config.json` exists and is valid.
+
+    If missing or unreadable, opens a GUI dialog with file pickers for
+    checkpoint + DINOv3 repo and a mode dropdown, then writes a fresh
+    `config.json` derived from `config.example.json` with the chosen paths.
+
+    Returns:
+        True if config.json now exists and parses; False if the user
+        cancelled or the dialog failed.
+    """
+    cfg_path = Path(cfg_dir) / "labeller" / "config.json"
+    example_path = Path(cfg_dir) / "labeller" / "config.example.json"
+
+    # Already valid? Skip the dialog entirely.
+    if cfg_path.exists():
+        try:
+            with open(cfg_path) as f:
+                json.load(f)
+            return True
+        except Exception:
+            log.warning(f"{cfg_path} exists but failed to parse — running setup.")
+
+    if not example_path.exists():
+        log.error(f"missing template: {example_path}")
+        return False
+
+    # Lazy imports so non-GUI users (tests, scripts) don't pull Qt.
+    from qtpy.QtWidgets import (
+        QComboBox,
+        QDialog,
+        QDialogButtonBox,
+        QFileDialog,
+        QFormLayout,
+        QHBoxLayout,
+        QLabel,
+        QLineEdit,
+        QMessageBox,
+        QPushButton,
+        QVBoxLayout,
+    )
+
+    class _SetupDialog(QDialog):
+        def __init__(self):
+            super().__init__(parent)
+            self.setWindowTitle("Set up Finding Dory")
+            self.setMinimumWidth(560)
+
+            v = QVBoxLayout(self)
+            v.addWidget(QLabel(
+                "<b>Finding Dory first-time setup.</b><br>"
+                "Tell us where your model checkpoint and DINOv3 repo live. "
+                "These paths are stored in the labeller config; you'll only "
+                "do this once per machine."
+            ))
+
+            form = QFormLayout()
+
+            self.ckpt_edit = QLineEdit()
+            self.ckpt_btn = QPushButton("Browse…")
+            self.ckpt_btn.clicked.connect(self._pick_ckpt)
+            ckpt_row = QHBoxLayout()
+            ckpt_row.addWidget(self.ckpt_edit, 1)
+            ckpt_row.addWidget(self.ckpt_btn)
+            form.addRow("Model checkpoint (.ckpt):", _wrap_row(ckpt_row))
+
+            self.repo_edit = QLineEdit()
+            self.repo_btn = QPushButton("Browse…")
+            self.repo_btn.clicked.connect(self._pick_repo)
+            repo_row = QHBoxLayout()
+            repo_row.addWidget(self.repo_edit, 1)
+            repo_row.addWidget(self.repo_btn)
+            form.addRow("DINOv3 repo (folder):", _wrap_row(repo_row))
+
+            self.mode_combo = QComboBox()
+            self.mode_combo.addItems(["fish", "egg"])
+            form.addRow("Mode (which model bundle to use):", self.mode_combo)
+
+            v.addLayout(form)
+
+            self.buttons = QDialogButtonBox(
+                QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+            )
+            self.buttons.accepted.connect(self._accept)
+            self.buttons.rejected.connect(self.reject)
+            v.addWidget(self.buttons)
+
+        def _pick_ckpt(self):
+            path, _ = QFileDialog.getOpenFileName(
+                self, "Pick model checkpoint", filter="Checkpoints (*.ckpt);;All (*)"
+            )
+            if path:
+                self.ckpt_edit.setText(path)
+
+        def _pick_repo(self):
+            path = QFileDialog.getExistingDirectory(self, "Pick DINOv3 repo folder")
+            if path:
+                self.repo_edit.setText(path)
+
+        def _accept(self):
+            ckpt = self.ckpt_edit.text().strip()
+            repo = self.repo_edit.text().strip()
+            if not ckpt or not Path(ckpt).exists():
+                QMessageBox.warning(
+                    self, "Pick a real checkpoint",
+                    f"The checkpoint path is missing or doesn't exist:\n{ckpt}",
+                )
+                return
+            if not repo or not Path(repo).exists():
+                QMessageBox.warning(
+                    self, "Pick a real folder",
+                    f"The DINOv3 repo folder is missing or doesn't exist:\n{repo}",
+                )
+                return
+            self._ckpt = ckpt
+            self._repo = repo
+            self._mode = self.mode_combo.currentText()
+            self.accept()
+
+    dlg = _SetupDialog()
+    if dlg.exec_() != dlg.Accepted:
+        return False
+
+    # Compose the new config from the example template.
+    with open(example_path) as f:
+        cfg = json.load(f)
+    cfg["dinov3_repo_path"] = dlg._repo
+    if dlg._mode in cfg.get("models", {}):
+        cfg["models"][dlg._mode]["checkpoint_path"] = dlg._ckpt
+    cfg_path.parent.mkdir(parents=True, exist_ok=True)
+    with open(cfg_path, "w") as f:
+        json.dump(cfg, f, indent=2)
+    log.info(f"wrote initial labeller config to {cfg_path}")
+    return True
+
+
+def _wrap_row(layout):
+    """Wrap a QLayout in a transparent QWidget so it can sit inside a QFormLayout."""
+    from qtpy.QtWidgets import QWidget
+    w = QWidget()
+    w.setLayout(layout)
+    return w
 
 
 # ---------------------------------------------------------------------------
@@ -136,9 +327,9 @@ def _build_finding_dory():
     from matplotlib.path import Path as MplPath
     from matplotlib.widgets import LassoSelector
     from qtpy.QtCore import Qt, QTimer, Signal
+    from qtpy.QtGui import QKeySequence
     from qtpy.QtWidgets import (
         QComboBox,
-        QFileDialog,
         QHBoxLayout,
         QInputDialog,
         QLabel,
@@ -147,6 +338,7 @@ def _build_finding_dory():
         QMessageBox,
         QProgressBar,
         QPushButton,
+        QShortcut,
         QSizePolicy,
         QVBoxLayout,
         QWidget,
@@ -233,7 +425,7 @@ def _build_finding_dory():
             self._scatter = None  # matplotlib PathCollection
             self._embed_done = False
 
-            # Signals → GUI-thread slots.
+            # Signals -> GUI-thread slots.
             self.progress_signal.connect(self._on_progress, Qt.QueuedConnection)
             self.status_signal.connect(self._on_status, Qt.QueuedConnection)
             self.embed_done_signal.connect(self._on_embed_done, Qt.QueuedConnection)
@@ -274,6 +466,10 @@ def _build_finding_dory():
             layout.addWidget(self.status_label)
             layout.addWidget(self.progress_bar)
 
+            # (Pre-embed find_fish + per-well lHead toggle live in Finding Nemo.
+            # Finding Dory consumes their results via points_layer.features at
+            # _start_embedding and _on_save time; it never sets them itself.)
+
             # 2. Channel selector
             ch_row = QHBoxLayout()
             ch_row.addWidget(QLabel("Channel:"))
@@ -310,7 +506,7 @@ def _build_finding_dory():
             layout.addLayout(grp_row)
 
             # 5. Lasso button
-            self.lasso_btn = QPushButton("Lasso → assign to selected group")
+            self.lasso_btn = QPushButton("Lasso -> assign to selected group")
             self.lasso_btn.setCheckable(True)
             self.lasso_btn.toggled.connect(self._on_lasso_toggle)
             self.lasso_btn.setEnabled(False)
@@ -330,25 +526,58 @@ def _build_finding_dory():
                 strip_row.addWidget(chip)
             layout.addLayout(strip_row)
 
-            # 7. lHead toggle button
-            self.lhead_btn = QPushButton("Head: ?")
-            self.lhead_btn.clicked.connect(self._on_lhead_toggle)
-            self.lhead_btn.setEnabled(False)
-            layout.addWidget(self.lhead_btn)
-
-            # 8. Save button
+            # 7. Save button
             self.save_btn = QPushButton("Save labels and CSV")
             self.save_btn.clicked.connect(self._on_save)
             layout.addWidget(self.save_btn)
 
             self._refresh_group_list()
             self._refresh_state_strip()
-            self._refresh_lhead_button()
+
+            # Keyboard shortcuts: L (lasso), Esc (cancel lasso), Ctrl+S (save).
+            # lHead is set in Finding Nemo, not here, so no H shortcut.
+            QShortcut(QKeySequence("L"), self).activated.connect(self._kb_lasso)
+            QShortcut(QKeySequence(Qt.Key_Escape), self).activated.connect(self._kb_cancel_lasso)
+            QShortcut(QKeySequence("Ctrl+S"), self).activated.connect(self._on_save)
+
+        # -- Keyboard shortcut handlers ----------------------------------
+
+        def _kb_lasso(self):
+            if self.lasso_btn.isEnabled():
+                self.lasso_btn.toggle()
+
+        def _kb_cancel_lasso(self):
+            if self.lasso_btn.isChecked():
+                self.lasso_btn.setChecked(False)
 
         # -- Background embedding ----------------------------------------
 
         def _start_embedding(self):
             self.status_signal.emit("Loading model…")
+
+            # If Finding Nemo has already populated `singlet` on the shared
+            # points_layer (i.e. the user ran find_fish before clicking Finding
+            # Dory), use those flags to skip empty wells during embedding.
+            # Otherwise embed every well.
+            self._keep_indices: Optional[np.ndarray] = None
+            try:
+                feat = self.classify.points_layer.features
+                if "singlet" in feat.columns:
+                    mask = np.asarray(feat["singlet"], dtype=bool)
+                    if mask.any():
+                        keep = np.where(mask)[0].astype(np.int64)
+                        self._keep_indices = keep
+                        log.info(
+                            f"using points_layer.features['singlet'] from Finding Nemo: "
+                            f"{len(keep)} of {len(self.well_ids)} wells will be embedded."
+                        )
+            except Exception as e:
+                log.warning(f"singlet lookup from points_layer skipped: {e}; embedding all wells.")
+
+            # lHead values also come from Finding Nemo's pass (via find_orientation
+            # chained off find_fish). Refresh here so Save can include them.
+            self._refresh_lhead_from_classify()
+
             self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
             self.future = self.executor.submit(self._embed_threaded)
             self.future.add_done_callback(self._on_future_done)
@@ -377,6 +606,7 @@ def _build_finding_dory():
                 mosaics=mosaics,
                 well_centers_px=centers,
                 well_crop_px=well_crop_px,
+                well_indices_to_embed=self._keep_indices,
                 progress_cb=_progress_cb,
             )
             # UMAP for the currently selected channel only — others lazy.
@@ -423,7 +653,6 @@ def _build_finding_dory():
         def _on_embed_done(self):
             self._embed_done = True
             self.lasso_btn.setEnabled(True)
-            self.lhead_btn.setEnabled(True)
             self.progress_bar.setRange(0, 1)
             self.progress_bar.setValue(1)
             self.status_label.setText(
@@ -568,15 +797,13 @@ def _build_finding_dory():
         # -- Group manager -----------------------------------------------
 
         def _refresh_group_list(self):
+            """Populate the group list, hiding global groups (Finding Nemo's domain)."""
             self.group_list.clear()
             ch = self.current_channel
             for g in self.store.groups(self.fish_line, ch):
-                item = QListWidgetItem(g)
                 if g in GLOBAL_GROUPS:
-                    f = item.font()
-                    f.setBold(True)
-                    item.setFont(f)
-                self.group_list.addItem(item)
+                    continue  # empty/multiple/deformed live on Finding Nemo
+                self.group_list.addItem(QListWidgetItem(g))
 
         def _currently_selected_group(self) -> Optional[str]:
             row = self.group_list.currentRow()
@@ -639,10 +866,14 @@ def _build_finding_dory():
                 return
             self.current_well = int(next(iter(selected)))
             self._refresh_state_strip()
-            self._refresh_lhead_button()
 
         def _refresh_lhead_from_classify(self):
-            """Copy lHead values out of the shared points_layer features."""
+            """Copy lHead values out of Finding Nemo's shared points_layer.features.
+
+            Kept for backward compat — `lhead_map` is also rebuilt at save
+            time from `points_layer.features`, so call sites that go through
+            `_on_save` don't strictly need it.
+            """
             try:
                 feat = self.classify.points_layer.features
             except AttributeError:
@@ -653,23 +884,22 @@ def _build_finding_dory():
                 self.lhead_map[wid] = bool(feat["lHead"].iloc[i])
 
         def _refresh_state_strip(self):
+            """Update the read-only chip strip from Finding Nemo's features.
+
+            `empty`/`singlet`/`multiple`/`deformed`/`lHead` are owned by
+            Finding Nemo; we display them here but never write to them.
+            """
             if not (0 <= self.current_well < len(self.well_ids)):
                 return
-            wid = self.well_ids[self.current_well]
-            flags = {g: 0 for g in ("empty", "multiple", "deformed")}
-            for ch in self.channels:
-                assigned = self.store.assignments(self.fish_line, ch).get(wid)
-                if assigned in flags:
-                    flags[assigned] = 1
-            singlet = int(not (flags["empty"] or flags["multiple"] or flags["deformed"]))
-            lhead = int(bool(self.lhead_map.get(wid, False)))
-            for name, val in (
-                ("empty", flags["empty"]),
-                ("singlet", singlet),
-                ("multiple", flags["multiple"]),
-                ("deformed", flags["deformed"]),
-                ("lHead", lhead),
-            ):
+            try:
+                feat = self.classify.points_layer.features
+            except AttributeError:
+                return
+            for name in ("empty", "singlet", "multiple", "deformed", "lHead"):
+                if name in feat.columns:
+                    val = int(bool(feat[name].iloc[self.current_well]))
+                else:
+                    val = 0
                 chip = self.state_chips[name]
                 if val:
                     chip.setStyleSheet(
@@ -682,34 +912,32 @@ def _build_finding_dory():
                         "padding: 2px 6px; color: #888;"
                     )
 
-        def _refresh_lhead_button(self):
-            if not (0 <= self.current_well < len(self.well_ids)):
-                self.lhead_btn.setText("Head: ?")
-                return
-            wid = self.well_ids[self.current_well]
-            side = "left" if self.lhead_map.get(wid, False) else "right"
-            self.lhead_btn.setText(f"Head: {side} (toggle)")
-
-        def _on_lhead_toggle(self):
-            if not (0 <= self.current_well < len(self.well_ids)):
-                return
-            wid = self.well_ids[self.current_well]
-            self.lhead_map[wid] = not self.lhead_map.get(wid, False)
-            # Also push back into points_layer features so it shows up in
-            # Finding Nemo's side dock immediately.
-            try:
-                self.classify.points_layer.features.loc[self.current_well, "lHead"] = (
-                    self.lhead_map[wid]
-                )
-            except Exception:
-                pass
-            self._refresh_state_strip()
-            self._refresh_lhead_button()
-
         # -- Save --------------------------------------------------------
 
         def _on_save(self):
             path = default_csv_path(self.expt_dir, self.prefix)
+
+            # Source of truth for empty/singlet/multiple/deformed/lHead is
+            # Finding Nemo's points_layer.features. Build a per-well dict so
+            # write_wide_csv overlays those values onto its output.
+            well_defaults: Dict[str, Dict[str, int]] = {}
+            try:
+                feat = self.classify.points_layer.features
+                default_cols = [
+                    c for c in ("empty", "singlet", "multiple", "deformed", "lHead")
+                    if c in feat.columns
+                ]
+                for i, wid in enumerate(self.well_ids):
+                    well_defaults[wid] = {
+                        c: int(bool(feat[c].iloc[i])) for c in default_cols
+                    }
+            except Exception as e:
+                log.warning(
+                    f"could not read defaults from points_layer.features: {e}; "
+                    f"falling back to LabelStore-derived defaults."
+                )
+                well_defaults = {}
+
             try:
                 write_wide_csv(
                     store=self.store,
@@ -718,12 +946,13 @@ def _build_finding_dory():
                     channels=self.channels,
                     fish_line=self.fish_line,
                     path=path,
+                    well_defaults=well_defaults,
                 )
             except Exception as e:
                 log.exception("save failed")
                 QMessageBox.critical(self, "Save failed", str(e))
                 return
-            self.status_label.setText(f"Saved → {path}")
+            self.status_label.setText(f"Saved -> {path}")
             log.info(f"Finding Dory saved CSV to {path}")
 
         # -- Cleanup -----------------------------------------------------
