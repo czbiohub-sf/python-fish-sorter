@@ -109,6 +109,24 @@ class EmbeddingExtractor:
             if name != "_FLUOR"
         }
 
+        # Pre-load ckpt so we can detect training-time options that change the
+        # MODEL graph (e.g. multi_contrast channel adapter, which adds a blur
+        # kernel buffer). The detected flags then drive FishDINOv3 construction.
+        ckpt_path = model_cfg.get("checkpoint_path")
+        if not ckpt_path:
+            raise ValueError(f"models.{mode}.checkpoint_path is required")
+        sd = self._load_state_dict(ckpt_path)
+
+        # multi_contrast: detect from the presence of channel_adapter._blur_kernel
+        # in the ckpt keys (any depth — works regardless of prefix wrapping).
+        # Config can force it explicitly via `multi_contrast: true/false`.
+        if "multi_contrast" in model_cfg:
+            multi_contrast = bool(model_cfg["multi_contrast"])
+            log.info(f"multi_contrast={multi_contrast} (forced by config)")
+        else:
+            multi_contrast = any("channel_adapter._blur_kernel" in k for k in sd)
+            log.info(f"multi_contrast={multi_contrast} (detected from ckpt)")
+
         # Build the backbone.
         variant = model_cfg.get("model_arch", "vits16")
         repo_path = cfg.get("dinov3_repo_path")
@@ -118,32 +136,33 @@ class EmbeddingExtractor:
         )
         log.info(
             f"Constructing FishDINOv3 variant={variant} device={self.device} "
-            f"crop_size={self.crop_size} repo={repo_path}"
+            f"crop_size={self.crop_size} repo={repo_path} multi_contrast={multi_contrast}"
         )
         self.backbone = FishDINOv3(
-            variant=variant, in_channels=1, repo_path=repo_path, weights_path=weights_path,
+            variant=variant,
+            in_channels=1,
+            repo_path=repo_path,
+            weights_path=weights_path,
+            multi_contrast=multi_contrast,
         )
 
-        # Apply the BYOL-trained checkpoint over the pretrained DINOv3 weights.
-        ckpt_path = model_cfg.get("checkpoint_path")
-        if not ckpt_path:
-            raise ValueError(f"models.{mode}.checkpoint_path is required")
-        self._apply_checkpoint(ckpt_path)
+        # Apply the (already-loaded) state dict.
+        self._apply_state_dict(sd)
 
         self.backbone.to(self.device).eval()
 
     # -- checkpoint loading --------------------------------------------------
 
-    def _apply_checkpoint(self, ckpt_path: str) -> None:
+    def _load_state_dict(self, ckpt_path: str) -> Dict:
+        """Open the ckpt and return its top-level state_dict.
+
+        Tries `weights_only=True` first to avoid importing training-time
+        classes (torchmetrics, pytorch-lightning, etc.). Falls back to the full
+        pickle loader if the ckpt has non-allowlisted objects.
+        """
         if not Path(ckpt_path).exists():
             raise FileNotFoundError(f"Model checkpoint not found at {ckpt_path}")
         log.info(f"Loading checkpoint: {ckpt_path}")
-        # weights_only=True restricts the unpickler to tensors + plain Python
-        # types — avoids importing training-time classes (torchmetrics,
-        # pytorch-lightning hyperparameter objects, etc.) that aren't installed
-        # in this venv. Fall back to a full load if the ckpt has objects the
-        # safe loader rejects; in that case the user will need the relevant
-        # training deps installed.
         try:
             ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=True)
         except Exception as e:
@@ -153,8 +172,10 @@ class EmbeddingExtractor:
                 f"ModuleNotFoundError, install the named training dep in this venv."
             )
             ckpt = torch.load(ckpt_path, map_location="cpu", weights_only=False)
-        sd = ckpt.get("state_dict", ckpt) if isinstance(ckpt, dict) else ckpt
+        return ckpt.get("state_dict", ckpt) if isinstance(ckpt, dict) else ckpt
 
+    def _apply_state_dict(self, sd: Dict) -> None:
+        """Strip the right prefix from `sd` and load it into self.backbone."""
         # Try common prefixes; pick whichever gives a non-empty stripped dict.
         # Lightning typically saves the FishDINOv3 under "online_network.backbone."
         # for BYOL, but other entry points can wrap differently.
