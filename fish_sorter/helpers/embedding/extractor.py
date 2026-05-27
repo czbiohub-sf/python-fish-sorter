@@ -159,8 +159,11 @@ class EmbeddingExtractor:
         # Lightning typically saves the FishDINOv3 under "online_network.backbone."
         # for BYOL, but other entry points can wrap differently.
         candidate_prefixes = (
+            "online_backbone.",
             "online_network.backbone.",
+            "model.online_backbone.",
             "model.online_network.backbone.",
+            "module.online_backbone.",
             "module.online_network.backbone.",
             "backbone.",
             "",  # already at FishDINOv3 root
