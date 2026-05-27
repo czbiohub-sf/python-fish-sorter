@@ -185,6 +185,7 @@ def _build_label_tool():
             per_channel_indices: Dict[str, np.ndarray],
             cluster_strategy,
             store: LabelStore,
+            per_channel_contrast: Optional[Dict[str, Tuple[float, float]]] = None,
             parent=None,
         ):
             super().__init__(parent)
@@ -238,6 +239,22 @@ def _build_label_tool():
             # embedding row corresponds to (matches upstream convention).
             self.per_ch_emb: Dict[str, np.ndarray] = dict(per_channel_embeddings)
             self.per_ch_idx: Dict[str, np.ndarray] = dict(per_channel_indices)
+
+            # Per-channel display contrast bounds for the Show-Fish thumbnails.
+            # Upstream computes these once globally via ``WellLoader.channel_stats``;
+            # FindingDory hands them in from each napari Image layer's
+            # ``contrast_limits`` so all thumbnails normalize against the same
+            # range as the in-viewer mosaic. Falling back to per-crop
+            # percentiles inside ``_uint16_to_rgb`` makes every well look
+            # uniformly bright (its own 99th percentile becomes the ceiling).
+            self._channel_contrast: Dict[str, Tuple[float, float]] = dict(
+                per_channel_contrast or {}
+            )
+
+            # First-clustering tracking — auto-assign cluster_N to wells only
+            # the first time a (line, channel) scope is computed, so manual
+            # edits and reclusters never wipe assignments. See _recompute_view.
+            self._auto_assigned: set = set()
 
             # Re-propagate globals across channels (upstream behaviour).
             self.store._propagate_global_groups()
@@ -807,14 +824,35 @@ def _build_label_tool():
             full_umap[mask] = umap_2d
             self._view_umap = full_umap
 
-            # Auto-create starting groups from cluster labels for *unassigned*
-            # wells only — gives users a starting point without overwriting.
+            # Auto-create starting groups from cluster labels. The first time
+            # we cluster a given (line, channel) scope we *also* populate each
+            # cluster_N group with its members so the UI shows real counts.
+            # Subsequent reclusters (via the Recluster button) recompute UMAP
+            # + labels but never overwrite assignments — manual edits and
+            # already-populated cluster rows survive.
             fl, ch = self._scope()
             asgn = self.store.assignments(fl, ch)
             unique_clusters = sorted(set(int(c) for c in valid_labels if c >= 0))
+            first_time = (fl, ch) not in self._auto_assigned
+            cluster_members: Dict[int, List[str]] = {cl: [] for cl in unique_clusters}
+            if first_time:
+                for li_pos, meta_idx in enumerate(line_indices):
+                    if not mask[li_pos]:
+                        continue
+                    cl = int(full_labels[li_pos])
+                    if cl < 0:
+                        continue
+                    wid = self.metadata.iloc[meta_idx]["well_id"]
+                    if wid in asgn:
+                        continue
+                    cluster_members[cl].append(wid)
             for cl in unique_clusters:
                 group_name = f"cluster_{cl}"
                 self.store.create_group(fl, ch, group_name)
+                if first_time and cluster_members[cl]:
+                    self.store.assign(fl, ch, cluster_members[cl], group_name)
+            if first_time:
+                self._auto_assigned.add((fl, ch))
 
             self._refresh_group_list()
             self._refresh_select_by_combo()
@@ -1157,6 +1195,19 @@ def _build_label_tool():
         # Crop display
         # ------------------------------------------------------------------
 
+        def _contrast_for(self, channel: str) -> Tuple[Optional[float], Optional[float]]:
+            """Return ``(low, high)`` for ``channel`` or ``(None, None)``.
+
+            ``None`` falls through to per-crop percentile inside
+            ``_uint16_to_rgb`` — that's the per-crop overexposure path, used
+            only when no host contrast was supplied (e.g. the mosaic was
+            renamed between Finding Nemo and Finding Dory).
+            """
+            bounds = self._channel_contrast.get(channel)
+            if bounds is None:
+                return (None, None)
+            return (float(bounds[0]), float(bounds[1]))
+
         def _preload_crops(self):
             """Build RGB crops for the active channel from ``self._well_crops``.
 
@@ -1171,6 +1222,7 @@ def _build_label_tool():
             display_cfg = get_channel_display(active_channel)
             rgb_color = display_cfg.rgb_color
             dark_on_white = active_channel.upper() in ("DAPI", "CY5")
+            low, high = self._contrast_for(active_channel)
 
             loaded = 0
             for meta_idx in self._view_indices:
@@ -1186,7 +1238,9 @@ def _build_label_tool():
                 if crop is None or crop.size == 0:
                     continue
                 try:
-                    rgb = _uint16_to_rgb(crop, rgb_color, dark_on_white=dark_on_white)
+                    rgb = _uint16_to_rgb(
+                        crop, rgb_color, low=low, high=high, dark_on_white=dark_on_white,
+                    )
                     self._crop_cache[(wn, exp)] = rgb
                     loaded += 1
                 except Exception as e:
@@ -1254,9 +1308,11 @@ def _build_label_tool():
                     return
                 display_cfg = get_channel_display(active_channel)
                 dark_on_white = active_channel.upper() in ("DAPI", "CY5")
+                low, high = self._contrast_for(active_channel)
                 try:
                     rgb = _uint16_to_rgb(
-                        crop, display_cfg.rgb_color, dark_on_white=dark_on_white
+                        crop, display_cfg.rgb_color,
+                        low=low, high=high, dark_on_white=dark_on_white,
                     )
                     self._crop_cache[key] = rgb
                 except Exception as e:
@@ -1471,7 +1527,11 @@ def _build_label_tool():
                 try:
                     cfg = get_channel_display(self._current_channel)
                     dark_on_white = self._current_channel.upper() in ("DAPI", "CY5")
-                    return _uint16_to_rgb(crop, cfg.rgb_color, dark_on_white=dark_on_white)
+                    low, high = self._contrast_for(self._current_channel)
+                    return _uint16_to_rgb(
+                        crop, cfg.rgb_color,
+                        low=low, high=high, dark_on_white=dark_on_white,
+                    )
                 except Exception:
                     continue
             return None

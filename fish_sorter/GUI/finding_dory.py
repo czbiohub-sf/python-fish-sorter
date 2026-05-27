@@ -402,6 +402,29 @@ def _build_finding_dory():
             for ch in self.channels:
                 self.store._get_scope(f"{self.fish_line}|{ch}")
 
+            # Seed the LabelStore with Finding Nemo's global classifications
+            # (empty/multiple/deformed) so the dock UI shows real counts and
+            # "Hide Assigned" actually hides those wells. Without this seed
+            # the global rows look empty even when Finding Nemo has already
+            # classified them — surfaces in the UI as a clash between the
+            # two tools. We only need to assign on one channel; LabelStore
+            # propagates global groups across all channels for the fish line.
+            try:
+                feat = classify.points_layer.features
+                if len(self.channels) > 0:
+                    seed_ch = self.channels[0]
+                    for flag in ("empty", "multiple", "deformed"):
+                        if flag not in feat.columns:
+                            continue
+                        flagged_wids = [
+                            wid for wid, on in zip(self.well_ids, feat[flag])
+                            if bool(on)
+                        ]
+                        if flagged_wids:
+                            self.store.assign(self.fish_line, seed_ch, flagged_wids, flag)
+            except Exception as e:
+                log.warning(f"could not seed globals from points_layer.features: {e}")
+
             # State.
             self.cluster_strategy = build_cluster_strategy(self.cfg)
             self.extractor: Optional[EmbeddingExtractor] = None
@@ -581,6 +604,22 @@ def _build_finding_dory():
                     self.classify._points(), img_flag=True, parallel=True,
                 )
 
+            # Snapshot each Image layer's display contrast so the dock's
+            # Show-Fish thumbnails normalize against the same range the user
+            # already sees in the napari mosaic, not per-crop percentiles
+            # (which uniformly saturate every well).
+            per_channel_contrast: Dict[str, Tuple[float, float]] = {}
+            for layer in self.viewer.layers:
+                if not isinstance(layer, napari.layers.Image):
+                    continue
+                if layer.name not in self.channels:
+                    continue
+                try:
+                    lo, hi = layer.contrast_limits
+                    per_channel_contrast[layer.name] = (float(lo), float(hi))
+                except Exception:
+                    pass
+
             try:
                 self.label_tool = _LabelToolFactory(
                     viewer=self.viewer,
@@ -593,6 +632,7 @@ def _build_finding_dory():
                     per_channel_indices=self.well_idx_in_emb,
                     cluster_strategy=self.cluster_strategy,
                     store=self.store,
+                    per_channel_contrast=per_channel_contrast,
                 )
             except Exception as e:
                 log.exception("LabelTool construction failed")
