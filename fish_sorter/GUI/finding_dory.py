@@ -636,13 +636,24 @@ def _build_finding_dory():
                 self.status_signal.emit("Mock embeddings (dev mode)…")
                 n_total = len(self.classify._points())
                 keep = self._keep_indices if self._keep_indices is not None else np.arange(n_total)
-                # Use the configured output dim (FishDINOv3 with gem pooling = 2 * embed_dim).
                 model_cfg = self.cfg["models"][self.mode]
+                # FishDINOv3 with gem pooling outputs 2 * embed_dim.
                 emb_dim = 2 * int(model_cfg.get("embedding_dim", 384))
-                rng = np.random.default_rng(0)
-                embeds = {ch: rng.standard_normal((len(keep), emb_dim)).astype(np.float32)
-                          for ch in self.channels}
-                idx = {ch: np.asarray(keep, dtype=np.int64) for ch in self.channels}
+                # Generate well-separated synthetic clusters so HDBSCAN finds
+                # them and UMAP lays them out obviously. Different cluster
+                # geometry per channel so the channel dropdown does something
+                # visible.
+                n_clusters = 6
+                n_wells = len(keep)
+                embeds: Dict[str, np.ndarray] = {}
+                idx: Dict[str, np.ndarray] = {}
+                for ch_idx, ch in enumerate(self.channels):
+                    rng = np.random.default_rng(ch_idx + 1)
+                    centers = rng.standard_normal((n_clusters, emb_dim)).astype(np.float32) * 15.0
+                    assignments = rng.integers(0, n_clusters, size=n_wells)
+                    noise = rng.standard_normal((n_wells, emb_dim)).astype(np.float32) * 0.3
+                    embeds[ch] = centers[assignments] + noise
+                    idx[ch] = np.asarray(keep, dtype=np.int64)
                 extractor = None
             else:
                 self.status_signal.emit("Loading checkpoint…")
@@ -796,8 +807,8 @@ def _build_finding_dory():
 
             `-1` is noise (no cluster) and renders as muted grey.
             """
-            import matplotlib.cm as cm
-            palette = cm.get_cmap("tab20")
+            from matplotlib import colormaps
+            palette = colormaps["tab20"]
             n = len(cluster_labels)
             out = np.zeros((n, 4), dtype=np.float32)
             for i, label in enumerate(cluster_labels):
