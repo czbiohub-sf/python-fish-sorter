@@ -435,8 +435,10 @@ def _build_label_tool():
             # Park the toolbar in napari's top dock area rather than embedding
             # it in the right-side panel — gives the controls full window width
             # and frees vertical space for the groups list + crop strip.
+            # ``tabify=True`` matches the side panels: stacks behind any
+            # existing top dock instead of splitting the row in half.
             self._toolbar_dock = self.viewer.window.add_dock_widget(
-                toolbar, name="Finding Dory", area="top"
+                toolbar, name="Finding Dory", area="top", tabify=True
             )
 
             # ── Groups panel ─────────────────────────────────────────────
