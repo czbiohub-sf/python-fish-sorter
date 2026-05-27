@@ -479,6 +479,17 @@ def _build_finding_dory():
             ch_row.addWidget(self.channel_combo, 1)
             layout.addLayout(ch_row)
 
+            # 2b. Color mode — swap scatter coloring between group assignment
+            #     and the HDBSCAN cluster labels produced when the embedding
+            #     ran.
+            color_row = QHBoxLayout()
+            color_row.addWidget(QLabel("Color by:"))
+            self.color_mode_combo = QComboBox()
+            self.color_mode_combo.addItems(["Group assignment", "HDBSCAN cluster"])
+            self.color_mode_combo.currentTextChanged.connect(lambda *_: self._render_scatter())
+            color_row.addWidget(self.color_mode_combo, 1)
+            layout.addLayout(color_row)
+
             # 3. UMAP scatter (matplotlib canvas, hidden until embedding done)
             self.figure = Figure(figsize=(4, 4), tight_layout=True)
             self.canvas = FigureCanvas(self.figure)
@@ -511,6 +522,19 @@ def _build_finding_dory():
             self.lasso_btn.toggled.connect(self._on_lasso_toggle)
             self.lasso_btn.setEnabled(False)
             layout.addWidget(self.lasso_btn)
+
+            # 5b. Cluster picker — pick any HDBSCAN cluster and assign every
+            #     well in it to the currently-selected group in one click.
+            #     Populated automatically when embedding completes.
+            cluster_row = QHBoxLayout()
+            cluster_row.addWidget(QLabel("Cluster:"))
+            self.cluster_combo = QComboBox()
+            cluster_row.addWidget(self.cluster_combo, 1)
+            self.cluster_assign_btn = QPushButton("-> assign to selected group")
+            self.cluster_assign_btn.clicked.connect(self._on_assign_cluster)
+            self.cluster_assign_btn.setEnabled(False)
+            cluster_row.addWidget(self.cluster_assign_btn)
+            layout.addLayout(cluster_row)
 
             # 6. Current-well state strip
             strip_row = QHBoxLayout()
@@ -705,22 +729,91 @@ def _build_finding_dory():
             ch = self.current_channel
             if ch not in self._umap_cache:
                 return
-            xy, _ = self._umap_cache[ch]
+            xy, cluster_labels = self._umap_cache[ch]
             wids = self._well_ids_for_channel(ch)
-            colors = self._colors_for_wids(wids, ch)
+
+            mode = self.color_mode_combo.currentText()
+            if mode == "HDBSCAN cluster":
+                colors = self._colors_for_clusters(cluster_labels)
+                title = f"UMAP - {ch} (HDBSCAN clusters)"
+            else:
+                colors = self._colors_for_wids(wids, ch)
+                title = f"UMAP - {ch} (group assignments)"
 
             self.ax.clear()
             self.ax.set_xticks([])
             self.ax.set_yticks([])
-            self.ax.set_title(f"UMAP — {ch}")
+            self.ax.set_title(title)
             self._scatter = self.ax.scatter(
                 xy[:, 0], xy[:, 1], c=colors, s=14, edgecolors="none"
             )
             self.canvas.draw_idle()
+            self._refresh_cluster_combo(cluster_labels)
 
             # Re-attach lasso if it was enabled.
             if self.lasso_btn.isChecked():
                 self._enable_lasso()
+
+        def _colors_for_clusters(self, cluster_labels: np.ndarray) -> np.ndarray:
+            """Map each well to a tab20 color by its HDBSCAN cluster label.
+
+            `-1` is noise (no cluster) and renders as muted grey.
+            """
+            import matplotlib.cm as cm
+            palette = cm.get_cmap("tab20")
+            n = len(cluster_labels)
+            out = np.zeros((n, 4), dtype=np.float32)
+            for i, label in enumerate(cluster_labels):
+                lbl = int(label)
+                if lbl < 0:
+                    out[i] = [0.60, 0.60, 0.60, 0.6]
+                else:
+                    out[i] = palette(lbl % 20)
+            return out
+
+        def _refresh_cluster_combo(self, cluster_labels: np.ndarray):
+            """Re-populate the cluster dropdown with one entry per HDBSCAN cluster."""
+            self.cluster_combo.blockSignals(True)
+            self.cluster_combo.clear()
+            unique = sorted(set(int(l) for l in cluster_labels))
+            for lbl in unique:
+                count = int((cluster_labels == lbl).sum())
+                name = "noise" if lbl == -1 else f"cluster {lbl}"
+                self.cluster_combo.addItem(f"{name} ({count} wells)", userData=lbl)
+            self.cluster_combo.blockSignals(False)
+            self.cluster_assign_btn.setEnabled(self._embed_done and self.cluster_combo.count() > 0)
+
+        def _on_assign_cluster(self):
+            """Assign every well in the picked HDBSCAN cluster to the selected group."""
+            group = self._currently_selected_group()
+            if group is None:
+                QMessageBox.information(
+                    self, "No group selected", "Pick a group from the list above first."
+                )
+                return
+            idx = self.cluster_combo.currentIndex()
+            if idx < 0:
+                return
+            cluster_id = self.cluster_combo.itemData(idx)
+            ch = self.current_channel
+            if ch not in self._umap_cache:
+                return
+            _, labels = self._umap_cache[ch]
+            wids_in_order = self._well_ids_for_channel(ch)
+            selected = [
+                wids_in_order[i] for i, l in enumerate(labels) if int(l) == int(cluster_id)
+            ]
+            if not selected:
+                return
+            self.store.assign(self.fish_line, ch, selected, group)
+            if group in GLOBAL_GROUPS:
+                self._sync_globals_to_features()
+            label_name = "noise" if int(cluster_id) == -1 else f"cluster {cluster_id}"
+            self.status_label.setText(
+                f"Assigned {label_name} ({len(selected)} wells) to '{group}' in {ch}."
+            )
+            self._render_scatter()
+            self._refresh_state_strip()
 
         def _well_ids_for_channel(self, ch: str) -> List[str]:
             idx = self.well_idx_in_emb.get(ch)
@@ -788,22 +881,62 @@ def _build_finding_dory():
                 )
                 return
             self.store.assign(self.fish_line, ch, selected, group)
+            if group in GLOBAL_GROUPS:
+                # Globals (empty/multiple/deformed) need to round-trip back to
+                # Finding Nemo's shared features so its dock shows the override.
+                self._sync_globals_to_features()
             self.status_label.setText(
                 f"Assigned {len(selected)} wells to '{group}' in {ch}."
             )
             self._render_scatter()
             self._refresh_state_strip()
 
+        def _sync_globals_to_features(self):
+            """Mirror LabelStore global-group assignments into points_layer.features.
+
+            Finding Dory can override Finding Nemo's empty/multiple/deformed
+            via lasso. This pushes the LabelStore truth back into the shared
+            features DataFrame so the Finding Nemo dock reflects it immediately.
+            Wells assigned to a global are also marked singlet=False; wells the
+            user later unassigns (via unassign action — not implemented yet) are
+            left alone and need a separate sweep.
+            """
+            try:
+                feat = self.classify.points_layer.features
+            except AttributeError:
+                return
+            wid_to_idx = {wid: i for i, wid in enumerate(self.well_ids)}
+            for ch in self.channels:
+                for wid, group in self.store.assignments(self.fish_line, ch).items():
+                    if group not in GLOBAL_GROUPS:
+                        continue
+                    idx = wid_to_idx.get(wid)
+                    if idx is None:
+                        continue
+                    for g in ("empty", "multiple", "deformed"):
+                        if g in feat.columns:
+                            feat.loc[idx, g] = (group == g)
+                    if "singlet" in feat.columns:
+                        feat.loc[idx, "singlet"] = False
+
         # -- Group manager -----------------------------------------------
 
         def _refresh_group_list(self):
-            """Populate the group list, hiding global groups (Finding Nemo's domain)."""
+            """Populate the group list, with global groups shown bold at the top.
+
+            Globals (`empty`, `multiple`, `deformed`) come pre-populated from
+            Finding Nemo, but Finding Dory can override them via lasso → assign.
+            They're shown bold + non-renamable but selectable.
+            """
             self.group_list.clear()
             ch = self.current_channel
             for g in self.store.groups(self.fish_line, ch):
+                item = QListWidgetItem(g)
                 if g in GLOBAL_GROUPS:
-                    continue  # empty/multiple/deformed live on Finding Nemo
-                self.group_list.addItem(QListWidgetItem(g))
+                    f = item.font()
+                    f.setBold(True)
+                    item.setFont(f)
+                self.group_list.addItem(item)
 
         def _currently_selected_group(self) -> Optional[str]:
             row = self.group_list.currentRow()

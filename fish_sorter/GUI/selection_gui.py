@@ -58,12 +58,7 @@ class SelectGUI(QWidget):
         self._setup(pick_type)
 
         self.rows = []
-        self.hide = True
         self.layout = QVBoxLayout(self)
-        self.hide_cb = QCheckBox('Select Singlets Only')
-        self.hide_cb.setChecked(True)
-        self.hide_cb.stateChanged.connect(self.toggle_hidden)
-        self.layout.addWidget(self.hide_cb)
         self.rows_layout = QVBoxLayout()
         self.rows_container = QWidget()
         self.rows_container.setLayout(self.rows_layout)
@@ -124,7 +119,7 @@ class SelectGUI(QWidget):
         """Adds a row to the selection GUI
         """
 
-        row = AddRow(self.well, self.features, self.deselect, self.hide, on_delete=self.delete_row)
+        row = AddRow(self.well, self.features, self.deselect, on_delete=self.delete_row)
         self.rows.append(row)
         self.rows_layout.addWidget(row)
 
@@ -137,17 +132,6 @@ class SelectGUI(QWidget):
     def get_selection(self):
         """Returns all selection rows in the table rows as a list of dicts."""
         return [row.get_row_select() for row in self.rows]
-    
-    def toggle_hidden(self, state: bool=True):
-        """Toggles between hidden options and showing all options
-
-        :param state: whether to hide the options or not
-        :type state: bool
-        """
-
-        self.hide = state
-        for idx, row in enumerate(self.rows):
-            row._show_hide(self.hide)
 
     def save_select(self):
         """Callback when save button is clicked
@@ -169,7 +153,7 @@ class AddRow(QWidget):
     """Widget helper to add a row to the pick selection GUI
     """
 
-    def __init__(self, wells, features, deselect, hide=bool, on_delete=None):
+    def __init__(self, wells, features, deselect, on_delete=None):
         """
         :param wells: well names passed from dispense plate well names
         :type wells: list
@@ -177,8 +161,6 @@ class AddRow(QWidget):
         :type features: list
         :param deselect: columns not to include in pick selection
         :type deselect: list
-        :param hide: parameter whether to hide deselect columns or not
-        :type hide: bool
         :param on_delete: delete callback
         :type on_delete: function callback
         """
@@ -188,7 +170,7 @@ class AddRow(QWidget):
         self.cols = features
         self.deselect_cols = deselect
         self.on_delete = on_delete
-        
+
         self.layout = QHBoxLayout(self)
         self.well_dropdown = QComboBox()
         self.well_dropdown.addItems(wells)
@@ -199,8 +181,6 @@ class AddRow(QWidget):
             cb = QCheckBox(col)
             if col == 'singlet':
                 cb.setChecked(True)
-            if col in self.deselect_cols and hide:
-                cb.hide()
             self.checkboxes[col] = cb
             self.layout.addWidget(cb)
         self.setLayout(self.layout)
@@ -216,19 +196,6 @@ class AddRow(QWidget):
         well = self.well_dropdown.currentText()
         selection = {col: int(self.checkboxes[col].isChecked()) for col in self.cols}
         return {'dispenseWell': well, **selection}
-
-    def _show_hide(self, hide: bool=True):
-        """Determine whether to show the full list of selection features
-        :param hide: whether to show or hide
-        :type hide: bool
-        """
-
-        for col in self.deselect_cols:
-            if col in self.checkboxes:
-                self.checkboxes[col].setHidden(hide)
-                if hide:
-                    self.checkboxes[col].setChecked(False)        
-        self.checkboxes['singlet'].setChecked(hide)
 
     def _delete_self(self):
         """Calls the parent callback to remove this row from the parent layout/list."""
