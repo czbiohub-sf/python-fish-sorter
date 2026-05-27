@@ -321,18 +321,11 @@ def _build_label_tool():
             root_layout.setContentsMargins(4, 4, 4, 4)
             root_layout.setSpacing(4)
 
-            # ── Toolbar (top, horizontal) ────────────────────────────────
+            # ── Toolbar (docked at napari top) ───────────────────────────
             toolbar = QWidget()
             toolbar_layout = QHBoxLayout(toolbar)
             toolbar_layout.setContentsMargins(2, 2, 2, 2)
             toolbar_layout.setSpacing(6)
-
-            # Fish line — single, read-only label (replaces the upstream
-            # multi-line combo / tab UI).
-            toolbar_layout.addWidget(QLabel("Line:"))
-            self.line_label = QLabel(self._fish_line)
-            self.line_label.setStyleSheet("font-weight: bold;")
-            toolbar_layout.addWidget(self.line_label)
 
             # Channel selector.
             toolbar_layout.addWidget(QLabel("Ch:"))
@@ -376,14 +369,49 @@ def _build_label_tool():
             self._hide_assigned_checkbox.toggled.connect(self._toggle_hide_assigned)
             toolbar_layout.addWidget(self._hide_assigned_checkbox)
 
+            # Recluster — re-runs UMAP + HDBSCAN on the current channel.
+            # Existing assignments are preserved (auto-assign fires only on
+            # the first clustering pass per scope; see _recompute_view).
+            self.recluster_btn = QPushButton("Recluster")
+            self.recluster_btn.setToolTip(
+                "Re-run UMAP + HDBSCAN for the current channel. "
+                "Existing group assignments are kept."
+            )
+            self.recluster_btn.clicked.connect(self._on_recluster)
+            toolbar_layout.addWidget(self.recluster_btn)
+
             # Lasso toggle.
             self.lasso_btn = QPushButton("Lasso")
             self.lasso_btn.setCheckable(True)
             self.lasso_btn.toggled.connect(self._toggle_lasso)
             toolbar_layout.addWidget(self.lasso_btn)
 
+            # Select-by attribute (ported from upstream). For Finding Dory the
+            # only attributes that make sense are "Cluster" and "Group" — fluor
+            # phenotype columns and picked-well info aren't part of this dock.
+            toolbar_layout.addWidget(QLabel("Select by:"))
+            self.select_by_combo = QComboBox()
+            self.select_by_combo.addItem("(choose attribute)", "")
+            self.select_by_combo.currentIndexChanged.connect(self._on_select_by_changed)
+            toolbar_layout.addWidget(self.select_by_combo)
+
+            self.select_value_combo = QComboBox()
+            self.select_value_combo.setEnabled(False)
+            toolbar_layout.addWidget(self.select_value_combo)
+
+            self.select_all_btn = QPushButton("Select All")
+            self.select_all_btn.setEnabled(False)
+            self.select_all_btn.clicked.connect(self._on_select_by_value)
+            toolbar_layout.addWidget(self.select_all_btn)
+
             toolbar_layout.addStretch()
-            root_layout.addWidget(toolbar)
+
+            # Park the toolbar in napari's top dock area rather than embedding
+            # it in the right-side panel — gives the controls full window width
+            # and frees vertical space for the groups list + crop strip.
+            self._toolbar_dock = self.viewer.window.add_dock_widget(
+                toolbar, name="Finding Dory", area="top"
+            )
 
             # ── Groups panel ─────────────────────────────────────────────
             groups_panel = QWidget()
@@ -540,6 +568,121 @@ def _build_label_tool():
             self._color_by = color_by
             self._update_point_colors()
 
+        def _on_recluster(self):
+            """Re-run UMAP + HDBSCAN on the current channel.
+
+            Existing assignments survive because the auto-assignment block
+            in ``_recompute_view`` short-circuits on subsequent passes for a
+            given (line, channel) scope (see ``self._auto_assigned``).
+            """
+            self._recompute_view()
+
+        # ------------------------------------------------------------------
+        # Select-by attribute → values dropdowns
+        # ------------------------------------------------------------------
+
+        def _refresh_select_by_combo(self):
+            """Populate the "Select by" attribute combo.
+
+            Finding Dory only exposes Cluster and Group; the upstream Fluor /
+            Phenotype-combo / Picked options don't apply here (no per-well
+            phenotype columns on ``self.metadata``, no ``_picked`` map).
+            """
+            if not hasattr(self, "select_by_combo"):
+                return
+            self.select_by_combo.blockSignals(True)
+            self.select_by_combo.clear()
+            self.select_by_combo.addItem("(choose attribute)", "")
+            if self._view_clusters is not None:
+                self.select_by_combo.addItem("Cluster", "cluster")
+            self.select_by_combo.addItem("Group", "group")
+            self.select_by_combo.blockSignals(False)
+            self.select_value_combo.clear()
+            self.select_value_combo.setEnabled(False)
+            self.select_all_btn.setEnabled(False)
+
+        def _on_select_by_changed(self, index: int):
+            attr = self.select_by_combo.currentData()
+            self.select_value_combo.clear()
+            if not attr:
+                self.select_value_combo.setEnabled(False)
+                self.select_all_btn.setEnabled(False)
+                return
+
+            if attr == "cluster" and self._view_clusters is not None:
+                unique_cl = sorted(
+                    set(int(c) for c in self._view_clusters if c >= 0)
+                )
+                for cl in unique_cl:
+                    n = int((self._view_clusters == cl).sum())
+                    self.select_value_combo.addItem(f"cluster_{cl} ({n})", cl)
+            elif attr == "group":
+                fl, ch = self._scope()
+                asgn = self.store.assignments(fl, ch)
+                counts: Dict[str, int] = {}
+                for g in asgn.values():
+                    counts[g] = counts.get(g, 0) + 1
+                for grp in self.store.groups(fl, ch):
+                    n = counts.get(grp, 0)
+                    self.select_value_combo.addItem(f"{grp} ({n})", grp)
+
+            has_values = self.select_value_combo.count() > 0
+            self.select_value_combo.setEnabled(has_values)
+            self.select_all_btn.setEnabled(has_values)
+
+        def _on_select_by_value(self):
+            attr = self.select_by_combo.currentData()
+            value = self.select_value_combo.currentData()
+            if not attr or self._view_indices is None:
+                return
+            self._focused_group = None
+
+            line_indices = self._view_indices
+            if self._view_umap is not None:
+                valid = ~np.isnan(self._view_umap).any(axis=1)
+            else:
+                valid = np.ones(len(line_indices), dtype=bool)
+            for idx in self._hidden_indices:
+                if 0 <= idx < len(valid):
+                    valid[idx] = False
+
+            selected: List[int] = []
+            wells: List[Tuple[str, str]] = []
+
+            if attr == "cluster" and self._view_clusters is not None:
+                for li_pos in range(len(line_indices)):
+                    if valid[li_pos] and int(self._view_clusters[li_pos]) == value:
+                        selected.append(li_pos)
+                        row = self.metadata.iloc[line_indices[li_pos]]
+                        wells.append((row["well_name"], row["experiment"]))
+            elif attr == "group":
+                fl, ch = self._scope()
+                asgn = self.store.assignments(fl, ch)
+                for li_pos, meta_idx in enumerate(line_indices):
+                    if not valid[li_pos]:
+                        continue
+                    row = self.metadata.iloc[meta_idx]
+                    if asgn.get(row["well_id"]) == value:
+                        selected.append(li_pos)
+                        wells.append((row["well_name"], row["experiment"]))
+
+            if not selected:
+                self.crop_info.setText("No matching wells found.")
+                return
+
+            self._selected_indices = set(selected)
+            self._highlight_selected(np.array(selected))
+            seen = set()
+            unique = []
+            for w in wells:
+                if w not in seen:
+                    seen.add(w)
+                    unique.append(w)
+            self._set_selected_wells(unique)
+            self.assign_btn.setEnabled(True)
+            self.unassign_btn.setEnabled(True)
+            self.crop_info.setText(f"Selected {len(selected)} wells by {attr}")
+
         # ------------------------------------------------------------------
         # UMAP + clustering
         # ------------------------------------------------------------------
@@ -646,6 +789,7 @@ def _build_label_tool():
                 self.store.create_group(fl, ch, group_name)
 
             self._refresh_group_list()
+            self._refresh_select_by_combo()
             self._preload_crops()
             self._update_scatter()
             self._update_status()
@@ -1105,6 +1249,9 @@ def _build_label_tool():
             self.group_list.blockSignals(False)
             if hasattr(self, "_assign_scroll"):
                 self._rebuild_quick_assign_buttons()
+            # Keep the Select-by value combo in sync when "Group" is active.
+            if hasattr(self, "select_by_combo") and self.select_by_combo.currentData() == "group":
+                self._on_select_by_changed(self.select_by_combo.currentIndex())
 
         def _rebuild_quick_assign_buttons(self):
             """Build the 3-column grid of group cards with thumbnails.
