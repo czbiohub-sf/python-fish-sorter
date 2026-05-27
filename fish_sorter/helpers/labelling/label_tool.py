@@ -2018,6 +2018,7 @@ def LabelTool(
     per_channel_indices: Dict[str, np.ndarray],
     cluster_strategy,
     store: LabelStore,
+    per_channel_contrast: Optional[Dict[str, Tuple[float, float]]] = None,
     parent=None,
 ):
     """Factory wrapper — defers Qt/napari imports until first call.
@@ -2038,5 +2039,6 @@ def LabelTool(
         per_channel_indices=per_channel_indices,
         cluster_strategy=cluster_strategy,
         store=store,
+        per_channel_contrast=per_channel_contrast,
         parent=parent,
     )
