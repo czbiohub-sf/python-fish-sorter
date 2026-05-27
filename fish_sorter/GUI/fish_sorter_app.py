@@ -210,12 +210,55 @@ class FishSorter:
         self._ensure_classify()
 
     def run_dory(self):
-        """Finding Dory: embedding-based labelling (stub — implemented in a later chunk)."""
-        QMessageBox.information(
-            self.v.window._qt_window,
-            "Finding Dory",
-            "Finding Dory is coming soon.",
-        )
+        """Finding Dory: embedding-based labelling alongside Finding Nemo.
+
+        Shares the active `Classify` instance (constructed via
+        `_ensure_classify()`), so Finding Dory sees the same wells, the same
+        points layer, and the same "Classification" side dock as Finding Nemo.
+        """
+        # If a Finding Dory dock already exists, just raise it.
+        existing = self.v.window._dock_widgets.get("Finding Dory")
+        if existing is not None:
+            existing.show()
+            existing.raise_()
+            self.v.window._qt_window.activateWindow()
+            self.v.window._qt_window.setFocus()
+            return
+
+        # Ensure a live Classify (also makes sure the mosaic / wells exist).
+        try:
+            self._ensure_classify()
+        except Exception as e:
+            logging.exception("Could not start Finding Dory")
+            QMessageBox.critical(
+                self.v.window._qt_window,
+                "Finding Dory",
+                f"Couldn't open Finding Dory:\n\n{e}",
+            )
+            return
+
+        # Lazy import — defers Qt/matplotlib/napari/umap until first click.
+        from fish_sorter.GUI.finding_dory import FindingDory
+
+        try:
+            dory = FindingDory(cfg_dir=self.cfg_dir, classify=self.classify)
+        except Exception as e:
+            logging.exception("FindingDory construction failed")
+            QMessageBox.critical(
+                self.v.window._qt_window,
+                "Finding Dory",
+                f"Couldn't open Finding Dory:\n\n{e}\n\n"
+                f"Check fish_sorter/configs/labeller/config.json — the model "
+                f"checkpoint and DINOv3 repo paths must be valid.",
+            )
+            return
+
+        self.dory = dory
+        dock = self.v.window.add_dock_widget(dory, name="Finding Dory", area="right", tabify=True)
+        try:
+            dock.destroyed.connect(lambda *_: setattr(self, "dory", None))
+        except Exception:
+            pass
 
     def setup_picker(self):
         """After collecting required setup information, setup the picker
