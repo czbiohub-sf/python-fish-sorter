@@ -46,6 +46,14 @@ warnings.filterwarnings(
     "ignore", message=".*Tensorflow not installed.*", module=r"umap.*"
 )
 
+# UMAP's first call triggers Numba JIT compilation, which dumps thousands
+# of SSA / bytecode DEBUG lines if the host configured the root logger at
+# DEBUG. Cap the noisiest libraries at WARNING so embedding runs stay
+# legible. Anything genuinely broken still surfaces.
+for _noisy in ("numba", "numba.core", "numba.core.ssa", "numba.core.byteflow",
+               "umap", "umap.umap_", "llvmlite"):
+    logging.getLogger(_noisy).setLevel(logging.WARNING)
+
 
 # ---------------------------------------------------------------------------
 # Wide-CSV serializer (used by Save + by tests)

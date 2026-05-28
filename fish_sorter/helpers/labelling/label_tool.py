@@ -308,6 +308,11 @@ def _build_label_tool():
             self._saved_layer_visibility: Dict[int, bool] = {}
             self._host_layers_hidden = False
 
+            # Track subscriptions to each napari Image layer's
+            # ``contrast_limits`` signal so the crop preview re-renders when
+            # the user moves the contrast slider. Disconnected in ``cleanup``.
+            self._contrast_subscriptions: List[Tuple[object, object]] = []
+
             self._crop_full_pixmap = None
             self._assign_crop_labels: List[Tuple[QLabel, QLabel, Optional[QPixmap]]] = []
 
@@ -337,6 +342,10 @@ def _build_label_tool():
                 self._restore_host_layers()
             except Exception:
                 log.exception("layer visibility restore failed")
+            try:
+                self._unsubscribe_contrast_signals()
+            except Exception:
+                log.exception("contrast signal unsubscribe failed")
             dock = getattr(self, "_toolbar_dock", None)
             if dock is not None:
                 try:
@@ -575,6 +584,10 @@ def _build_label_tool():
 
             assign_widget.resizeEvent = _on_assign_resize
             root_layout.addWidget(assign_widget, 1)
+
+            # Subscribe to napari contrast-slider events so the crop preview
+            # tracks whatever the user dials in on the host's Image layers.
+            self._subscribe_contrast_signals()
 
             # Initialise the view for our single fish line.
             self._on_fish_line_changed(self._fish_line)
@@ -1195,14 +1208,64 @@ def _build_label_tool():
         # Crop display
         # ------------------------------------------------------------------
 
+        def _subscribe_contrast_signals(self):
+            """Re-render crops live when napari Image contrast sliders move."""
+            try:
+                import napari as _napari
+            except Exception:
+                return
+            for layer in self.viewer.layers:
+                if not isinstance(layer, _napari.layers.Image):
+                    continue
+                if layer.name not in self._all_channels:
+                    continue
+                try:
+                    layer.events.contrast_limits.connect(self._on_layer_contrast_changed)
+                    self._contrast_subscriptions.append((layer, self._on_layer_contrast_changed))
+                except Exception:
+                    log.exception(f"could not subscribe contrast events on {layer.name}")
+
+        def _unsubscribe_contrast_signals(self):
+            for layer, handler in self._contrast_subscriptions:
+                try:
+                    layer.events.contrast_limits.disconnect(handler)
+                except Exception:
+                    pass
+            self._contrast_subscriptions = []
+
+        def _on_layer_contrast_changed(self, event):
+            """Invalidate cached crops + re-render side panel and UMAP overlay."""
+            try:
+                layer = getattr(event, "source", None)
+                if layer is None or getattr(layer, "name", None) != self._current_channel:
+                    return
+                self._crop_cache.clear()
+                self._preload_crops()
+                if self._selected_well_list:
+                    wn, exp = self._selected_well_list[self._current_well_view_idx]
+                    self._show_crop(wn, exp)
+                if hasattr(self, "image_umap_checkbox") and self.image_umap_checkbox.isChecked():
+                    self._render_image_umap()
+            except Exception:
+                log.exception("contrast-changed handler failed")
+
         def _contrast_for(self, channel: str) -> Tuple[Optional[float], Optional[float]]:
             """Return ``(low, high)`` for ``channel`` or ``(None, None)``.
 
-            ``None`` falls through to per-crop percentile inside
-            ``_uint16_to_rgb`` — that's the per-crop overexposure path, used
-            only when no host contrast was supplied (e.g. the mosaic was
-            renamed between Finding Nemo and Finding Dory).
+            Reads the napari Image layer's ``contrast_limits`` live so the
+            crop preview follows whatever the user has set in the napari
+            contrast slider. Falls back to the constructor snapshot, then to
+            ``(None, None)`` — that last case triggers the per-crop
+            percentile path inside ``_uint16_to_rgb``.
             """
+            try:
+                import napari as _napari
+                for layer in self.viewer.layers:
+                    if isinstance(layer, _napari.layers.Image) and layer.name == channel:
+                        lo, hi = layer.contrast_limits
+                        return (float(lo), float(hi))
+            except Exception:
+                pass
             bounds = self._channel_contrast.get(channel)
             if bounds is None:
                 return (None, None)
@@ -1548,6 +1611,7 @@ def _build_label_tool():
                 return
             wid = match.iloc[0]["well_id"]
             fl, ch = self._scope()
+            self._clear_global_locks(fl, ch, [wid], group_name)
             self.store.assign(fl, ch, [wid], group_name)
             self.crop_info.setText(f"{wn} | {exp} -> {group_name}")
             self._advance_after_action()
@@ -1719,6 +1783,25 @@ def _build_label_tool():
                 self._update_point_colors()
                 self._update_status()
 
+        def _clear_global_locks(
+            self, fish_line: str, channel: str, well_ids: List[str], target_group: str,
+        ):
+            """Unassign any wells currently in a global group when the target
+            assignment is non-global.
+
+            ``LabelStore.assign`` silently drops non-global assignments for
+            wells finalized by global membership. In Finding Dory the new
+            assignment must win — the user is overriding Finding Nemo's
+            coarse classification, not re-stating it.
+            """
+            if target_group in GLOBAL_GROUPS:
+                return
+            to_clear = [
+                wid for wid in well_ids if self.store.is_finalized(fish_line, wid)
+            ]
+            if to_clear:
+                self.store.unassign(fish_line, channel, to_clear)
+
         def _on_assign(self):
             """Commit current selection to the chosen group.
 
@@ -1739,6 +1822,11 @@ def _build_label_tool():
                 wid = self.metadata.iloc[meta_idx]["well_id"]
                 well_ids.append(wid)
 
+            # In Finding Dory the user expects an embedding-driven reassignment
+            # to override Finding Nemo's coarse empty/multiple/deformed labels.
+            # Upstream LabelStore.assign blocks this via ``is_finalized``; clear
+            # the global lock first so the new assignment lands.
+            self._clear_global_locks(fl, ch, well_ids, group)
             self.store.assign(fl, ch, well_ids, group)
             n = len(well_ids)
             self._selected_indices = set()
