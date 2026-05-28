@@ -513,26 +513,6 @@ def _build_label_tool():
             self._hide_assigned_checkbox.toggled.connect(self._toggle_hide_assigned)
             toolbar_layout.addWidget(self._hide_assigned_checkbox)
 
-            # Point Size slider (Finding-Dory-owned). The napari
-            # layer-controls "size" slider clamps to a dynamic min based
-            # on the initial size, so dragging below the starting value
-            # silently does nothing. This slider applies a 10%–300%
-            # multiplier on top of our auto-computed size; default 100%
-            # is the middle so the user can scale either direction.
-            toolbar_layout.addWidget(QLabel("Pt:"))
-            self._point_size_slider = QSlider(Qt.Horizontal)
-            self._point_size_slider.setRange(10, 300)
-            self._point_size_slider.setValue(100)
-            self._point_size_slider.setMaximumWidth(100)
-            self._point_size_slider.setToolTip(
-                "UMAP point size (100% = auto, fits inside a fish crop)"
-            )
-            self._point_size_slider.valueChanged.connect(self._on_point_size_slider)
-            self._point_size_label = QLabel("100%")
-            self._point_size_label.setMinimumWidth(34)
-            toolbar_layout.addWidget(self._point_size_slider)
-            toolbar_layout.addWidget(self._point_size_label)
-
             # Cross-channel grid mode. Replaces the UMAP with a synthetic
             # 2-D grid where wells are bucketed by their (ch_a_group,
             # ch_b_group, …) assignment tuple — only wells assigned in every
@@ -912,10 +892,6 @@ def _build_label_tool():
             if hasattr(self, "cross_refresh_btn"):
                 self.cross_refresh_btn.setEnabled(True)
             self._remove_image_umap()
-            # The cross-channel grid has very different coordinate units
-            # from a UMAP scatter; force a one-shot resize so the points
-            # don't render at a size tuned for the prior layout.
-            self._force_resize = True
             self._update_scatter()
             self._refresh_group_list()
             self._update_status()
@@ -945,8 +921,6 @@ def _build_label_tool():
             if hasattr(self, "cross_refresh_btn"):
                 self.cross_refresh_btn.setEnabled(False)
             self._remove_image_umap()
-            # Back to the UMAP scatter's native coord scale — refit size.
-            self._force_resize = True
             self._update_scatter()
             self._refresh_group_list()
             self._update_status()
@@ -1803,15 +1777,8 @@ def _build_label_tool():
             # mode toggle, which silently clobbered whatever the user had
             # dialed in (and was the proximate cause of "size slider
             # doesn't work").
-            # Apply the toolbar's Point Size slider multiplier (default 1.0
-            # = 100%) on top of the auto-computed base, so the user's
-            # slider value persists across layout changes.
             self._auto_point_size = auto_size
-            mult = (
-                self._point_size_slider.value() / 100.0
-                if hasattr(self, "_point_size_slider") else 1.0
-            )
-            effective_size = auto_size * mult
+            effective_size = auto_size
 
             if self.points_layer is None:
                 self._point_size = effective_size
@@ -1834,11 +1801,16 @@ def _build_label_tool():
                     self._on_layer_current_size_changed
                 )
                 self._hide_host_layers()
-                self._frame_camera_on_umap(display_coords[valid])
             else:
                 self.points_layer.data = display_coords
                 self.points_layer.face_color = colors
                 self.points_layer.border_color = colors
+
+            # Re-center & zoom on the current scatter every time the view is
+            # rebuilt — i.e. on channel switches and Cross-Channel toggles —
+            # so the panel always frames the points instead of leaving the
+            # camera wherever the previous layout left it.
+            self._frame_camera_on_umap(display_coords[valid])
 
             self._selected_indices = set()
             self.assign_btn.setEnabled(False)
@@ -1970,29 +1942,6 @@ def _build_label_tool():
             colors = self._build_colors()
             self.points_layer.face_color = colors
             self.points_layer.border_color = colors
-
-        def _on_point_size_slider(self, value: int):
-            """Apply the toolbar slider's multiplier to the layer's size.
-
-            Bypasses napari's built-in size slider entirely so the user
-            can scale points smaller than the initial auto-computed value
-            (napari clamps its slider's min to roughly the initial size).
-            """
-            if hasattr(self, "_point_size_label"):
-                self._point_size_label.setText(f"{value}%")
-            if self.points_layer is None:
-                return
-            base = getattr(self, "_auto_point_size", None)
-            if not base or base <= 0:
-                return
-            mult = value / 100.0
-            new_size = base * mult
-            self._suppress_size_event = True
-            try:
-                self.points_layer.size = new_size
-                self._point_size = new_size
-            finally:
-                self._suppress_size_event = False
 
         def _on_layer_current_size_changed(self, event=None):
             """Propagate napari's point-size slider to every point.
