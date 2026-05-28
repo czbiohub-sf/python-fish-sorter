@@ -356,6 +356,18 @@ def _build_label_tool():
             self._crop_full_pixmap = None
             self._assign_crop_labels: List[Tuple[QLabel, QLabel, Optional[QPixmap]]] = []
 
+            # Cluster labels cached per channel so ``_recompute_view`` and the
+            # background warm don't re-run HDBSCAN. Populated eagerly below.
+            self._cluster_labels_by_channel: Dict[str, np.ndarray] = {}
+
+            # Eagerly cluster + auto-assign every channel before any UI hook
+            # fires. This is what makes Cross-Channel work the moment the
+            # dock appears — without it, a channel's cluster_N groups are
+            # only populated the first time the user visits that channel,
+            # so the cross-channel grid sees most wells as "unassigned in
+            # at least one channel" and shows nothing.
+            self._compute_all_clusters_and_assign()
+
             self._build_ui()
 
         # ------------------------------------------------------------------
@@ -708,7 +720,90 @@ def _build_label_tool():
             scope_key = (self._current_line, self._current_channel)
             self._view_state_cache.pop(scope_key, None)
             self._channel_crop_cache.pop(self._current_channel, None)
+            self._cluster_labels_by_channel.pop(self._current_channel, None)
             self._recompute_view()
+
+        # ------------------------------------------------------------------
+        # Eager per-channel clustering
+        # ------------------------------------------------------------------
+
+        def _compute_all_clusters_and_assign(self):
+            """Cluster every channel's embeddings and run the first-time
+            cluster_N auto-assignment up front.
+
+            Called from ``__init__`` so Cross-Channel mode has a complete
+            per-well assignment in every channel from the moment the dock
+            opens, instead of only after the user manually visits each
+            channel (which is what triggered the lazy path before).
+
+            HDBSCAN on a few hundred embeddings is fast (~1s/channel) so
+            this adds a small fixed cost to startup; UMAP — the genuinely
+            slow part — stays lazy / backgrounded.
+            """
+            fl = self._fish_line
+            n_wells = len(self._well_ids)
+            if n_wells < 2 or not self._all_channels:
+                return
+            line_indices = np.arange(n_wells)
+            for channel in self._all_channels:
+                embeddings, valid_positions = self._get_channel_emb_for_line(
+                    channel, line_indices
+                )
+                if len(embeddings) < 2:
+                    continue
+                mask = np.zeros(n_wells, dtype=bool)
+                mask[valid_positions] = True
+                full_emb = np.full(
+                    (n_wells, embeddings.shape[1]), np.nan, dtype=np.float32
+                )
+                full_emb[valid_positions] = embeddings
+                valid_emb = full_emb[mask]
+                if len(valid_emb) < 2:
+                    continue
+                try:
+                    valid_labels = np.asarray(
+                        self._cluster_strategy.cluster(valid_emb)
+                    )
+                except Exception:
+                    log.exception(f"eager cluster failed for {channel}")
+                    continue
+                full_labels = np.full(n_wells, -2, dtype=int)
+                full_labels[mask] = valid_labels
+                self._cluster_labels_by_channel[channel] = full_labels
+
+                scope = (fl, channel)
+                if scope in self._auto_assigned:
+                    continue
+                asgn = self.store.assignments(fl, channel)
+                unique_clusters = sorted(
+                    set(int(c) for c in valid_labels if c >= 0)
+                )
+                cluster_members: Dict[int, List[str]] = {
+                    cl: [] for cl in unique_clusters
+                }
+                for li_pos in range(n_wells):
+                    if not mask[li_pos]:
+                        continue
+                    cl = int(full_labels[li_pos])
+                    if cl < 0:
+                        continue
+                    wid = self.metadata.iloc[li_pos]["well_id"]
+                    if wid in asgn or self.store.is_finalized(fl, wid):
+                        continue
+                    cluster_members[cl].append(wid)
+                assigned_total = 0
+                for cl in unique_clusters:
+                    group_name = f"cluster_{cl}"
+                    self.store.create_group(fl, channel, group_name)
+                    members = cluster_members.get(cl, [])
+                    if members:
+                        self.store.assign(fl, channel, members, group_name)
+                        assigned_total += len(members)
+                self._auto_assigned.add(scope)
+                log.info(
+                    f"eager auto-assign {fl}|{channel}: "
+                    f"clusters={len(unique_clusters)} assigned={assigned_total}"
+                )
 
         # ------------------------------------------------------------------
         # Cross-channel grid mode
@@ -1229,15 +1324,26 @@ def _build_label_tool():
                 return
 
             # Refactor item 7: cluster via the injected strategy.
-            try:
-                valid_labels = np.asarray(self._cluster_strategy.cluster(valid_emb))
-            except Exception as e:
-                log.exception("cluster strategy failed")
-                self.status_label.setText(f"Clustering failed: {e}")
-                valid_labels = np.full(len(valid_emb), -1, dtype=int)
-
-            full_labels = np.full(n, -2, dtype=int)
-            full_labels[mask] = valid_labels
+            # If clusters were already computed at startup (eager pass) or by
+            # the background warmer, reuse them — HDBSCAN is deterministic
+            # for the same embedding matrix so re-running adds latency
+            # without changing the result.
+            cached_labels = self._cluster_labels_by_channel.get(self._current_channel)
+            if cached_labels is not None and len(cached_labels) == n:
+                full_labels = cached_labels
+                valid_labels = full_labels[mask]
+            else:
+                try:
+                    valid_labels = np.asarray(
+                        self._cluster_strategy.cluster(valid_emb)
+                    )
+                except Exception as e:
+                    log.exception("cluster strategy failed")
+                    self.status_label.setText(f"Clustering failed: {e}")
+                    valid_labels = np.full(len(valid_emb), -1, dtype=int)
+                full_labels = np.full(n, -2, dtype=int)
+                full_labels[mask] = valid_labels
+                self._cluster_labels_by_channel[self._current_channel] = full_labels
             self._view_clusters = full_labels
 
             # UMAP — lazy import.
@@ -1386,15 +1492,19 @@ def _build_label_tool():
                 if len(valid_emb) < 2:
                     return
 
-                try:
-                    valid_labels = np.asarray(
-                        self._cluster_strategy.cluster(valid_emb)
-                    )
-                except Exception:
-                    log.exception(f"warm cluster failed for {channel}")
-                    valid_labels = np.full(len(valid_emb), -1, dtype=int)
-                full_labels = np.full(n, -2, dtype=int)
-                full_labels[mask] = valid_labels
+                cached_labels = self._cluster_labels_by_channel.get(channel)
+                if cached_labels is not None and len(cached_labels) == n:
+                    full_labels = cached_labels
+                else:
+                    try:
+                        valid_labels = np.asarray(
+                            self._cluster_strategy.cluster(valid_emb)
+                        )
+                    except Exception:
+                        log.exception(f"warm cluster failed for {channel}")
+                        valid_labels = np.full(len(valid_emb), -1, dtype=int)
+                    full_labels = np.full(n, -2, dtype=int)
+                    full_labels[mask] = valid_labels
 
                 try:
                     from umap import UMAP
