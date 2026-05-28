@@ -286,6 +286,21 @@ def _build_label_tool():
             self._color_by = "group"
             self._hidden_indices: set = set()
 
+            # Cross-channel grid mode (ported from upstream). When enabled
+            # the UMAP scatter is replaced with a synthetic 2-D grid that
+            # buckets wells by their cartesian-product (ch_a_group,
+            # ch_b_group, ...) assignment. Only wells assigned in *every*
+            # channel appear. The crop cache holds an all-channels
+            # composite RGB while the mode is active.
+            self._cross_channel_mode: bool = False
+            self._cross_classes: Dict[tuple, List[str]] = {}
+            self._cross_channels: List[str] = []
+            self._cross_sorted_keys: List[tuple] = []
+            self._saved_umap: Optional[np.ndarray] = None
+            self._saved_clusters: Optional[np.ndarray] = None
+            self._saved_valid_mask: Optional[np.ndarray] = None
+            self._saved_crop_cache: Optional[Dict[Tuple[str, str], np.ndarray]] = None
+
             # Point spread state (crop-size slider).
             self._umap_ref_points_data: Optional[np.ndarray] = None
             self._umap_world_centroid: Optional[Tuple[float, float]] = None
@@ -420,6 +435,20 @@ def _build_label_tool():
             )
             self._hide_assigned_checkbox.toggled.connect(self._toggle_hide_assigned)
             toolbar_layout.addWidget(self._hide_assigned_checkbox)
+
+            # Cross-channel grid mode. Replaces the UMAP with a synthetic
+            # 2-D grid where wells are bucketed by their (ch_a_group,
+            # ch_b_group, …) assignment tuple — only wells assigned in every
+            # channel show. Useful for spotting cross-channel phenotype
+            # combinations once both channels have been labelled.
+            self._cross_channel_checkbox = QCheckBox("Cross-Channel")
+            self._cross_channel_checkbox.setToolTip(
+                "Re-layout the scatter as a grid bucketed by cross-channel "
+                "group combinations. Only wells labelled in every channel "
+                "are shown."
+            )
+            self._cross_channel_checkbox.toggled.connect(self._toggle_cross_channel)
+            toolbar_layout.addWidget(self._cross_channel_checkbox)
 
             # Recluster — re-runs UMAP + HDBSCAN on the current channel.
             # Existing assignments are preserved (auto-assign fires only on
@@ -632,6 +661,268 @@ def _build_label_tool():
             self._recompute_view()
 
         # ------------------------------------------------------------------
+        # Cross-channel grid mode
+        # ------------------------------------------------------------------
+
+        def _toggle_cross_channel(self, checked: bool):
+            if checked:
+                self._enter_cross_channel()
+            else:
+                self._exit_cross_channel()
+
+        def _enter_cross_channel(self):
+            """Replace the UMAP with a cross-channel grid layout."""
+            if self._view_indices is None or len(self._view_indices) < 2:
+                self._cross_channel_checkbox.blockSignals(True)
+                self._cross_channel_checkbox.setChecked(False)
+                self._cross_channel_checkbox.blockSignals(False)
+                return
+
+            self._saved_umap = (
+                self._view_umap.copy() if self._view_umap is not None else None
+            )
+            self._saved_clusters = (
+                self._view_clusters.copy() if self._view_clusters is not None else None
+            )
+            self._saved_valid_mask = (
+                self._view_valid_mask.copy()
+                if self._view_valid_mask is not None else None
+            )
+            self._saved_crop_cache = dict(self._crop_cache)
+
+            self._cross_channel_mode = True
+            self._compute_cross_channel_grid()
+
+            if not self._cross_sorted_keys:
+                # Nothing to show — likely no wells classified in every
+                # channel yet. Bail and untick.
+                self._cross_channel_mode = False
+                self._saved_umap = None
+                self._saved_clusters = None
+                self._saved_valid_mask = None
+                self._saved_crop_cache = None
+                self._cross_channel_checkbox.blockSignals(True)
+                self._cross_channel_checkbox.setChecked(False)
+                self._cross_channel_checkbox.blockSignals(False)
+                self.status_label.setText(
+                    "Cross-Channel: no wells classified in every channel yet."
+                )
+                return
+
+            self._preload_composite_crops()
+            self.channel_combo.setEnabled(False)
+            self._remove_image_umap()
+            self._update_scatter()
+            self._refresh_group_list()
+            self._update_status()
+            if self.image_umap_checkbox.isChecked():
+                self._render_image_umap()
+
+        def _exit_cross_channel(self):
+            """Restore the per-channel UMAP layout."""
+            self._cross_channel_mode = False
+            if self._saved_umap is not None:
+                self._view_umap = self._saved_umap
+            if self._saved_clusters is not None:
+                self._view_clusters = self._saved_clusters
+            if self._saved_valid_mask is not None:
+                self._view_valid_mask = self._saved_valid_mask
+            if self._saved_crop_cache is not None:
+                self._crop_cache = self._saved_crop_cache
+            self._saved_umap = None
+            self._saved_clusters = None
+            self._saved_valid_mask = None
+            self._saved_crop_cache = None
+            self._cross_classes = {}
+            self._cross_channels = []
+            self._cross_sorted_keys = []
+
+            self.channel_combo.setEnabled(True)
+            self._remove_image_umap()
+            self._update_scatter()
+            self._refresh_group_list()
+            self._update_status()
+            if self.image_umap_checkbox.isChecked():
+                self._render_image_umap()
+
+        def _compute_cross_channel_grid(self):
+            """Bucket wells by cartesian-product assignment, lay out as a grid.
+
+            Only includes wells with a non-empty assignment in *every*
+            channel for the current fish line. Each (ch0_group, ch1_group,
+            …) tuple becomes one cluster_id, laid out as its own sub-grid
+            with gaps between sections so the user can lasso a whole combo
+            at once.
+            """
+            fl = self._current_line
+            channels = sorted(self.store._line_channels.get(fl, []))
+            self._cross_channels = channels
+            if not channels or self._view_indices is None:
+                self._cross_classes = {}
+                self._cross_sorted_keys = []
+                return
+
+            from collections import defaultdict as _dd
+            classes: Dict[tuple, List[str]] = _dd(list)
+            for meta_idx in self._view_indices:
+                wid = self.metadata.iloc[meta_idx]["well_id"]
+                assignments = []
+                ok = True
+                for ch in channels:
+                    g = self.store.assignments(fl, ch).get(wid)
+                    if not g:
+                        ok = False
+                        break
+                    assignments.append(g)
+                if ok:
+                    classes[tuple(assignments)].append(wid)
+            self._cross_classes = dict(classes)
+
+            # Sort: all-global tuples first, then by per-channel ordering
+            # (globals before custom groups, alphabetical within).
+            global_order = {g: i for i, g in enumerate(DEFAULT_GROUPS)}
+
+            def _sort_key(key):
+                all_global = all(g in GLOBAL_GROUPS for g in key)
+                per_ch = []
+                for g in key:
+                    if g in global_order:
+                        per_ch.append((0, global_order[g], g))
+                    else:
+                        per_ch.append((1, 0, g))
+                return (0 if all_global else 1, per_ch)
+
+            self._cross_sorted_keys = sorted(classes.keys(), key=_sort_key)
+
+            # 2-D sub-grid per class with gaps between sections.
+            max_cols = 4
+            col_spacing = 8.0
+            row_spacing = 2.5
+            class_gap = 4.0
+
+            wid_to_grid: Dict[str, Tuple[float, float, int]] = {}
+            y_offset = 0.0
+            for class_idx, key in enumerate(self._cross_sorted_keys):
+                wids = classes[key]
+                n_sub_rows = max(1, (len(wids) + max_cols - 1) // max_cols)
+                for i, wid in enumerate(wids):
+                    sub_row = i // max_cols
+                    sub_col = i % max_cols
+                    x = sub_col * col_spacing
+                    y = -(y_offset + sub_row * row_spacing)
+                    wid_to_grid[wid] = (y, x, class_idx)
+                y_offset += n_sub_rows * row_spacing + class_gap
+
+            n = len(self._view_indices)
+            grid = np.full((n, 2), np.nan, dtype=np.float32)
+            cluster_ids = np.full(n, -2, dtype=int)
+            for li_pos, meta_idx in enumerate(self._view_indices):
+                wid = self.metadata.iloc[meta_idx]["well_id"]
+                pos = wid_to_grid.get(wid)
+                if pos is not None:
+                    y, x, class_idx = pos
+                    grid[li_pos, 0] = x
+                    grid[li_pos, 1] = y
+                    cluster_ids[li_pos] = class_idx
+
+            self._view_umap = grid
+            self._view_clusters = cluster_ids
+            self._view_valid_mask = ~np.isnan(grid).any(axis=1)
+
+        def _preload_composite_crops(self):
+            """Build all-channel composite RGB crops for the current view.
+
+            Each well's per-channel uint16 crop (already in ``self._well_crops``)
+            is normalized against the global per-channel ``contrast_limits``
+            snapshot and painted with the channel's RGB tint. Channels are
+            additively blended (or multiplicatively darkened for DAPI/CY5
+            "dark-on-white" channels) into one RGB.
+            """
+            self._crop_cache.clear()
+            if self._view_indices is None:
+                return
+
+            channels = self._cross_channels or self._all_channels
+            dark_on_white = any(ch.upper() in ("DAPI", "CY5") for ch in channels)
+            channel_cfgs = {ch: get_channel_display(ch) for ch in channels}
+
+            loaded = 0
+            for meta_idx in self._view_indices:
+                widx = int(meta_idx)
+                row = self.metadata.iloc[widx]
+                wn, exp = row["well_name"], row["experiment"]
+                if (wn, exp) in self._crop_cache:
+                    continue
+                if widx >= len(self._well_crops):
+                    continue
+                crops_for_well = self._well_crops[widx]
+
+                # Determine output shape from the first available channel.
+                base = None
+                for ch in channels:
+                    crop = crops_for_well.get(ch)
+                    if crop is not None and crop.size:
+                        base = crop
+                        break
+                if base is None:
+                    continue
+                h, w = base.shape
+                if dark_on_white:
+                    rgb = np.full((h, w, 3), 255, dtype=np.uint8)
+                else:
+                    rgb = np.zeros((h, w, 3), dtype=np.uint8)
+
+                for ch in channels:
+                    crop = crops_for_well.get(ch)
+                    if crop is None or crop.size == 0:
+                        continue
+                    low, high = self._contrast_for(ch)
+                    if low is None or high is None or high <= low:
+                        # Fall back to per-crop percentile if no snapshot.
+                        finite = (
+                            crop[np.isfinite(crop)] if np.issubdtype(crop.dtype, np.floating)
+                            else crop
+                        )
+                        if finite.size:
+                            low_v, high_v = np.percentile(finite, [1.0, 99.0])
+                        else:
+                            low_v, high_v = 0.0, 65535.0
+                        low, high = float(low_v), float(high_v) if high_v > low_v else float(low_v) + 1.0
+                    rng = high - low if high > low else 1.0
+                    normalized = np.clip(
+                        (crop.astype(np.float32) - low) / rng, 0.0, 1.0
+                    )
+                    if normalized.shape != (h, w):
+                        # Skip channels whose crop shape doesn't match the
+                        # base — composite needs aligned arrays.
+                        continue
+                    r_w, g_w, b_w = channel_cfgs[ch].rgb_color
+                    weights = [r_w, g_w, b_w]
+                    if dark_on_white:
+                        for c, wt in enumerate(weights):
+                            if wt > 0:
+                                rgb[:, :, c] = np.minimum(
+                                    rgb[:, :, c],
+                                    (255 - normalized * wt * 255).astype(np.uint8),
+                                )
+                            else:
+                                rgb[:, :, c] = np.minimum(
+                                    rgb[:, :, c],
+                                    (255 - normalized * 255).astype(np.uint8),
+                                )
+                    else:
+                        for c, wt in enumerate(weights):
+                            if wt > 0:
+                                rgb[:, :, c] = np.maximum(
+                                    rgb[:, :, c],
+                                    (normalized * wt * 255).astype(np.uint8),
+                                )
+
+                self._crop_cache[(wn, exp)] = rgb
+                loaded += 1
+            log.info(f"Preloaded {loaded} composite crops for {self._current_line}")
+
+        # ------------------------------------------------------------------
         # Select-by attribute → values dropdowns
         # ------------------------------------------------------------------
 
@@ -772,6 +1063,11 @@ def _build_label_tool():
             Refactor item 7: clustering routes through the injected
             ``ClusterStrategy`` instead of constructing HDBSCAN directly.
             """
+            if self._cross_channel_mode:
+                # The grid is the view — recomputing the UMAP would clobber
+                # ``_view_umap`` / ``_view_clusters``. Untick Cross-Channel
+                # first to recluster.
+                return
             if self._view_indices is None or len(self._view_indices) < 2:
                 self.status_label.setText("Too few wells for this fish line.")
                 return
@@ -1836,7 +2132,12 @@ def _build_label_tool():
             self._selected_indices = set()
             self._focused_group = None
             self._refresh_group_list()
-            self._update_point_colors()
+            if self._cross_channel_mode:
+                # Combos changed — re-bucket wells and re-layout the grid.
+                self._compute_cross_channel_grid()
+                self._update_scatter()
+            else:
+                self._update_point_colors()
             self._update_status()
             self._set_selected_wells([])
             self._rearm_lasso()
@@ -1855,7 +2156,11 @@ def _build_label_tool():
             self._selected_indices = set()
             self._focused_group = None
             self._refresh_group_list()
-            self._update_point_colors()
+            if self._cross_channel_mode:
+                self._compute_cross_channel_grid()
+                self._update_scatter()
+            else:
+                self._update_point_colors()
             self._update_status()
             self._set_selected_wells([])
             self._rearm_lasso()
