@@ -1,9 +1,10 @@
 # Finding Dory labeller config
 
 `config.json` (sibling to this file) tells Finding Dory where your trained
-model checkpoint and DINOv3 assets live. Copy `config.example.json` to
-`config.json` and fill in the paths, or — once Chunk 5 ships — let the
-first-time-setup dialog create it for you via file pickers.
+model checkpoint and DINOv3 assets live. The first time you click **Finding
+Dory** with no `config.json` present, a setup dialog opens and creates one
+for you via file pickers (checkpoint + DINOv3 repo + mode). You can also copy
+`config.example.json` to `config.json` and fill in the paths by hand.
 
 ## What you need before launching Finding Dory
 

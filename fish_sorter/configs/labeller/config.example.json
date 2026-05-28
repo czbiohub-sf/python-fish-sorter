@@ -10,7 +10,7 @@
   },
   "pick_type_to_mode": {
     "larvae": "fish",
-    "eggs": "egg"
+    "embryo": "egg"
   },
   "models": {
     "fish": {
