@@ -833,12 +833,12 @@ def _build_label_tool():
             full_umap[mask] = umap_2d
             self._view_umap = full_umap
 
-            # Auto-create starting groups from cluster labels. The first time
-            # we cluster a given (line, channel) scope we *also* populate each
-            # cluster_N group with its members so the UI shows real counts.
-            # Subsequent reclusters (via the Recluster button) recompute UMAP
-            # + labels but never overwrite assignments — manual edits and
-            # already-populated cluster rows survive.
+            # First-clustering pass for this scope: drop each singlet into
+            # its ``cluster_N`` group. Wells already in *any* group (e.g.
+            # find_fish-seeded empty/multiple/deformed, or a prior manual
+            # assignment) are skipped — non-singlets keep their globals,
+            # and reclustering via the Recluster button rebuilds the UMAP
+            # without touching what's already labelled.
             fl, ch = self._scope()
             asgn = self.store.assignments(fl, ch)
             unique_clusters = sorted(set(int(c) for c in valid_labels if c >= 0))
@@ -852,7 +852,7 @@ def _build_label_tool():
                     if cl < 0:
                         continue
                     wid = self.metadata.iloc[meta_idx]["well_id"]
-                    if wid in asgn:
+                    if wid in asgn or self.store.is_finalized(fl, wid):
                         continue
                     cluster_members[cl].append(wid)
             for cl in unique_clusters:
