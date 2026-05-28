@@ -8,7 +8,7 @@ def setup_logger(name: str=None):
     """
     Creates and returns a logger configured to log to both file and stdout.
     """
-    
+
     # Get root logger
     root = logging.getLogger()
     if getattr(root, "_fish_sorter_configured", False):
@@ -39,7 +39,7 @@ def setup_logger(name: str=None):
 
     stream_handler.setFormatter(stream_formatter)
     root.addHandler(stream_handler)
-    
+
     logging.captureWarnings(True)
     warnings.simplefilter("default")
 
@@ -48,7 +48,7 @@ def setup_logger(name: str=None):
         if issubclass(exc_type, KeyboardInterrupt):
             sys.__excepthook__(exc_type, exc_value, exc_traceback)
             return
-    
+
         logger.logging.getLogger(__name__)
         logger.error(
             "Uncaught Exception",

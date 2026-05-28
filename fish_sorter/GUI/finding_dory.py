@@ -480,6 +480,29 @@ def _build_finding_dory():
             layout.addWidget(self.status_label)
             layout.addWidget(self.progress_bar)
 
+            # Dev-mode loading section: spell out the steps that run before the
+            # dock is interactive, so the (sometimes multi-second, e.g. the
+            # first UMAP fit's numba compile) pauses read as expected work
+            # rather than a hang. Shown only when dev_mock_embeddings is set.
+            self._dev_mode = bool(self.cfg.get("dev_mock_embeddings", False))
+            self._dev_steps_label = None
+            if self._dev_mode:
+                self._dev_steps_label = QLabel(
+                    "<b>Dev mode — preparing Finding Dory</b><br>"
+                    "1. Compute embeddings (mock, per channel)<br>"
+                    "2. Find fish + extract well crops<br>"
+                    "3. Fit UMAP per channel "
+                    "<i>(first fit compiles UMAP — the UI may pause here)</i><br>"
+                    "4. Cluster wells (HDBSCAN)<br>"
+                    "5. Render scatter + fish overlay"
+                )
+                self._dev_steps_label.setWordWrap(True)
+                self._dev_steps_label.setStyleSheet(
+                    "color: #aaa; background: rgba(255,255,255,0.04);"
+                    " padding: 6px; border-radius: 4px;"
+                )
+                layout.addWidget(self._dev_steps_label)
+
             # Container that gets the LabelTool widget after embedding completes.
             self.tool_container = QWidget()
             self.tool_container.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
@@ -848,6 +871,8 @@ def _build_finding_dory():
             self._tool_layout.addWidget(self.label_tool)
             self.save_btn.setEnabled(True)
             self.status_label.setVisible(False)
+            if self._dev_steps_label is not None:
+                self._dev_steps_label.setVisible(False)
 
         def _on_embed_failed(self, message: str):
             self._embed_done = False

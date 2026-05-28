@@ -125,8 +125,6 @@ class FishSorter:
         self.img_tools.mosaic_btn.clicked.connect(self.run)
         self.img_tools.nemo_btn.clicked.connect(self.run_nemo)
         self.img_tools.dory_btn.clicked.connect(self.run_dory)
-        self.img_tools.prewarm_btn.clicked.connect(self.run_prewarm)
-        self.img_tools.prewarm_btn.setVisible(self._dev_mode_enabled())
         self.core.events.pixelSizeChanged.connect(self.main_mag)
 
         self.main_mag()
@@ -210,40 +208,6 @@ class FishSorter:
     def run_nemo(self):
         """Finding Nemo: threshold-based classification (the original workflow)."""
         self._ensure_classify()
-
-    def _dev_mode_enabled(self) -> bool:
-        """True when the labeller config has dev_mock_embeddings=true.
-
-        Read at startup to decide whether to show the dev-only Prewarm button.
-        Missing/unreadable config (e.g. first run before setup) → False.
-        """
-        cfg_path = self.cfg_dir / "labeller" / "config.json"
-        try:
-            import json
-            with open(cfg_path) as f:
-                return bool(json.load(f).get("dev_mock_embeddings", False))
-        except Exception:
-            return False
-
-    def run_prewarm(self):
-        """Dev: run the Finding Dory pre-warm now, before opening the dock.
-
-        Builds (or reuses) the shared Classify and re-kicks its background
-        embedding + UMAP + cluster pre-warm so adoption is instant when
-        Finding Dory is opened. Lets you iterate on the pre-warm/adoption
-        path without restarting after a config edit.
-        """
-        try:
-            self._ensure_classify()
-            self.classify._start_async_embedding()
-            logging.info("Manual Finding Dory pre-warm triggered.")
-        except Exception as e:
-            logging.exception("Manual pre-warm failed")
-            QMessageBox.critical(
-                self.v.window._qt_window,
-                "Prewarm",
-                f"Couldn't start the pre-warm:\n\n{e}",
-            )
 
     def run_dory(self):
         """Finding Dory: embedding-based labelling alongside Finding Nemo.

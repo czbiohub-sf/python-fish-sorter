@@ -520,9 +520,13 @@ class Classify(QObject):
         def _progress_cb(step, total):
             self._dory_embed_progress = (step, total)
 
-        umap_cfg = cfg.get("umap", {}) or {}
-
         def _run():
+            # Embeddings only. UMAP/clustering are deliberately NOT fit here:
+            # UMAP's first fit triggers numba JIT compilation, which holds the
+            # GIL for the whole compile and freezes the Qt event loop even on a
+            # worker thread. The dock fits UMAP lazily on open instead (behind
+            # its loading panel). Returns empty umap/cluster dicts so the
+            # adoption path stays a no-op (LabelTool fits live).
             extractor, embeds, idx = compute_embeddings(
                 cfg,
                 mode,
@@ -534,37 +538,7 @@ class Classify(QObject):
                 keep_indices=None,  # embed all wells; dock filters on adoption
                 progress_cb=_progress_cb,
             )
-
-            # Also pre-fit UMAP + clusters per channel (on all wells) so the
-            # dock can render the scatter instantly instead of fitting on
-            # open. Aligned row-for-row with idx[channel] / embeds[channel].
-            from fish_sorter.helpers.embedding.clustering import (
-                build_cluster_strategy,
-                fit_umap_2d,
-            )
-            try:
-                strat = build_cluster_strategy(cfg)
-            except Exception as e:
-                logging.warning(f"prewarm cluster strategy unavailable: {e}")
-                strat = None
-            umaps, clusters = {}, {}
-            for ch, emb in embeds.items():
-                try:
-                    coords = fit_umap_2d(
-                        emb,
-                        n_neighbors=umap_cfg.get("n_neighbors", 15),
-                        min_dist=umap_cfg.get("min_dist", 0.1),
-                    )
-                    if coords is not None:
-                        umaps[ch] = coords
-                except Exception as e:
-                    logging.warning(f"prewarm UMAP fit failed for {ch}: {e}")
-                if strat is not None:
-                    try:
-                        clusters[ch] = np.asarray(strat.cluster(emb))
-                    except Exception as e:
-                        logging.warning(f"prewarm cluster failed for {ch}: {e}")
-            return extractor, embeds, idx, umaps, clusters
+            return extractor, embeds, idx, {}, {}
 
         self._dory_embed_executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="DoryPrewarm",
