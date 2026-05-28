@@ -450,6 +450,18 @@ def _build_label_tool():
             self._cross_channel_checkbox.toggled.connect(self._toggle_cross_channel)
             toolbar_layout.addWidget(self._cross_channel_checkbox)
 
+            # Refresh — re-bucket wells into their current combos and
+            # re-layout the cross-channel grid. Only meaningful while
+            # Cross-Channel mode is active; the button is disabled otherwise.
+            self.cross_refresh_btn = QPushButton("Refresh Grid")
+            self.cross_refresh_btn.setToolTip(
+                "Re-bucket wells into their current cross-channel combos "
+                "and re-layout the grid."
+            )
+            self.cross_refresh_btn.setEnabled(False)
+            self.cross_refresh_btn.clicked.connect(self._on_cross_refresh)
+            toolbar_layout.addWidget(self.cross_refresh_btn)
+
             # Recluster — re-runs UMAP + HDBSCAN on the current channel.
             # Existing assignments are preserved (auto-assign fires only on
             # the first clustering pass per scope; see _recompute_view).
@@ -711,6 +723,8 @@ def _build_label_tool():
 
             self._preload_composite_crops()
             self.channel_combo.setEnabled(False)
+            if hasattr(self, "cross_refresh_btn"):
+                self.cross_refresh_btn.setEnabled(True)
             self._remove_image_umap()
             self._update_scatter()
             self._refresh_group_list()
@@ -738,6 +752,8 @@ def _build_label_tool():
             self._cross_sorted_keys = []
 
             self.channel_combo.setEnabled(True)
+            if hasattr(self, "cross_refresh_btn"):
+                self.cross_refresh_btn.setEnabled(False)
             self._remove_image_umap()
             self._update_scatter()
             self._refresh_group_list()
@@ -750,9 +766,11 @@ def _build_label_tool():
 
             Only includes wells with a non-empty assignment in *every*
             channel for the current fish line. Each (ch0_group, ch1_group,
-            …) tuple becomes one cluster_id, laid out as its own sub-grid
-            with gaps between sections so the user can lasso a whole combo
-            at once.
+            …) tuple becomes one cluster_id with its own sub-grid of well
+            thumbnails. Sub-grids are arranged into major columns of at
+            most ``max_combos_per_major_col`` combos each, so the canvas
+            fills horizontally when there are many combos instead of
+            growing into one tall single column.
             """
             fl = self._current_line
             channels = sorted(self.store._line_channels.get(fl, []))
@@ -794,24 +812,42 @@ def _build_label_tool():
 
             self._cross_sorted_keys = sorted(classes.keys(), key=_sort_key)
 
-            # 2-D sub-grid per class with gaps between sections.
-            max_cols = 4
-            col_spacing = 8.0
-            row_spacing = 2.5
-            class_gap = 4.0
+            # Sub-grid layout per combo.
+            max_sub_cols = 4         # wells per row inside one combo
+            col_spacing = 8.0        # horizontal spacing between wells
+            row_spacing = 2.5        # vertical spacing between rows of wells
+            combo_v_gap = 4.0        # vertical gap between stacked combos
+            major_col_gap = 12.0     # horizontal gap between major columns
+            max_combos_per_major_col = 6
+
+            # Per-combo dimensions, so we know how tall each combo's
+            # sub-grid is when stacking them into a major column.
+            combo_heights = []
+            for key in self._cross_sorted_keys:
+                n_w = len(classes[key])
+                n_sub_rows = max(1, (n_w + max_sub_cols - 1) // max_sub_cols)
+                combo_heights.append(n_sub_rows * row_spacing)
+
+            sub_width = max_sub_cols * col_spacing
+            major_col_step = sub_width + major_col_gap
 
             wid_to_grid: Dict[str, Tuple[float, float, int]] = {}
-            y_offset = 0.0
-            for class_idx, key in enumerate(self._cross_sorted_keys):
+            for combo_idx, key in enumerate(self._cross_sorted_keys):
+                major_col = combo_idx // max_combos_per_major_col
+                within_col = combo_idx % max_combos_per_major_col
+                # Sum heights of preceding combos in this major column.
+                start = major_col * max_combos_per_major_col
+                y_offset = sum(
+                    combo_heights[start : start + within_col]
+                ) + within_col * combo_v_gap
+                x_origin = major_col * major_col_step
                 wids = classes[key]
-                n_sub_rows = max(1, (len(wids) + max_cols - 1) // max_cols)
                 for i, wid in enumerate(wids):
-                    sub_row = i // max_cols
-                    sub_col = i % max_cols
-                    x = sub_col * col_spacing
+                    sub_row = i // max_sub_cols
+                    sub_col = i % max_sub_cols
+                    x = x_origin + sub_col * col_spacing
                     y = -(y_offset + sub_row * row_spacing)
-                    wid_to_grid[wid] = (y, x, class_idx)
-                y_offset += n_sub_rows * row_spacing + class_gap
+                    wid_to_grid[wid] = (y, x, combo_idx)
 
             n = len(self._view_indices)
             grid = np.full((n, 2), np.nan, dtype=np.float32)
@@ -820,14 +856,37 @@ def _build_label_tool():
                 wid = self.metadata.iloc[meta_idx]["well_id"]
                 pos = wid_to_grid.get(wid)
                 if pos is not None:
-                    y, x, class_idx = pos
+                    y, x, combo_idx = pos
                     grid[li_pos, 0] = x
                     grid[li_pos, 1] = y
-                    cluster_ids[li_pos] = class_idx
+                    cluster_ids[li_pos] = combo_idx
 
             self._view_umap = grid
             self._view_clusters = cluster_ids
             self._view_valid_mask = ~np.isnan(grid).any(axis=1)
+
+        def _on_cross_refresh(self):
+            """Re-bucket wells into their current combos and re-layout the grid.
+
+            Useful when assignments changed outside the dock's Assign button
+            path (rare but possible) or when the user just wants a clean
+            re-layout. Composite crops are also re-preloaded so any wells
+            that moved bucket pick up the freshest thumbnail.
+            """
+            if not self._cross_channel_mode:
+                return
+            self._compute_cross_channel_grid()
+            if not self._cross_sorted_keys:
+                self.status_label.setText(
+                    "Cross-Channel: no wells classified in every channel."
+                )
+                return
+            self._preload_composite_crops()
+            self._update_scatter()
+            self._refresh_group_list()
+            self._update_status()
+            if self.image_umap_checkbox.isChecked():
+                self._render_image_umap()
 
         def _preload_composite_crops(self):
             """Build all-channel composite RGB crops for the current view.
@@ -1726,16 +1785,43 @@ def _build_label_tool():
             current_text = current.text() if current else None
             self.group_list.clear()
 
-            fl, ch = self._scope()
-            counts = self.store.counts(fl, ch)
-            for g in self.store.groups(fl, ch):
-                c = counts.get(g, 0)
-                self.group_list.addItem(f"{g} ({c})" if c else g)
-            # Virtual "unassigned" entry.
-            n_assigned = sum(counts.values())
-            n_total = len(self._view_indices) if self._view_indices is not None else 0
-            n_unassigned = n_total - n_assigned
-            self.group_list.addItem(f"unassigned ({n_unassigned})")
+            if self._cross_channel_mode and self._cross_sorted_keys:
+                # In cross-channel mode each row is a cross-channel combo —
+                # "ch_a:group_a × ch_b:group_b × …" — rather than a per-channel
+                # group. Counts reflect how many wells fall into that combo.
+                fl = self._current_line
+                for key in self._cross_sorted_keys:
+                    parts = [
+                        f"{c}:{g}" for c, g in zip(self._cross_channels, key)
+                    ]
+                    label = " × ".join(parts)
+                    n = len(self._cross_classes.get(key, []))
+                    self.group_list.addItem(f"{label} ({n})" if n else label)
+                # Unassigned in cross-channel mode = wells that aren't
+                # classified in *every* channel (those don't appear in any
+                # combo bucket).
+                classified_wids: set = set()
+                for wids in self._cross_classes.values():
+                    classified_wids.update(wids)
+                n_total = (
+                    len(self._view_indices) if self._view_indices is not None else 0
+                )
+                n_unassigned = n_total - len(classified_wids)
+                self.group_list.addItem(f"unassigned ({n_unassigned})")
+            else:
+                fl, ch = self._scope()
+                counts = self.store.counts(fl, ch)
+                for g in self.store.groups(fl, ch):
+                    c = counts.get(g, 0)
+                    self.group_list.addItem(f"{g} ({c})" if c else g)
+                # Virtual "unassigned" entry.
+                n_assigned = sum(counts.values())
+                n_total = (
+                    len(self._view_indices) if self._view_indices is not None else 0
+                )
+                n_unassigned = n_total - n_assigned
+                self.group_list.addItem(f"unassigned ({n_unassigned})")
+
             if current_text:
                 for i in range(self.group_list.count()):
                     item_text = self.group_list.item(i).text()
@@ -1743,7 +1829,11 @@ def _build_label_tool():
                         self.group_list.setCurrentRow(i)
                         break
             self.group_list.blockSignals(False)
-            if hasattr(self, "_assign_scroll"):
+            if hasattr(self, "_assign_scroll") and not self._cross_channel_mode:
+                # Skip the per-channel quick-assign card grid while in
+                # cross-channel mode — its single-channel layout would
+                # contradict the combo list above. Untick Cross-Channel to
+                # bring it back.
                 self._rebuild_quick_assign_buttons()
             # Keep the Select-by value combo in sync when "Group" is active.
             if hasattr(self, "select_by_combo") and self.select_by_combo.currentData() == "group":

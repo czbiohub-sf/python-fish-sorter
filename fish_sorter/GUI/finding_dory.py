@@ -432,7 +432,13 @@ def _build_finding_dory():
             self.embed_failed_signal.connect(self._on_embed_failed, Qt.QueuedConnection)
 
             self._build_ui()
-            self._start_embedding()
+
+            # Defer the slow work (find_fish + embedding) by one event-loop
+            # tick. The dock widget needs to paint first, otherwise the host
+            # sees a blank rectangle until find_fish + checkpoint load are
+            # done. ``QTimer.singleShot(0, …)`` posts the call to the back
+            # of the queue — Qt processes paint events ahead of it.
+            QTimer.singleShot(0, self._start_embedding)
 
         # -- UI scaffolding ----------------------------------------------
 
@@ -441,12 +447,15 @@ def _build_finding_dory():
             layout.setContentsMargins(6, 6, 6, 6)
             layout.setSpacing(4)
 
-            # Status panel — visible during embedding, hidden after.
+            # Status panel — visible during embedding, hidden after. The
+            # progress bar starts in "busy" / indeterminate mode (range
+            # 0, 0) so the user sees movement immediately while we're in
+            # the find_fish + model-load phase; ``_on_progress`` will
+            # switch it to a determinate range once batch counts arrive.
             self.status_label = QLabel("Starting…")
             self.status_label.setStyleSheet("font-weight: bold;")
             self.progress_bar = QProgressBar()
-            self.progress_bar.setRange(0, 1)
-            self.progress_bar.setValue(0)
+            self.progress_bar.setRange(0, 0)
             layout.addWidget(self.status_label)
             layout.addWidget(self.progress_bar)
 
@@ -466,7 +475,7 @@ def _build_finding_dory():
         # -- Background embedding ----------------------------------------
 
         def _start_embedding(self):
-            self.status_signal.emit("Loading model…")
+            self.status_label.setText("Loading model…")
 
             # Auto-run find_fish if Finding Nemo hasn't populated singlet yet.
             try:
@@ -477,6 +486,13 @@ def _build_finding_dory():
                 )
                 if not already_run:
                     self.status_label.setText("Finding fish (intensity threshold)…")
+                    # find_fish touches the napari points layer so it has to
+                    # run on the GUI thread. Force a repaint here so the
+                    # status message appears before the call blocks; without
+                    # this the dock looks frozen at "Loading model…" for
+                    # the whole intensity-threshold pass.
+                    from qtpy.QtWidgets import QApplication
+                    QApplication.processEvents()
                     try:
                         self.classify.find_fish(self.classify._points())
                     except Exception as e:
