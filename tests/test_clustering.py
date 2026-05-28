@@ -7,6 +7,7 @@ from fish_sorter.helpers.embedding.clustering import (
     ClusterStrategy,
     HDBSCANStrategy,
     build_cluster_strategy,
+    fit_umap_2d,
 )
 
 
@@ -49,3 +50,17 @@ def test_build_cluster_strategy_raises_on_unknown_method():
 def test_build_cluster_strategy_raises_on_missing_block():
     with pytest.raises(ValueError, match="missing a `clustering` block"):
         build_cluster_strategy({})
+
+
+def test_fit_umap_2d_returns_none_for_trivial_input():
+    # Fewer than 2 rows: no neighborhood to embed, no umap import needed.
+    assert fit_umap_2d(np.zeros((1, 8), dtype=np.float32)) is None
+    assert fit_umap_2d(np.zeros((0, 8), dtype=np.float32)) is None
+
+
+def test_fit_umap_2d_shape():
+    pytest.importorskip("umap")
+    emb = _two_blob_embeddings()
+    coords = fit_umap_2d(emb, n_neighbors=15, min_dist=0.1)
+    assert coords.shape == (len(emb), 2)
+    assert coords.dtype == np.float32

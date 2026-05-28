@@ -174,6 +174,7 @@ def _build_label_tool():
 
         save_requested = Signal()
         warm_done = Signal(str, object)  # channel, payload dict
+        composite_warm_done = Signal(object)  # composite crop cache dict
 
         def __init__(
             self,
@@ -189,6 +190,8 @@ def _build_label_tool():
             store: LabelStore,
             per_channel_contrast: Optional[Dict[str, Tuple[float, float]]] = None,
             umap_cfg: Optional[dict] = None,
+            per_channel_umap: Optional[Dict[str, np.ndarray]] = None,
+            per_channel_clusters: Optional[Dict[str, np.ndarray]] = None,
             parent=None,
         ):
             super().__init__(parent)
@@ -197,6 +200,13 @@ def _build_label_tool():
             # block. ``canvas_px`` bounds the Show-Fish composite image so a
             # dense layout can't balloon it to a multi-gigabyte texture.
             self._umap_cfg: dict = dict(umap_cfg or {})
+
+            # Optional pre-warmed UMAP coords / cluster labels, aligned
+            # row-for-row with ``per_channel_indices``. Used at the fit site to
+            # skip live UMAP/clustering; falls back to live compute on any
+            # mismatch (see ``_precomp_rows``).
+            self._precomp_umap: Dict[str, np.ndarray] = dict(per_channel_umap or {})
+            self._precomp_clusters: Dict[str, np.ndarray] = dict(per_channel_clusters or {})
 
             # Refactor item 3: viewer is injected.
             self.viewer = viewer
@@ -286,6 +296,16 @@ def _build_label_tool():
             self._warm_executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
             self._warm_started: bool = False
             self.warm_done.connect(self._on_warm_done, Qt.QueuedConnection)
+
+            # Background pre-build of the Cross-Channel composite crops so the
+            # first Cross-Channel toggle doesn't block on a ~per-well RGB
+            # blend pass. Result lands in ``_composite_crop_cache`` via the
+            # ``composite_warm_done`` signal.
+            self._composite_executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
+            self._composite_warm_started: bool = False
+            self.composite_warm_done.connect(
+                self._on_composite_warm_done, Qt.QueuedConnection
+            )
 
             # Re-propagate globals across channels (upstream behaviour).
             self.store._propagate_global_groups()
@@ -404,13 +424,14 @@ def _build_label_tool():
                 self._unsubscribe_contrast_signals()
             except Exception:
                 log.exception("contrast signal unsubscribe failed")
-            warm_exec = self._warm_executor
-            if warm_exec is not None:
-                try:
-                    warm_exec.shutdown(wait=False)
-                except Exception:
-                    pass
-                self._warm_executor = None
+            for _exec_attr in ("_warm_executor", "_composite_executor"):
+                _exec = getattr(self, _exec_attr, None)
+                if _exec is not None:
+                    try:
+                        _exec.shutdown(wait=False)
+                    except Exception:
+                        pass
+                    setattr(self, _exec_attr, None)
             dock = getattr(self, "_toolbar_dock", None)
             if dock is not None:
                 try:
@@ -1079,20 +1100,32 @@ def _build_label_tool():
             if self._composite_crop_cache is not None:
                 self._crop_cache = dict(self._composite_crop_cache)
                 return
-            self._crop_cache.clear()
+            cache = self._compute_composite_crops()
+            self._composite_crop_cache = cache
+            self._crop_cache = dict(cache)
+            log.info(f"Preloaded {len(cache)} composite crops for {self._current_line}")
+
+        def _compute_composite_crops(self) -> Dict[Tuple[str, str], np.ndarray]:
+            """Build the all-channel composite RGB dict (pure; off-thread safe).
+
+            Reads only immutable inputs (``_well_crops``, contrast snapshot,
+            channel list) and returns a fresh dict — never mutates
+            ``_crop_cache`` / ``_composite_crop_cache`` — so it can run on the
+            background warm thread.
+            """
+            out: Dict[Tuple[str, str], np.ndarray] = {}
             if self._view_indices is None:
-                return
+                return out
 
             channels = self._cross_channels or self._all_channels
             dark_on_white = any(ch.upper() in ("DAPI", "CY5") for ch in channels)
             channel_cfgs = {ch: get_channel_display(ch) for ch in channels}
 
-            loaded = 0
             for meta_idx in self._view_indices:
                 widx = int(meta_idx)
                 row = self.metadata.iloc[widx]
                 wn, exp = row["well_name"], row["experiment"]
-                if (wn, exp) in self._crop_cache:
+                if (wn, exp) in out:
                     continue
                 if widx >= len(self._well_crops):
                     continue
@@ -1159,10 +1192,35 @@ def _build_label_tool():
                                     (normalized * wt * 255).astype(np.uint8),
                                 )
 
-                self._crop_cache[(wn, exp)] = rgb
-                loaded += 1
-            log.info(f"Preloaded {loaded} composite crops for {self._current_line}")
-            self._composite_crop_cache = dict(self._crop_cache)
+                out[(wn, exp)] = rgb
+            return out
+
+        def _maybe_warm_composite(self):
+            """Pre-build composite crops in the background, once per session."""
+            if self._composite_warm_started or self._composite_crop_cache is not None:
+                return
+            if not self._all_channels:
+                return
+            self._composite_warm_started = True
+            self._composite_executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="LabelToolCompositeWarmer",
+            )
+            self._composite_executor.submit(self._warm_composite)
+
+        def _warm_composite(self):
+            """Background worker — compute composite crops, hand back via signal."""
+            try:
+                cache = self._compute_composite_crops()
+                self.composite_warm_done.emit(cache)
+            except Exception:
+                log.exception("composite warm worker crashed")
+
+        def _on_composite_warm_done(self, cache: object):
+            """GUI-thread slot — install the warmed composite cache."""
+            if (self._composite_crop_cache is None
+                    and isinstance(cache, dict) and cache):
+                self._composite_crop_cache = cache
+                log.info(f"warmed {len(cache)} composite crops in background")
 
         # ------------------------------------------------------------------
         # Select-by attribute → values dropdowns
@@ -1299,6 +1357,33 @@ def _build_label_tool():
                 np.asarray(valid_positions, dtype=int),
             )
 
+        def _precomp_rows(self, store_dict, channel, line_indices, valid_positions):
+            """Gather pre-warmed rows for ``channel`` aligned to ``valid_emb``.
+
+            ``store_dict[channel]`` is aligned row-for-row with
+            ``per_ch_idx[channel]``; we map each valid line-position back to its
+            well index and pull the matching pre-warmed row, returning rows in
+            the same order ``_get_channel_emb_for_line`` produced ``valid_emb``.
+            Returns ``None`` on any mismatch so the caller fits live.
+            """
+            arr = store_dict.get(channel) if store_dict else None
+            if arr is None:
+                return None
+            ch_idx_arr = self.per_ch_idx.get(channel)
+            if ch_idx_arr is None or len(arr) != len(ch_idx_arr):
+                return None
+            pos_of = {int(v): p for p, v in enumerate(ch_idx_arr)}
+            rows = []
+            for lp in valid_positions:
+                meta_idx = int(line_indices[lp])
+                p = pos_of.get(meta_idx)
+                if p is None:
+                    return None
+                rows.append(arr[p])
+            if not rows:
+                return None
+            return np.asarray(rows)
+
         def _recompute_view(self):
             """Recompute UMAP + clustering for the current channel.
 
@@ -1371,35 +1456,51 @@ def _build_label_tool():
                 full_labels = cached_labels
                 valid_labels = full_labels[mask]
             else:
-                try:
-                    valid_labels = np.asarray(
-                        self._cluster_strategy.cluster(valid_emb)
-                    )
-                except Exception as e:
-                    log.exception("cluster strategy failed")
-                    self.status_label.setText(f"Clustering failed: {e}")
-                    valid_labels = np.full(len(valid_emb), -1, dtype=int)
+                precomp_lbl = self._precomp_rows(
+                    self._precomp_clusters, self._current_channel,
+                    line_indices, valid_positions,
+                )
+                if precomp_lbl is not None and len(precomp_lbl) == len(valid_emb):
+                    valid_labels = np.asarray(precomp_lbl).astype(int).ravel()
+                else:
+                    try:
+                        valid_labels = np.asarray(
+                            self._cluster_strategy.cluster(valid_emb)
+                        )
+                    except Exception as e:
+                        log.exception("cluster strategy failed")
+                        self.status_label.setText(f"Clustering failed: {e}")
+                        valid_labels = np.full(len(valid_emb), -1, dtype=int)
                 full_labels = np.full(n, -2, dtype=int)
                 full_labels[mask] = valid_labels
                 self._cluster_labels_by_channel[self._current_channel] = full_labels
             self._view_clusters = full_labels
 
-            # UMAP — lazy import.
-            try:
-                from umap import UMAP
+            # UMAP — prefer the pre-warmed layout; fit live only if it's
+            # absent or doesn't line up with the current rows.
+            umap_2d = self._precomp_rows(
+                self._precomp_umap, self._current_channel,
+                line_indices, valid_positions,
+            )
+            if umap_2d is not None and len(umap_2d) == len(valid_emb):
+                umap_2d = np.asarray(umap_2d, dtype=np.float32)
+                log.info(f"using pre-warmed UMAP for {self._current_channel}")
+            else:
+                try:
+                    from umap import UMAP
 
-                n_neighbors = min(int(self._umap_cfg.get("n_neighbors", 15)), len(valid_emb) - 1)
-                reducer = UMAP(
-                    n_components=2,
-                    n_neighbors=n_neighbors,
-                    min_dist=float(self._umap_cfg.get("min_dist", 0.1)),
-                    random_state=42,
-                )
-                umap_2d = reducer.fit_transform(valid_emb).astype(np.float32)
-            except Exception as e:
-                log.exception("UMAP failed")
-                self.status_label.setText(f"UMAP failed: {e}")
-                return
+                    n_neighbors = min(int(self._umap_cfg.get("n_neighbors", 15)), len(valid_emb) - 1)
+                    reducer = UMAP(
+                        n_components=2,
+                        n_neighbors=n_neighbors,
+                        min_dist=float(self._umap_cfg.get("min_dist", 0.1)),
+                        random_state=42,
+                    )
+                    umap_2d = reducer.fit_transform(valid_emb).astype(np.float32)
+                except Exception as e:
+                    log.exception("UMAP failed")
+                    self.status_label.setText(f"UMAP failed: {e}")
+                    return
 
             full_umap = np.full((n, 2), np.nan, dtype=np.float32)
             full_umap[mask] = umap_2d
@@ -1475,8 +1576,10 @@ def _build_label_tool():
 
             # First successful compute → warm the remaining channels in
             # the background so subsequent switches don't hit the slow
-            # UMAP + crop path.
+            # UMAP + crop path. Also pre-build the Cross-Channel composite so
+            # the first Cross-Channel toggle is instant.
             self._maybe_kick_off_warming()
+            self._maybe_warm_composite()
 
         # ------------------------------------------------------------------
         # Background channel warming
@@ -3095,6 +3198,8 @@ def LabelTool(
     store: LabelStore,
     per_channel_contrast: Optional[Dict[str, Tuple[float, float]]] = None,
     umap_cfg: Optional[dict] = None,
+    per_channel_umap: Optional[Dict[str, np.ndarray]] = None,
+    per_channel_clusters: Optional[Dict[str, np.ndarray]] = None,
     parent=None,
 ):
     """Factory wrapper — defers Qt/napari imports until first call.
@@ -3117,5 +3222,7 @@ def LabelTool(
         store=store,
         per_channel_contrast=per_channel_contrast,
         umap_cfg=umap_cfg,
+        per_channel_umap=per_channel_umap,
+        per_channel_clusters=per_channel_clusters,
         parent=parent,
     )

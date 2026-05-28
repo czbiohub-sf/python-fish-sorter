@@ -34,6 +34,34 @@ class HDBSCANStrategy:
         return self._impl.fit_predict(embeddings)
 
 
+def fit_umap_2d(
+    embeddings: np.ndarray,
+    n_neighbors: int = 15,
+    min_dist: float = 0.1,
+    random_state: int = 42,
+):
+    """Fit a 2-D UMAP on `embeddings` ((N, D) float). Returns (N, 2) float32.
+
+    Shared by the LabelTool fit site and the Finding Dory pre-warm so the
+    precomputed layout matches what the dock would compute live. Returns
+    ``None`` when there are fewer than 2 rows (UMAP needs a neighborhood).
+    """
+    emb = np.asarray(embeddings)
+    n = len(emb)
+    if n < 2:
+        return None
+    from umap import UMAP  # lazy — keeps `import clustering` cheap
+
+    nn = min(int(n_neighbors), n - 1)
+    reducer = UMAP(
+        n_components=2,
+        n_neighbors=nn,
+        min_dist=float(min_dist),
+        random_state=random_state,
+    )
+    return reducer.fit_transform(emb).astype(np.float32)
+
+
 def build_cluster_strategy(cfg: dict) -> ClusterStrategy:
     """Construct the configured strategy.
 

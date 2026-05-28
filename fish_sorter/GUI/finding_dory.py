@@ -512,52 +512,64 @@ def _build_finding_dory():
             self.future = self.executor.submit(self._embed_threaded)
             self.future.add_done_callback(self._on_future_done)
 
-        def _apply_singlet_filter(self):
-            """Set ``self._keep_indices`` to the singlet wells, or None.
+        def _ensure_classified(self):
+            """Run Finding Nemo's ``find_fish`` once if it hasn't populated
+            ``singlet`` yet.
 
-            Gated by the ``filter_to_singlets`` config option (default True).
-            When disabled, all wells are kept. When enabled, auto-runs
-            ``find_fish`` if Finding Nemo hasn't populated ``singlet`` yet.
+            This must happen regardless of ``filter_to_singlets``: it's what
+            produces the empty/singlet/multiple/deformed classification that
+            the global seeding (in ``_on_embed_done``) relies on. Every well's
+            ``empty`` flag defaults to True until ``find_fish`` clears it for
+            detected wells — skip this and the seeding sweeps every well into
+            the empty group.
             """
-            if not self.cfg.get("filter_to_singlets", True):
-                log.info("filter_to_singlets=false; embedding/showing all wells.")
-                self._keep_indices = None
-                return
-
             try:
                 feat = self.classify.points_layer.features
                 already_run = (
                     "singlet" in feat.columns
                     and np.asarray(feat["singlet"], dtype=bool).any()
                 )
-                if not already_run:
-                    self.status_label.setText("Finding fish (intensity threshold)…")
-                    # find_fish touches the napari points layer so it has to
-                    # run on the GUI thread. Force a repaint here so the
-                    # status message appears before the call blocks; without
-                    # this the dock looks frozen at "Loading model…" for
-                    # the whole intensity-threshold pass.
-                    from qtpy.QtWidgets import QApplication
-                    QApplication.processEvents()
-                    try:
-                        self.classify.find_fish(self.classify._points())
-                    except Exception as e:
-                        log.warning(f"auto find_fish failed: {e}; embedding all wells.")
-                    feat = self.classify.points_layer.features
+                if already_run:
+                    return
+                self.status_label.setText("Finding fish (intensity threshold)…")
+                # find_fish touches the napari points layer so it has to run
+                # on the GUI thread. Force a repaint so the status message
+                # shows before the call blocks.
+                from qtpy.QtWidgets import QApplication
+                QApplication.processEvents()
+                self.classify.find_fish(self.classify._points())
+            except Exception as e:
+                log.warning(f"auto find_fish failed: {e}; classification may be incomplete.")
 
+        def _apply_singlet_filter(self):
+            """Decide ``self._keep_indices`` (the displayed well set).
+
+            Always runs ``find_fish`` first so the empty/singlet classification
+            is correct. Then, only if ``filter_to_singlets`` is set, restricts
+            the view to singlet wells; otherwise keeps all wells (``None``).
+            """
+            self._ensure_classified()
+
+            if not self.cfg.get("filter_to_singlets", True):
+                log.info("filter_to_singlets=false; showing all wells.")
+                self._keep_indices = None
+                return
+
+            try:
+                feat = self.classify.points_layer.features
                 if "singlet" in feat.columns:
                     mask = np.asarray(feat["singlet"], dtype=bool)
                     if mask.any():
                         keep = np.where(mask)[0].astype(np.int64)
                         self._keep_indices = keep
                         log.info(
-                            f"embedding {len(keep)} of {len(self.well_ids)} wells "
+                            f"showing {len(keep)} of {len(self.well_ids)} wells "
                             f"(filtered by singlet from Finding Nemo)."
                         )
                     else:
-                        log.info("no singlets detected; embedding all wells.")
+                        log.info("no singlets detected; showing all wells.")
             except Exception as e:
-                log.warning(f"singlet pre-filter skipped: {e}; embedding all wells.")
+                log.warning(f"singlet filter skipped: {e}; showing all wells.")
 
         def _try_adopt_prewarm(self) -> bool:
             """Adopt the Classify background pre-warm if present and compatible.
@@ -590,7 +602,12 @@ def _build_finding_dory():
         def _on_prewarm_future_done(self, future):
             """Adopt prewarm results (runs on the prewarm worker thread)."""
             try:
-                extractor, embeds, idx = future.result()
+                # The Classify pre-warm future returns
+                # (extractor, embeds, idx, umaps, clusters); the umaps/clusters
+                # are read separately off classify in _on_embed_done. Unpack
+                # only the first three so we tolerate either tuple shape.
+                result = future.result()
+                extractor, embeds, idx = result[0], result[1], result[2]
             except Exception as e:
                 log.warning(f"prewarm result unusable ({e!r}); computing fresh.")
                 self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
@@ -662,6 +679,43 @@ def _build_finding_dory():
 
         def _on_status(self, message: str):
             self.status_label.setText(message)
+
+        def _align_precomputed(self, by_channel):
+            """Reorder a per-channel pre-warm result onto the dock's rows.
+
+            ``by_channel[ch]`` is aligned to ``classify._dory_embed_indices[ch]``
+            (all wells, in pre-warm order). This reorders each onto
+            ``self.well_idx_in_emb[ch]`` (the rows actually passed to
+            LabelTool, possibly a singlet subset). Channels that don't line up
+            are dropped — LabelTool then fits those live, so it's a pure
+            speed-up with no correctness risk.
+            """
+            if not by_channel:
+                return None
+            src_idx = getattr(self.classify, "_dory_embed_indices", None)
+            if not src_idx:
+                return None
+            out: Dict[str, np.ndarray] = {}
+            for ch, arr in by_channel.items():
+                if ch not in self.well_idx_in_emb or ch not in src_idx:
+                    continue
+                arr = np.asarray(arr)
+                src = np.asarray(src_idx[ch])
+                if len(arr) != len(src):
+                    continue
+                pos_of = {int(w): p for p, w in enumerate(src)}
+                target = self.well_idx_in_emb[ch]
+                rows = []
+                ok = True
+                for w in target:
+                    p = pos_of.get(int(w))
+                    if p is None:
+                        ok = False
+                        break
+                    rows.append(arr[p])
+                if ok and len(rows) == len(target):
+                    out[ch] = np.asarray(rows)
+            return out or None
 
         def _on_embed_done(self):
             self._embed_done = True
@@ -755,6 +809,19 @@ def _build_finding_dory():
             except Exception as e:
                 log.warning(f"per-channel contrast snapshot failed: {e}")
 
+            # Re-align the pre-warm's UMAP + clusters (fit on ALL wells, in
+            # ``classify._dory_embed_indices`` order) onto the rows we're
+            # actually handing LabelTool (``self.well_idx_in_emb``, possibly a
+            # singlet subset). If anything doesn't line up we just drop it and
+            # LabelTool fits live — so this is a pure speed-up, never a
+            # correctness risk.
+            per_channel_umap = self._align_precomputed(
+                getattr(self.classify, "_dory_umap", None)
+            )
+            per_channel_clusters = self._align_precomputed(
+                getattr(self.classify, "_dory_clusters", None)
+            )
+
             try:
                 self.label_tool = _LabelToolFactory(
                     viewer=self.viewer,
@@ -769,6 +836,8 @@ def _build_finding_dory():
                     store=self.store,
                     per_channel_contrast=per_channel_contrast,
                     umap_cfg=self.cfg.get("umap", {}),
+                    per_channel_umap=per_channel_umap,
+                    per_channel_clusters=per_channel_clusters,
                 )
             except Exception as e:
                 log.exception("LabelTool construction failed")

@@ -457,6 +457,8 @@ class Classify(QObject):
         self._dory_embed_future = None
         self._dory_embeddings = None
         self._dory_embed_indices = None
+        self._dory_umap = None
+        self._dory_clusters = None
         self._dory_extractor = None
         self._dory_embed_error = None
         self._dory_embed_progress = (0, 0)
@@ -509,8 +511,10 @@ class Classify(QObject):
         def _progress_cb(step, total):
             self._dory_embed_progress = (step, total)
 
+        umap_cfg = cfg.get("umap", {}) or {}
+
         def _run():
-            return compute_embeddings(
+            extractor, embeds, idx = compute_embeddings(
                 cfg,
                 mode,
                 channels=channels,
@@ -521,6 +525,37 @@ class Classify(QObject):
                 keep_indices=None,  # embed all wells; dock filters on adoption
                 progress_cb=_progress_cb,
             )
+
+            # Also pre-fit UMAP + clusters per channel (on all wells) so the
+            # dock can render the scatter instantly instead of fitting on
+            # open. Aligned row-for-row with idx[channel] / embeds[channel].
+            from fish_sorter.helpers.embedding.clustering import (
+                build_cluster_strategy,
+                fit_umap_2d,
+            )
+            try:
+                strat = build_cluster_strategy(cfg)
+            except Exception as e:
+                logging.warning(f"prewarm cluster strategy unavailable: {e}")
+                strat = None
+            umaps, clusters = {}, {}
+            for ch, emb in embeds.items():
+                try:
+                    coords = fit_umap_2d(
+                        emb,
+                        n_neighbors=umap_cfg.get("n_neighbors", 15),
+                        min_dist=umap_cfg.get("min_dist", 0.1),
+                    )
+                    if coords is not None:
+                        umaps[ch] = coords
+                except Exception as e:
+                    logging.warning(f"prewarm UMAP fit failed for {ch}: {e}")
+                if strat is not None:
+                    try:
+                        clusters[ch] = np.asarray(strat.cluster(emb))
+                    except Exception as e:
+                        logging.warning(f"prewarm cluster failed for {ch}: {e}")
+            return extractor, embeds, idx, umaps, clusters
 
         self._dory_embed_executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="DoryPrewarm",
@@ -535,11 +570,16 @@ class Classify(QObject):
     def _dory_embed_done(self, future):
         """Stash prewarm results (runs on the prewarm worker thread)."""
         try:
-            extractor, embeds, idx = future.result()
+            extractor, embeds, idx, umaps, clusters = future.result()
             self._dory_extractor = extractor
             self._dory_embeddings = embeds
             self._dory_embed_indices = idx
-            logging.info("Finding Dory prewarm complete.")
+            self._dory_umap = umaps
+            self._dory_clusters = clusters
+            logging.info(
+                f"Finding Dory prewarm complete "
+                f"(umap channels={sorted(umaps)}, clusters={sorted(clusters)})."
+            )
         except Exception as e:
             self._dory_embed_error = e
             logging.warning(
