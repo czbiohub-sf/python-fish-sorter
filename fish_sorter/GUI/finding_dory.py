@@ -342,7 +342,12 @@ def _build_finding_dory():
     )
 
     from fish_sorter.helpers.embedding.clustering import build_cluster_strategy
-    from fish_sorter.helpers.embedding.extractor import EmbeddingExtractor, load_config
+    from fish_sorter.helpers.embedding.extractor import (
+        EmbeddingExtractor,
+        compute_embeddings,
+        load_config,
+        resolve_mode,
+    )
     from fish_sorter.helpers.labelling.fish_line import parse_fish_line
     from fish_sorter.helpers.labelling.label_tool import LabelTool as _LabelToolFactory
 
@@ -374,13 +379,7 @@ def _build_finding_dory():
             # Labeller config + mode resolution.
             cfg_path = Path(cfg_dir) / "labeller" / "config.json"
             self.cfg = load_config(cfg_path)
-            mode_map = self.cfg.get("pick_type_to_mode", {})
-            self.mode = mode_map.get(self.pick_type, "fish")
-            if self.pick_type not in mode_map:
-                log.warning(
-                    f"pick_type {self.pick_type!r} not in pick_type_to_mode; "
-                    f"falling back to mode={self.mode!r}"
-                )
+            self.mode = resolve_mode(self.cfg, self.pick_type)
 
             # Channels = current Image layers in the viewer.
             self.channels: List[str] = [
@@ -520,35 +519,11 @@ def _build_finding_dory():
         def _embed_threaded(self):
             """Build the extractor (or mock), embed all channels, return results.
 
-            Honors `cfg["dev_mock_embeddings"]=true` — generates well-separated
-            synthetic clusters per channel, skipping the model entirely. Lets
-            you iterate on the dock UI in seconds instead of tens of minutes.
+            Thin wrapper: gathers the napari-side inputs (mosaics, well centers,
+            crop size) off the shared `Classify`, then delegates to the Qt-free
+            `compute_embeddings` so the identical pass can run from the
+            post-stitch background pre-warm too.
             """
-            mock = bool(self.cfg.get("dev_mock_embeddings", False))
-
-            if mock:
-                self.status_signal.emit("Mock embeddings (dev mode)…")
-                n_total = len(self.classify._points())
-                keep = self._keep_indices if self._keep_indices is not None else np.arange(n_total)
-                model_cfg = self.cfg["models"][self.mode]
-                emb_dim = 2 * int(model_cfg.get("embedding_dim", 384))
-                n_clusters = 6
-                n_wells = len(keep)
-                embeds: Dict[str, np.ndarray] = {}
-                idx: Dict[str, np.ndarray] = {}
-                for ch_idx, ch in enumerate(self.channels):
-                    rng = np.random.default_rng(ch_idx + 1)
-                    centers = rng.standard_normal((n_clusters, emb_dim)).astype(np.float32) * 15.0
-                    assignments = rng.integers(0, n_clusters, size=n_wells)
-                    noise = rng.standard_normal((n_wells, emb_dim)).astype(np.float32) * 0.3
-                    embeds[ch] = centers[assignments] + noise
-                    idx[ch] = np.asarray(keep, dtype=np.int64)
-                return None, embeds, idx
-
-            self.status_signal.emit("Loading checkpoint…")
-            extractor = EmbeddingExtractor(self.cfg, mode=self.mode)
-            self.status_signal.emit("Computing embeddings…")
-
             mosaics: Dict[str, np.ndarray] = {}
             for layer in self.viewer.layers:
                 if not isinstance(layer, napari.layers.Image):
@@ -558,19 +533,22 @@ def _build_finding_dory():
                 mosaics[layer.name] = np.asarray(layer.data)
 
             centers = self.classify._points()
-            well_crop_px = tuple(self.classify.mask.shape)
 
             def _progress_cb(step, total):
                 self.progress_signal.emit(step, total)
 
-            embeds, idx = extractor.extract_from_mosaic(
+            return compute_embeddings(
+                self.cfg,
+                self.mode,
+                channels=self.channels,
                 mosaics=mosaics,
-                well_centers_px=centers,
-                well_crop_px=well_crop_px,
-                well_indices_to_embed=self._keep_indices,
+                well_centers=centers,
+                well_crop_px=tuple(self.classify.mask.shape),
+                n_total=len(centers),
+                keep_indices=self._keep_indices,
                 progress_cb=_progress_cb,
+                status_cb=self.status_signal.emit,
             )
-            return extractor, embeds, idx
 
         def _on_future_done(self, future):
             try:

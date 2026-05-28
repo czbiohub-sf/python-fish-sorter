@@ -438,3 +438,107 @@ def load_config(cfg_path: Path) -> dict:
     if "models" not in cfg or not isinstance(cfg["models"], dict):
         raise ValueError(f"{cfg_path}: missing top-level 'models' dict")
     return cfg
+
+
+# ---------------------------------------------------------------------------
+# Mode resolution + one-shot embedding pass (shared by the Finding Dory dock
+# and the post-stitch background pre-warm)
+# ---------------------------------------------------------------------------
+
+
+def resolve_mode(cfg: dict, pick_type: str, default: str = "fish") -> str:
+    """Map a fish-sorter ``pick_type`` to a labeller model bundle name.
+
+    Reads ``cfg['pick_type_to_mode']``. Unknown pick types fall back to
+    ``default`` with a warning — the caller still gets a usable mode, but the
+    log flags the mismatch so a misconfigured ``pick_type_to_mode`` is visible.
+    """
+    mode_map = cfg.get("pick_type_to_mode", {})
+    if pick_type in mode_map:
+        return mode_map[pick_type]
+    log.warning(
+        f"pick_type {pick_type!r} not in pick_type_to_mode; "
+        f"falling back to mode={default!r}"
+    )
+    return default
+
+
+def compute_embeddings(
+    cfg: dict,
+    mode: str,
+    *,
+    channels: List[str],
+    mosaics: Dict[str, np.ndarray],
+    well_centers: np.ndarray,
+    well_crop_px: Tuple[int, int],
+    n_total: int,
+    keep_indices: Optional[np.ndarray] = None,
+    progress_cb: Optional[Callable[[int, int], None]] = None,
+    status_cb: Optional[Callable[[str], None]] = None,
+) -> Tuple[Optional["EmbeddingExtractor"], Dict[str, np.ndarray], Dict[str, np.ndarray]]:
+    """Build the extractor (or mock) and embed every channel.
+
+    This is the single embedding pass shared by ``FindingDory`` (on the Finding
+    Dory button) and the background pre-warm kicked off after stitching. It is
+    Qt-free so it can run on a worker thread owned by either caller.
+
+    Honors ``cfg['dev_mock_embeddings']``: generates well-separated synthetic
+    clusters per channel and skips the model entirely, so the dock UI can be
+    iterated in seconds.
+
+    Args:
+        cfg: Parsed labeller config.
+        mode: Model bundle key into ``cfg['models']`` (see ``resolve_mode``).
+        channels: Channel names to embed, in order.
+        mosaics: Channel-name -> full uint16 mosaic. Ignored in mock mode.
+        well_centers: (N, 2) well centers in mosaic pixels, ordered (y, x).
+        well_crop_px: (h, w) per-well crop size drawn from the mosaic.
+        n_total: Total well count — used to default ``keep_indices`` in mock
+            mode (the real path defaults it from ``well_centers``).
+        keep_indices: Optional indices into ``well_centers`` to embed; ``None``
+            embeds all wells.
+        progress_cb: Optional callback(step, total), one step per channel.
+        status_cb: Optional callback(message) for coarse phase updates.
+
+    Returns:
+        (extractor_or_None, per_channel_embeddings, per_channel_indices).
+        The extractor is ``None`` in mock mode.
+    """
+    mock = bool(cfg.get("dev_mock_embeddings", False))
+
+    if mock:
+        if status_cb is not None:
+            status_cb("Mock embeddings (dev mode)…")
+        keep = (
+            keep_indices if keep_indices is not None
+            else np.arange(n_total, dtype=np.int64)
+        )
+        model_cfg = cfg["models"][mode]
+        emb_dim = 2 * int(model_cfg.get("embedding_dim", 384))
+        n_clusters = 6
+        n_wells = len(keep)
+        embeds: Dict[str, np.ndarray] = {}
+        idx: Dict[str, np.ndarray] = {}
+        for ch_idx, ch in enumerate(channels):
+            rng = np.random.default_rng(ch_idx + 1)
+            centers = rng.standard_normal((n_clusters, emb_dim)).astype(np.float32) * 15.0
+            assignments = rng.integers(0, n_clusters, size=n_wells)
+            noise = rng.standard_normal((n_wells, emb_dim)).astype(np.float32) * 0.3
+            embeds[ch] = centers[assignments] + noise
+            idx[ch] = np.asarray(keep, dtype=np.int64)
+        return None, embeds, idx
+
+    if status_cb is not None:
+        status_cb("Loading checkpoint…")
+    extractor = EmbeddingExtractor(cfg, mode=mode)
+    if status_cb is not None:
+        status_cb("Computing embeddings…")
+
+    embeds, idx = extractor.extract_from_mosaic(
+        mosaics=mosaics,
+        well_centers_px=well_centers,
+        well_crop_px=well_crop_px,
+        well_indices_to_embed=keep_indices,
+        progress_cb=progress_cb,
+    )
+    return extractor, embeds, idx

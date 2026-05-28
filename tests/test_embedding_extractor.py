@@ -20,7 +20,9 @@ from fish_sorter.helpers.embedding.extractor import (
     _center_crop,
     _crop_wells_uint16,
     _resolve_device,
+    compute_embeddings,
     load_config,
+    resolve_mode,
 )
 from fish_sorter.helpers.embedding.normalize import (
     ChannelContrastConfig,
@@ -292,3 +294,105 @@ def test_load_config_missing_models_key_raises(tmp_path):
     path.write_text(json.dumps({"device": "cpu"}))
     with pytest.raises(ValueError, match="'models'"):
         load_config(path)
+
+
+# ---------------------------------------------------------------------------
+# resolve_mode
+# ---------------------------------------------------------------------------
+
+
+def test_resolve_mode_maps_known_pick_type():
+    cfg = {"pick_type_to_mode": {"larvae": "fish", "embryo": "egg"}}
+    assert resolve_mode(cfg, "larvae") == "fish"
+    assert resolve_mode(cfg, "embryo") == "egg"
+
+
+def test_resolve_mode_unknown_falls_back_to_default():
+    cfg = {"pick_type_to_mode": {"larvae": "fish"}}
+    assert resolve_mode(cfg, "embryo") == "fish"
+    assert resolve_mode(cfg, "embryo", default="egg") == "egg"
+
+
+def test_resolve_mode_missing_block_falls_back():
+    assert resolve_mode({}, "larvae") == "fish"
+
+
+# ---------------------------------------------------------------------------
+# compute_embeddings — shared one-shot pass (mock + real via stub backbone)
+# ---------------------------------------------------------------------------
+
+
+def test_compute_embeddings_mock_skips_model_and_shapes():
+    """Mock mode returns synthetic per-channel embeddings without a model."""
+    cfg = {
+        "dev_mock_embeddings": True,
+        "models": {"fish": {"embedding_dim": 8}},
+    }
+    extractor, embeds, idx = compute_embeddings(
+        cfg,
+        "fish",
+        channels=["BF", "GFP"],
+        mosaics={},  # ignored in mock mode
+        well_centers=np.zeros((5, 2)),
+        well_crop_px=(40, 40),
+        n_total=5,
+    )
+    assert extractor is None
+    assert set(embeds.keys()) == {"BF", "GFP"}
+    assert embeds["BF"].shape == (5, 16)  # 2 * embedding_dim
+    assert np.array_equal(idx["GFP"], np.arange(5))
+
+
+def test_compute_embeddings_mock_honors_keep_indices():
+    cfg = {"dev_mock_embeddings": True, "models": {"fish": {"embedding_dim": 4}}}
+    _, embeds, idx = compute_embeddings(
+        cfg,
+        "fish",
+        channels=["BF"],
+        mosaics={},
+        well_centers=np.zeros((6, 2)),
+        well_crop_px=(40, 40),
+        n_total=6,
+        keep_indices=np.array([1, 3, 5]),
+    )
+    assert embeds["BF"].shape == (3, 8)
+    assert np.array_equal(idx["BF"], np.array([1, 3, 5]))
+
+
+def test_compute_embeddings_real_path_runs_extractor(monkeypatch, tmp_path):
+    """Non-mock path builds an EmbeddingExtractor and embeds the mosaics."""
+    monkeypatch.setattr(ex_mod, "FishDINOv3", lambda **kwargs: _StubBackbone())
+    monkeypatch.setattr(ex_mod, "resolve_weights_path", lambda *a, **k: None)
+    fake_ckpt = tmp_path / "best.ckpt"
+    torch.save({"state_dict": {}}, fake_ckpt)
+    cfg = {
+        "device": "cpu",
+        "dinov3_repo_path": str(tmp_path),
+        "models": {
+            "fish": {
+                "checkpoint_path": str(fake_ckpt),
+                "model_arch": "vits16",
+                "crop_size": [32, 32],
+                "contrast": {
+                    "_FLUOR": {"low_percentile": 0.5, "high_percentile": 99.97, "asinh_knee": 0.0},
+                },
+            }
+        },
+    }
+    mosaics = {"BF": np.random.default_rng(0).integers(0, 65535, (100, 100), dtype=np.uint16)}
+    centers = np.array([[50, 50], [60, 60]])
+    statuses = []
+    extractor, embeds, idx = compute_embeddings(
+        cfg,
+        "fish",
+        channels=["BF"],
+        mosaics=mosaics,
+        well_centers=centers,
+        well_crop_px=(40, 40),
+        n_total=2,
+        status_cb=statuses.append,
+    )
+    assert isinstance(extractor, EmbeddingExtractor)
+    assert embeds["BF"].shape == (2, _StubBackbone.output_dim)
+    assert np.array_equal(idx["BF"], np.arange(2))
+    assert "Loading checkpoint…" in statuses and "Computing embeddings…" in statuses
