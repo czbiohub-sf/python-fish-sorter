@@ -859,6 +859,10 @@ def _build_label_tool():
             if hasattr(self, "cross_refresh_btn"):
                 self.cross_refresh_btn.setEnabled(True)
             self._remove_image_umap()
+            # The cross-channel grid has very different coordinate units
+            # from a UMAP scatter; force a one-shot resize so the points
+            # don't render at a size tuned for the prior layout.
+            self._force_resize = True
             self._update_scatter()
             self._refresh_group_list()
             self._update_status()
@@ -888,6 +892,8 @@ def _build_label_tool():
             if hasattr(self, "cross_refresh_btn"):
                 self.cross_refresh_btn.setEnabled(False)
             self._remove_image_umap()
+            # Back to the UMAP scatter's native coord scale — refit size.
+            self._force_resize = True
             self._update_scatter()
             self._refresh_group_list()
             self._update_status()
@@ -1630,20 +1636,27 @@ def _build_label_tool():
                 rx = float(valid_coords[:, 0].max() - valid_coords[:, 0].min())
                 ry = float(valid_coords[:, 1].max() - valid_coords[:, 1].min())
                 data_range = max(rx, ry, 1e-6)
-                self._point_size = data_range / 80
+                auto_size = data_range / 200
             else:
-                self._point_size = 0.5
+                auto_size = 0.5
 
             colors = self._build_colors()
 
             # napari Points use (y, x) order.
             display_coords = np.column_stack([coords[:, 1], coords[:, 0]])
 
+            # Once the layer exists we don't touch its ``size`` again — the
+            # napari layer-controls slider writes the same field, so
+            # overwriting it on every color refresh would fight the user.
+            # ``_force_resize`` flips True when the underlying coord scale
+            # changes substantially (e.g. Cross-Channel mode entry/exit) so
+            # the next ``_update_scatter`` re-applies the auto value.
             if self.points_layer is None:
+                self._point_size = auto_size
                 self.points_layer = self.viewer.add_points(
                     display_coords,
                     face_color=colors,
-                    size=self._point_size,
+                    size=auto_size,
                     border_width=0,
                     name="UMAP",
                 )
@@ -1653,7 +1666,10 @@ def _build_label_tool():
             else:
                 self.points_layer.data = display_coords
                 self.points_layer.face_color = colors
-                self.points_layer.size = self._point_size
+                if getattr(self, "_force_resize", False):
+                    self._point_size = auto_size
+                    self.points_layer.size = auto_size
+                    self._force_resize = False
 
             self._selected_indices = set()
             self.assign_btn.setEnabled(False)
