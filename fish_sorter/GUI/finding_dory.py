@@ -412,21 +412,29 @@ def _build_finding_dory():
 
             # Seed the LabelStore with Finding Nemo's global classifications
             # (empty/multiple/deformed) so the dock UI shows real counts and
-            # "Hide Assigned" actually hides those wells. Without this seed
-            # the global rows look empty even when Finding Nemo has already
-            # classified them — surfaces in the UI as a clash between the
-            # two tools. We only need to assign on one channel; LabelStore
-            # propagates global groups across all channels for the fish line.
+            # "Hide Assigned" actually hides those wells. We only seed on one
+            # channel; LabelStore propagates global groups across channels.
+            #
+            # Critical: ``empty`` defaults to True for every well (preset in
+            # pick_type_config.json), even after find_fish marks some wells
+            # as singlets. Naïvely reading ``feat["empty"]`` would seed every
+            # well into ``empty`` and lock them out of cluster assignment.
+            # Filter by ``singlet=False`` so only non-singlets get seeded.
             try:
                 feat = classify.points_layer.features
                 if len(self.channels) > 0:
                     seed_ch = self.channels[0]
+                    if "singlet" in feat.columns:
+                        singlet = np.asarray(feat["singlet"], dtype=bool)
+                    else:
+                        singlet = np.zeros(len(self.well_ids), dtype=bool)
                     for flag in ("empty", "multiple", "deformed"):
                         if flag not in feat.columns:
                             continue
+                        flagged = np.asarray(feat[flag], dtype=bool)
                         flagged_wids = [
-                            wid for wid, on in zip(self.well_ids, feat[flag])
-                            if bool(on)
+                            wid for wid, sing, on in zip(self.well_ids, singlet, flagged)
+                            if (not sing) and on
                         ]
                         if flagged_wids:
                             self.store.assign(self.fish_line, seed_ch, flagged_wids, flag)
@@ -612,21 +620,51 @@ def _build_finding_dory():
                     self.classify._points(), img_flag=True, parallel=True,
                 )
 
-            # Snapshot each Image layer's display contrast so the dock's
-            # Show-Fish thumbnails normalize against the same range the user
-            # already sees in the napari mosaic, not per-crop percentiles
-            # (which uniformly saturate every well).
+            # Compute per-channel normalization bounds from the labeller
+            # config's percentile params (same ones the embedding extractor
+            # uses), evaluated against each channel's mosaic. This matches
+            # upstream LabelTool's ``WellLoader.channel_stats`` pattern and
+            # gives stable, model-aligned brightness across all crops.
+            #
+            # Earlier attempts used the napari layer's display contrast as
+            # the source, but napari's default ``(min, max)`` is the full
+            # uint16 range — that's why crops rendered very dark. The model
+            # config's ``low_percentile``/``high_percentile`` (typically
+            # 0.5 / 99.97 for fluor) produces the right encoded RGB.
             per_channel_contrast: Dict[str, Tuple[float, float]] = {}
-            for layer in self.viewer.layers:
-                if not isinstance(layer, napari.layers.Image):
-                    continue
-                if layer.name not in self.channels:
-                    continue
-                try:
-                    lo, hi = layer.contrast_limits
-                    per_channel_contrast[layer.name] = (float(lo), float(hi))
-                except Exception:
-                    pass
+            try:
+                from fish_sorter.helpers.embedding.normalize import (
+                    ChannelContrastConfig,
+                    compute_channel_stats,
+                )
+                contrast_block = (
+                    self.cfg.get("models", {}).get(self.mode, {}).get("contrast", {})
+                )
+                for layer in self.viewer.layers:
+                    if not isinstance(layer, napari.layers.Image):
+                        continue
+                    if layer.name not in self.channels:
+                        continue
+                    ch = layer.name
+                    cfg_entry = (
+                        contrast_block.get(ch)
+                        or contrast_block.get(ch.upper())
+                        or contrast_block.get("_FLUOR")
+                    )
+                    if cfg_entry is None:
+                        continue
+                    try:
+                        ccfg = ChannelContrastConfig.from_dict(cfg_entry)
+                        lo, hi = compute_channel_stats(np.asarray(layer.data), ccfg)
+                        per_channel_contrast[ch] = (float(lo), float(hi))
+                        log.info(
+                            f"contrast bounds for {ch}: ({lo:.1f}, {hi:.1f}) "
+                            f"(low={ccfg.low_percentile}%, high={ccfg.high_percentile}%)"
+                        )
+                    except Exception as e:
+                        log.warning(f"could not compute contrast for {ch}: {e}")
+            except Exception as e:
+                log.warning(f"per-channel contrast snapshot failed: {e}")
 
             try:
                 self.label_tool = _LabelToolFactory(

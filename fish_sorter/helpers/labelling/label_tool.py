@@ -585,10 +585,6 @@ def _build_label_tool():
             assign_widget.resizeEvent = _on_assign_resize
             root_layout.addWidget(assign_widget, 1)
 
-            # Subscribe to napari contrast-slider events so the crop preview
-            # tracks whatever the user dials in on the host's Image layers.
-            self._subscribe_contrast_signals()
-
             # Initialise the view for our single fish line.
             self._on_fish_line_changed(self._fish_line)
 
@@ -1252,20 +1248,11 @@ def _build_label_tool():
         def _contrast_for(self, channel: str) -> Tuple[Optional[float], Optional[float]]:
             """Return ``(low, high)`` for ``channel`` or ``(None, None)``.
 
-            Reads the napari Image layer's ``contrast_limits`` live so the
-            crop preview follows whatever the user has set in the napari
-            contrast slider. Falls back to the constructor snapshot, then to
-            ``(None, None)`` — that last case triggers the per-crop
-            percentile path inside ``_uint16_to_rgb``.
+            Uses the config-driven snapshot computed by FindingDory at
+            startup (model contrast percentiles applied to each mosaic).
+            ``(None, None)`` falls through to per-crop percentile inside
+            ``_uint16_to_rgb`` — only used if the snapshot is missing.
             """
-            try:
-                import napari as _napari
-                for layer in self.viewer.layers:
-                    if isinstance(layer, _napari.layers.Image) and layer.name == channel:
-                        lo, hi = layer.contrast_limits
-                        return (float(lo), float(hi))
-            except Exception:
-                pass
             bounds = self._channel_contrast.get(channel)
             if bounds is None:
                 return (None, None)
