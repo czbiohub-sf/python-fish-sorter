@@ -844,24 +844,41 @@ def _build_label_tool():
             unique_clusters = sorted(set(int(c) for c in valid_labels if c >= 0))
             first_time = (fl, ch) not in self._auto_assigned
             cluster_members: Dict[int, List[str]] = {cl: [] for cl in unique_clusters}
+            skipped_already_assigned = 0
+            skipped_finalized = 0
+            noise_count = 0
             if first_time:
                 for li_pos, meta_idx in enumerate(line_indices):
                     if not mask[li_pos]:
                         continue
                     cl = int(full_labels[li_pos])
                     if cl < 0:
+                        noise_count += 1
                         continue
                     wid = self.metadata.iloc[meta_idx]["well_id"]
-                    if wid in asgn or self.store.is_finalized(fl, wid):
+                    if wid in asgn:
+                        skipped_already_assigned += 1
+                        continue
+                    if self.store.is_finalized(fl, wid):
+                        skipped_finalized += 1
                         continue
                     cluster_members[cl].append(wid)
+            assigned_total = 0
             for cl in unique_clusters:
                 group_name = f"cluster_{cl}"
                 self.store.create_group(fl, ch, group_name)
                 if first_time and cluster_members[cl]:
                     self.store.assign(fl, ch, cluster_members[cl], group_name)
+                    assigned_total += len(cluster_members[cl])
             if first_time:
                 self._auto_assigned.add((fl, ch))
+                log.info(
+                    f"auto-assign {fl}|{ch}: clusters={len(unique_clusters)} "
+                    f"assigned={assigned_total} noise={noise_count} "
+                    f"skipped_already_assigned={skipped_already_assigned} "
+                    f"skipped_finalized={skipped_finalized} "
+                    f"singlets_total={int(mask.sum())}"
+                )
 
             self._refresh_group_list()
             self._refresh_select_by_combo()
