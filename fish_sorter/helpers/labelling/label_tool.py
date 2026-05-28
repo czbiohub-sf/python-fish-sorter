@@ -43,6 +43,7 @@ The destination is self-contained: no imports from ``fish_classify.*`` allowed.
 
 from __future__ import annotations
 
+import concurrent.futures
 import logging
 from typing import Dict, List, Optional, Tuple
 
@@ -172,6 +173,7 @@ def _build_label_tool():
         """
 
         save_requested = Signal()
+        warm_done = Signal(str, object)  # channel, payload dict
 
         def __init__(
             self,
@@ -255,6 +257,29 @@ def _build_label_tool():
             # the first time a (line, channel) scope is computed, so manual
             # edits and reclusters never wipe assignments. See _recompute_view.
             self._auto_assigned: set = set()
+
+            # Per-(line, channel) UMAP/cluster cache and per-channel crop
+            # cache. Channel switches restore both instead of re-running
+            # UMAP + crop preload every time, which used to make each
+            # switch take tens of seconds. The Recluster button clears the
+            # current scope's entry before recomputing.
+            self._view_state_cache: Dict[Tuple[str, str], dict] = {}
+            self._channel_crop_cache: Dict[str, Dict[Tuple[str, str], np.ndarray]] = {}
+
+            # Composite (all-channels) crop cache for cross-channel mode.
+            # Built once on first entry; subsequent entries reuse it. None
+            # means "not yet built". Cross-Channel refresh forces a rebuild.
+            self._composite_crop_cache: Optional[Dict[Tuple[str, str], np.ndarray]] = None
+
+            # Background channel warming. After the first channel renders we
+            # kick off a thread pool that pre-computes UMAP + crops for the
+            # remaining channels so subsequent switches feel instant. The
+            # ``_warm_started`` guard makes sure we only schedule once per
+            # session, and ``warm_done`` carries the result back to the GUI
+            # thread where LabelStore writes and cache updates happen.
+            self._warm_executor: Optional[concurrent.futures.ThreadPoolExecutor] = None
+            self._warm_started: bool = False
+            self.warm_done.connect(self._on_warm_done, Qt.QueuedConnection)
 
             # Re-propagate globals across channels (upstream behaviour).
             self.store._propagate_global_groups()
@@ -361,6 +386,13 @@ def _build_label_tool():
                 self._unsubscribe_contrast_signals()
             except Exception:
                 log.exception("contrast signal unsubscribe failed")
+            warm_exec = self._warm_executor
+            if warm_exec is not None:
+                try:
+                    warm_exec.shutdown(wait=False)
+                except Exception:
+                    pass
+                self._warm_executor = None
             dock = getattr(self, "_toolbar_dock", None)
             if dock is not None:
                 try:
@@ -669,7 +701,13 @@ def _build_label_tool():
             Existing assignments survive because the auto-assignment block
             in ``_recompute_view`` short-circuits on subsequent passes for a
             given (line, channel) scope (see ``self._auto_assigned``).
+
+            We invalidate the per-scope view cache so the recompute actually
+            runs instead of being short-circuited by the cached result.
             """
+            scope_key = (self._current_line, self._current_channel)
+            self._view_state_cache.pop(scope_key, None)
+            self._channel_crop_cache.pop(self._current_channel, None)
             self._recompute_view()
 
         # ------------------------------------------------------------------
@@ -870,11 +908,13 @@ def _build_label_tool():
 
             Useful when assignments changed outside the dock's Assign button
             path (rare but possible) or when the user just wants a clean
-            re-layout. Composite crops are also re-preloaded so any wells
-            that moved bucket pick up the freshest thumbnail.
+            re-layout. Invalidates the composite-crop cache too, so the
+            thumbnails get rebuilt from scratch instead of reusing the prior
+            snapshot.
             """
             if not self._cross_channel_mode:
                 return
+            self._composite_crop_cache = None
             self._compute_cross_channel_grid()
             if not self._cross_sorted_keys:
                 self.status_label.setText(
@@ -896,7 +936,16 @@ def _build_label_tool():
             snapshot and painted with the channel's RGB tint. Channels are
             additively blended (or multiplicatively darkened for DAPI/CY5
             "dark-on-white" channels) into one RGB.
+
+            The composite is deterministic per (well_crops, contrast_bounds,
+            channels) — none of which change during a session — so we cache
+            it once on first entry and reuse the cached dict on subsequent
+            Cross-Channel toggles. ``_on_cross_refresh`` invalidates the
+            cache when the user wants a clean rebuild.
             """
+            if self._composite_crop_cache is not None:
+                self._crop_cache = dict(self._composite_crop_cache)
+                return
             self._crop_cache.clear()
             if self._view_indices is None:
                 return
@@ -980,6 +1029,7 @@ def _build_label_tool():
                 self._crop_cache[(wn, exp)] = rgb
                 loaded += 1
             log.info(f"Preloaded {loaded} composite crops for {self._current_line}")
+            self._composite_crop_cache = dict(self._crop_cache)
 
         # ------------------------------------------------------------------
         # Select-by attribute → values dropdowns
@@ -1121,6 +1171,11 @@ def _build_label_tool():
 
             Refactor item 7: clustering routes through the injected
             ``ClusterStrategy`` instead of constructing HDBSCAN directly.
+
+            Cached scopes (already visited and not invalidated by Recluster)
+            short-circuit to a cache restore so channel switches are
+            near-instant — the original implementation re-ran UMAP every
+            time, which took tens of seconds for hundreds of wells.
             """
             if self._cross_channel_mode:
                 # The grid is the view — recomputing the UMAP would clobber
@@ -1129,6 +1184,24 @@ def _build_label_tool():
                 return
             if self._view_indices is None or len(self._view_indices) < 2:
                 self.status_label.setText("Too few wells for this fish line.")
+                return
+
+            scope_key = (self._current_line, self._current_channel)
+            cached = self._view_state_cache.get(scope_key)
+            if cached is not None:
+                self._view_umap = cached["umap"]
+                self._view_clusters = cached["clusters"]
+                self._view_valid_mask = cached["valid_mask"]
+                self._view_embeddings = cached["embeddings"]
+                self._crop_cache = dict(
+                    self._channel_crop_cache.get(self._current_channel, {})
+                )
+                self._refresh_group_list()
+                self._refresh_select_by_combo()
+                self._update_scatter()
+                self._update_status()
+                if self.image_umap_checkbox.isChecked():
+                    self._render_image_umap()
                 return
 
             line_indices = self._view_indices
@@ -1238,11 +1311,199 @@ def _build_label_tool():
             self._refresh_group_list()
             self._refresh_select_by_combo()
             self._preload_crops()
+
+            # Cache this scope so the next visit short-circuits the
+            # UMAP + crop preload. Recluster clears the entry; assigns
+            # don't touch UMAP coords so the cache stays valid.
+            self._view_state_cache[scope_key] = {
+                "umap": self._view_umap,
+                "clusters": self._view_clusters,
+                "valid_mask": self._view_valid_mask,
+                "embeddings": self._view_embeddings,
+            }
+            self._channel_crop_cache[self._current_channel] = dict(self._crop_cache)
+
             self._update_scatter()
             self._update_status()
 
             if self.image_umap_checkbox.isChecked():
                 self._render_image_umap()
+
+            # First successful compute → warm the remaining channels in
+            # the background so subsequent switches don't hit the slow
+            # UMAP + crop path.
+            self._maybe_kick_off_warming()
+
+        # ------------------------------------------------------------------
+        # Background channel warming
+        # ------------------------------------------------------------------
+
+        def _maybe_kick_off_warming(self):
+            """Spin up a worker that pre-computes UMAP + crops for every
+            other channel. Runs exactly once per session — subsequent
+            ``_recompute_view`` calls short-circuit on the flag.
+            """
+            if self._warm_started:
+                return
+            others = [
+                ch for ch in self._all_channels
+                if ch != self._current_channel
+                and (self._current_line, ch) not in self._view_state_cache
+            ]
+            if not others:
+                self._warm_started = True
+                return
+            self._warm_started = True
+            self._warm_executor = concurrent.futures.ThreadPoolExecutor(
+                max_workers=1, thread_name_prefix="LabelToolWarmer",
+            )
+            for ch in others:
+                self._warm_executor.submit(self._warm_one_channel, ch)
+
+        def _warm_one_channel(self, channel: str):
+            """Background worker — compute UMAP + clusters + crops for one
+            channel, then hand the payload back to the GUI thread via
+            ``warm_done``. Must not touch napari layers, the LabelStore,
+            or any Qt widgets directly.
+            """
+            try:
+                line_indices = self._view_indices
+                if line_indices is None or len(line_indices) < 2:
+                    return
+                embeddings, valid_positions = self._get_channel_emb_for_line(
+                    channel, line_indices
+                )
+                if len(embeddings) < 2:
+                    return
+                n = len(line_indices)
+                mask = np.zeros(n, dtype=bool)
+                mask[valid_positions] = True
+                full_emb = np.full(
+                    (n, embeddings.shape[1]), np.nan, dtype=np.float32
+                )
+                full_emb[valid_positions] = embeddings
+                valid_emb = full_emb[mask]
+                if len(valid_emb) < 2:
+                    return
+
+                try:
+                    valid_labels = np.asarray(
+                        self._cluster_strategy.cluster(valid_emb)
+                    )
+                except Exception:
+                    log.exception(f"warm cluster failed for {channel}")
+                    valid_labels = np.full(len(valid_emb), -1, dtype=int)
+                full_labels = np.full(n, -2, dtype=int)
+                full_labels[mask] = valid_labels
+
+                try:
+                    from umap import UMAP
+                    n_neighbors = min(15, len(valid_emb) - 1)
+                    reducer = UMAP(
+                        n_components=2,
+                        n_neighbors=n_neighbors,
+                        min_dist=0.1,
+                        random_state=42,
+                    )
+                    umap_2d = reducer.fit_transform(valid_emb).astype(np.float32)
+                except Exception:
+                    log.exception(f"warm UMAP failed for {channel}")
+                    return
+                full_umap = np.full((n, 2), np.nan, dtype=np.float32)
+                full_umap[mask] = umap_2d
+
+                # Render the per-well RGB cache for this channel using the
+                # same logic as ``_preload_crops``.
+                display_cfg = get_channel_display(channel)
+                rgb_color = display_cfg.rgb_color
+                dark_on_white = channel.upper() in ("DAPI", "CY5")
+                low, high = self._contrast_for(channel)
+                crop_cache: Dict[Tuple[str, str], np.ndarray] = {}
+                for meta_idx in line_indices:
+                    widx = int(meta_idx)
+                    if widx >= len(self._well_crops):
+                        continue
+                    row = self.metadata.iloc[widx]
+                    wn, exp = row["well_name"], row["experiment"]
+                    crop = self._well_crops[widx].get(channel)
+                    if crop is None or crop.size == 0:
+                        continue
+                    try:
+                        rgb = _uint16_to_rgb(
+                            crop, rgb_color,
+                            low=low, high=high, dark_on_white=dark_on_white,
+                        )
+                        crop_cache[(wn, exp)] = rgb
+                    except Exception:
+                        continue
+
+                self.warm_done.emit(channel, {
+                    "umap": full_umap,
+                    "clusters": full_labels,
+                    "valid_mask": mask,
+                    "embeddings": full_emb,
+                    "crops": crop_cache,
+                })
+            except Exception:
+                log.exception(f"warm worker crashed for {channel}")
+
+        def _on_warm_done(self, channel: str, payload: object):
+            """GUI-thread slot — install warmed state into the caches.
+
+            Races: if the user manually switched to ``channel`` while we
+            were computing, ``_recompute_view`` already ran the slow path
+            and populated the cache. In that case we discard the
+            background result so we don't clobber the freshly-cached
+            (and potentially user-modified) state.
+            """
+            if not isinstance(payload, dict):
+                return
+            scope = (self._current_line, channel)
+            if scope in self._view_state_cache:
+                log.info(
+                    f"discarding warm result for {channel} — scope already cached"
+                )
+                return
+            self._view_state_cache[scope] = {
+                "umap": payload["umap"],
+                "clusters": payload["clusters"],
+                "valid_mask": payload["valid_mask"],
+                "embeddings": payload["embeddings"],
+            }
+            self._channel_crop_cache[channel] = payload["crops"]
+
+            # Run the first-time cluster auto-assignment on the GUI thread
+            # (LabelStore writes belong here, not in the worker).
+            if scope not in self._auto_assigned:
+                fl = self._current_line
+                asgn = self.store.assignments(fl, channel)
+                valid_mask = payload["valid_mask"]
+                full_labels = payload["clusters"]
+                line_indices = self._view_indices
+                unique_clusters = sorted(
+                    set(int(c) for c in full_labels[valid_mask] if c >= 0)
+                )
+                cluster_members: Dict[int, List[str]] = {
+                    cl: [] for cl in unique_clusters
+                }
+                for li_pos, meta_idx in enumerate(line_indices):
+                    if not valid_mask[li_pos]:
+                        continue
+                    cl = int(full_labels[li_pos])
+                    if cl < 0:
+                        continue
+                    wid = self.metadata.iloc[meta_idx]["well_id"]
+                    if wid in asgn or self.store.is_finalized(fl, wid):
+                        continue
+                    cluster_members[cl].append(wid)
+                for cl in unique_clusters:
+                    group_name = f"cluster_{cl}"
+                    self.store.create_group(fl, channel, group_name)
+                    members = cluster_members.get(cl, [])
+                    if members:
+                        self.store.assign(fl, channel, members, group_name)
+                self._auto_assigned.add(scope)
+            log.info(f"background-warmed {scope[0]}|{channel}")
 
         # ------------------------------------------------------------------
         # Scatter display
@@ -1789,6 +2050,13 @@ def _build_label_tool():
                 # In cross-channel mode each row is a cross-channel combo —
                 # "ch_a:group_a × ch_b:group_b × …" — rather than a per-channel
                 # group. Counts reflect how many wells fall into that combo.
+                # The combo *key* (the tuple of group names per channel) is
+                # attached to each item as Qt.UserRole data so the
+                # focus / double-click handlers can recover membership via
+                # ``self._cross_classes`` instead of trying to look up the
+                # display string in a single-channel scope (which always
+                # returns empty and reads as "has no members").
+                from qtpy.QtWidgets import QListWidgetItem
                 fl = self._current_line
                 for key in self._cross_sorted_keys:
                     parts = [
@@ -1796,7 +2064,11 @@ def _build_label_tool():
                     ]
                     label = " × ".join(parts)
                     n = len(self._cross_classes.get(key, []))
-                    self.group_list.addItem(f"{label} ({n})" if n else label)
+                    item = QListWidgetItem(
+                        f"{label} ({n})" if n else label
+                    )
+                    item.setData(Qt.UserRole, key)
+                    self.group_list.addItem(item)
                 # Unassigned in cross-channel mode = wells that aren't
                 # classified in *every* channel (those don't appear in any
                 # combo bucket).
@@ -1807,7 +2079,9 @@ def _build_label_tool():
                     len(self._view_indices) if self._view_indices is not None else 0
                 )
                 n_unassigned = n_total - len(classified_wids)
-                self.group_list.addItem(f"unassigned ({n_unassigned})")
+                unassigned_item = QListWidgetItem(f"unassigned ({n_unassigned})")
+                unassigned_item.setData(Qt.UserRole, "__unassigned__")
+                self.group_list.addItem(unassigned_item)
             else:
                 fl, ch = self._scope()
                 counts = self.store.counts(fl, ch)
@@ -2054,12 +2328,83 @@ def _build_label_tool():
 
         def _on_group_focus_changed(self, text: str):
             fl, ch = self._scope()
+            if self._cross_channel_mode:
+                # Combo-row focus: pull members from the bucketed combo
+                # instead of the single-channel store scope. The combo key
+                # was attached to the item as UserRole in _refresh_group_list.
+                item = self.group_list.currentItem()
+                key = item.data(Qt.UserRole) if item is not None else None
+                if isinstance(key, tuple):
+                    members = self._cross_classes.get(key, [])
+                    label = " × ".join(
+                        f"{c}:{g}" for c, g in zip(self._cross_channels, key)
+                    )
+                    self.status_label.setText(
+                        f"Focused: {label} ({len(members)} wells)"
+                    )
+                return
             group = self._get_selected_group_name()
             if group:
                 members = self.store.get_group_members(fl, ch, group)
                 self.status_label.setText(f"Focused: {group} ({len(members)} wells)")
 
         def _on_group_double_click(self, item):
+            fl, ch = self._scope()
+
+            # Cross-channel rows carry the combo key as Qt.UserRole data;
+            # membership lives in ``self._cross_classes`` rather than in any
+            # single-channel store scope. Resolve members from there before
+            # falling back to the per-channel lookup.
+            if self._cross_channel_mode:
+                key = item.data(Qt.UserRole)
+                label_key = key if isinstance(key, tuple) else str(key)
+                if self._focused_group == label_key:
+                    self._deselect_all()
+                    return
+                if key == "__unassigned__":
+                    classified = set()
+                    for wids in self._cross_classes.values():
+                        classified.update(wids)
+                    member_wids = set()
+                    indices = []
+                    wells = []
+                    for li_pos, meta_idx in enumerate(self._view_indices):
+                        wid = self.metadata.iloc[meta_idx]["well_id"]
+                        if wid in classified:
+                            continue
+                        indices.append(li_pos)
+                        row = self.metadata.iloc[meta_idx]
+                        wells.append((row["well_name"], row["experiment"]))
+                    display = "unassigned"
+                else:
+                    member_wids = set(self._cross_classes.get(key, []))
+                    if not member_wids:
+                        self.crop_info.setText("Combo has no members.")
+                        return
+                    indices = []
+                    wells = []
+                    for li_pos, meta_idx in enumerate(self._view_indices):
+                        wid = self.metadata.iloc[meta_idx]["well_id"]
+                        if wid in member_wids:
+                            indices.append(li_pos)
+                            row = self.metadata.iloc[meta_idx]
+                            wells.append((row["well_name"], row["experiment"]))
+                    display = " × ".join(
+                        f"{c}:{g}" for c, g in zip(self._cross_channels, key)
+                    )
+                if not indices:
+                    self.crop_info.setText(f"'{display}' members not visible.")
+                    return
+                self._focused_group = label_key
+                selected = np.array(indices)
+                self._selected_indices = set(indices)
+                self._highlight_selected(selected)
+                self._set_selected_wells(wells)
+                self.assign_btn.setEnabled(True)
+                self.unassign_btn.setEnabled(True)
+                self.crop_info.setText(f"Focused {len(indices)} wells in '{display}'")
+                return
+
             text = item.text()
             if " (" in text:
                 text = text.rsplit(" (", 1)[0]
@@ -2068,8 +2413,6 @@ def _build_label_tool():
             if self._focused_group == group:
                 self._deselect_all()
                 return
-
-            fl, ch = self._scope()
 
             if group == "unassigned":
                 assigned_wids = set(self.store.assignments(fl, ch).keys())
