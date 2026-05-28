@@ -452,6 +452,15 @@ class Classify(QObject):
         to disk. Silently no-ops when the labeller config is absent (first run,
         before setup) or ``prewarm_embeddings`` is false.
         """
+        # Shut down a prior pre-warm executor if this is a re-trigger (e.g. the
+        # dev Prewarm button), so we don't leak the previous worker thread.
+        prev_exec = getattr(self, "_dory_embed_executor", None)
+        if prev_exec is not None:
+            try:
+                prev_exec.shutdown(wait=False)
+            except Exception:
+                pass
+
         # Attributes the Finding Dory dock probes for adoption — always defined
         # so ``getattr`` checks there stay simple.
         self._dory_embed_future = None

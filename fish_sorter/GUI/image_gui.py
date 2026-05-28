@@ -33,6 +33,13 @@ class ImageWidget(QWidget):
         self.mosaic_btn = QPushButton("Stitch mosaic")
         self.nemo_btn = QPushButton("Finding Nemo")
         self.dory_btn = QPushButton("Finding Dory")
+        # Dev-only manual pre-warm trigger. Hidden by default; the app shows it
+        # when the labeller config has dev_mock_embeddings=true.
+        self.prewarm_btn = QPushButton("Prewarm")
+        self.prewarm_btn.setToolTip(
+            'Dev: run the Finding Dory embedding/UMAP pre-warm now, before opening the dock.'
+        )
+        self.prewarm_btn.setVisible(False)
         self.cross_btn = QPushButton('Crosshairs')
 
         self.nemo_btn.setToolTip('Threshold-based classification (the original workflow).')
@@ -46,6 +53,7 @@ class ImageWidget(QWidget):
         layout.addWidget(self.mosaic_btn)
         layout.addWidget(self.nemo_btn)
         layout.addWidget(self.dory_btn)
+        layout.addWidget(self.prewarm_btn)
         layout.addWidget(self.cross_btn)
         self.setLayout(layout)
         
