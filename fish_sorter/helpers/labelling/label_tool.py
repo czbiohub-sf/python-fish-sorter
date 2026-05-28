@@ -188,9 +188,15 @@ def _build_label_tool():
             cluster_strategy,
             store: LabelStore,
             per_channel_contrast: Optional[Dict[str, Tuple[float, float]]] = None,
+            umap_cfg: Optional[dict] = None,
             parent=None,
         ):
             super().__init__(parent)
+
+            # UMAP + Fish-overlay tuning, from the labeller config's "umap"
+            # block. ``canvas_px`` bounds the Show-Fish composite image so a
+            # dense layout can't balloon it to a multi-gigabyte texture.
+            self._umap_cfg: dict = dict(umap_cfg or {})
 
             # Refactor item 3: viewer is injected.
             self.viewer = viewer
@@ -452,9 +458,15 @@ def _build_label_tool():
             self.color_combo.currentTextChanged.connect(self._on_color_changed)
             toolbar_layout.addWidget(self.color_combo)
 
-            # Image UMAP toggle.
+            # Image UMAP toggle — on by default. Block the toggle signal while
+            # setting the initial state: the first ``_recompute_view`` renders
+            # the overlay once the UMAP exists (it checks ``isChecked()``), so
+            # we don't want the toggle firing now against an empty view.
             self.image_umap_checkbox = QCheckBox("Show Fish")
             self.image_umap_checkbox.toggled.connect(self._toggle_image_umap)
+            self.image_umap_checkbox.blockSignals(True)
+            self.image_umap_checkbox.setChecked(True)
+            self.image_umap_checkbox.blockSignals(False)
             toolbar_layout.addWidget(self.image_umap_checkbox)
 
             # Crop size slider.
@@ -1376,11 +1388,11 @@ def _build_label_tool():
             try:
                 from umap import UMAP
 
-                n_neighbors = min(15, len(valid_emb) - 1)
+                n_neighbors = min(int(self._umap_cfg.get("n_neighbors", 15)), len(valid_emb) - 1)
                 reducer = UMAP(
                     n_components=2,
                     n_neighbors=n_neighbors,
-                    min_dist=0.1,
+                    min_dist=float(self._umap_cfg.get("min_dist", 0.1)),
                     random_state=42,
                 )
                 umap_2d = reducer.fit_transform(valid_emb).astype(np.float32)
@@ -1534,11 +1546,11 @@ def _build_label_tool():
 
                 try:
                     from umap import UMAP
-                    n_neighbors = min(15, len(valid_emb) - 1)
+                    n_neighbors = min(int(self._umap_cfg.get("n_neighbors", 15)), len(valid_emb) - 1)
                     reducer = UMAP(
                         n_components=2,
                         n_neighbors=n_neighbors,
-                        min_dist=0.1,
+                        min_dist=float(self._umap_cfg.get("min_dist", 0.1)),
                         random_state=42,
                     )
                     umap_2d = reducer.fit_transform(valid_emb).astype(np.float32)
@@ -2986,7 +2998,11 @@ def _build_label_tool():
             world_ys = np.array([p[0] for p in positions])
             world_xs = np.array([p[1] for p in positions])
 
-            max_canvas_px = 32000
+            # Bound the composite canvas. The fish thumbnails stay at full
+            # resolution (thumb_px_h/w); a smaller cap just packs points
+            # closer (more overlap in dense clusters) rather than exploding
+            # the canvas to a multi-GB texture. Tunable via umap.canvas_px.
+            max_canvas_px = int(self._umap_cfg.get("canvas_px", 8192))
             range_y = world_ys.max() - world_ys.min() + thumb_px_h / max(ppu, 1e-8)
             range_x = world_xs.max() - world_xs.min() + thumb_px_w / max(ppu, 1e-8)
             cur_ppu = min(

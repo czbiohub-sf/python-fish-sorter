@@ -61,3 +61,15 @@ prompt you to pick the right file.
   in the Setup tab) to model bundles.
 - `clustering.method` / `params` — selects the cluster strategy
   (`hdbscan` is the only one shipped today).
+- `umap.n_neighbors` / `umap.min_dist` — UMAP layout params. Higher
+  `min_dist` spreads points more evenly within clusters (less clumping),
+  which also lets the Show-Fish overlay show full-resolution thumbnails
+  with less overlap at a given canvas size.
+- `umap.canvas_px` — (default `8192`) the maximum side length, in pixels,
+  of the "Fish UMAP" composite image (the Show-Fish overlay). Fish
+  thumbnails are always drawn at full resolution; this only bounds how
+  large the backing image can get. In dense clusters a smaller value packs
+  fish closer (more overlap) but renders far faster and uses far less
+  memory; a larger value separates them more at the cost of render time.
+  The previous hardcoded value (32000) could produce multi-gigabyte
+  textures and multi-minute renders on busy plates.

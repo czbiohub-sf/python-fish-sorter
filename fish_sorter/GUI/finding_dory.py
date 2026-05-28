@@ -768,6 +768,7 @@ def _build_finding_dory():
                     cluster_strategy=self.cluster_strategy,
                     store=self.store,
                     per_channel_contrast=per_channel_contrast,
+                    umap_cfg=self.cfg.get("umap", {}),
                 )
             except Exception as e:
                 log.exception("LabelTool construction failed")
