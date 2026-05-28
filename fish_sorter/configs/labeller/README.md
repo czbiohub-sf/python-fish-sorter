@@ -45,6 +45,18 @@ prompt you to pick the right file.
   and the directory containing variant `.pth` files.
 - `device` — `auto` resolves cuda > mps > cpu. Override with `cuda`,
   `mps`, or `cpu`.
+- `prewarm_embeddings` — (default `true`) compute embeddings in the
+  background as soon as the mosaic finishes stitching, so the Finding Dory
+  dock opens instantly instead of running the model on click. Pre-warm
+  embeds *every* well; the singlet filter (below) is applied when the dock
+  adopts the result. Set `false` on slow/CPU-only machines to defer all
+  embedding work until Finding Dory is actually opened. The very first run on
+  a fresh machine never pre-warms (the config doesn't exist until you finish
+  setup), so that run computes on click regardless.
+- `filter_to_singlets` — (default `true`) restrict the embedding view to
+  wells Finding Nemo flagged as singlets (auto-running `find_fish` if needed).
+  Set `false` to embed and show every well, including empties / multiples /
+  deformed.
 - `pick_type_to_mode` — maps fish-sorter `pick_type` values (the dropdown
   in the Setup tab) to model bundles.
 - `clustering.method` / `params` — selects the cluster strategy

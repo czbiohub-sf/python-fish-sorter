@@ -169,6 +169,28 @@ def write_wide_csv(
     return path
 
 
+def _subset_embeddings(
+    embeds: Dict[str, np.ndarray],
+    idx: Dict[str, np.ndarray],
+    keep_indices: np.ndarray,
+) -> Tuple[Dict[str, np.ndarray], Dict[str, np.ndarray]]:
+    """Restrict per-channel embeddings to wells in `keep_indices`.
+
+    Used when adopting a background pre-warm (which embeds *all* wells) but the
+    `filter_to_singlets` option asks Finding Dory to show only singlets. Rows
+    whose original well index isn't in `keep_indices` are dropped from each
+    channel's embedding + index arrays.
+    """
+    keep_set = {int(k) for k in np.asarray(keep_indices).ravel()}
+    out_e: Dict[str, np.ndarray] = {}
+    out_i: Dict[str, np.ndarray] = {}
+    for ch, well_idx in idx.items():
+        mask = np.array([int(w) in keep_set for w in well_idx], dtype=bool)
+        out_e[ch] = embeds[ch][mask]
+        out_i[ch] = well_idx[mask]
+    return out_e, out_i
+
+
 # ---------------------------------------------------------------------------
 # First-time setup dialog
 # ---------------------------------------------------------------------------
@@ -476,7 +498,32 @@ def _build_finding_dory():
         def _start_embedding(self):
             self.status_label.setText("Loading model…")
 
-            # Auto-run find_fish if Finding Nemo hasn't populated singlet yet.
+            # Resolve which wells to show (singlet filter, if enabled). Done on
+            # the GUI thread because it may auto-run find_fish, which touches
+            # the napari points layer.
+            self._apply_singlet_filter()
+
+            # Prefer a background pre-warm started right after stitching; only
+            # fall back to computing here if none is usable.
+            if self._try_adopt_prewarm():
+                return
+
+            self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+            self.future = self.executor.submit(self._embed_threaded)
+            self.future.add_done_callback(self._on_future_done)
+
+        def _apply_singlet_filter(self):
+            """Set ``self._keep_indices`` to the singlet wells, or None.
+
+            Gated by the ``filter_to_singlets`` config option (default True).
+            When disabled, all wells are kept. When enabled, auto-runs
+            ``find_fish`` if Finding Nemo hasn't populated ``singlet`` yet.
+            """
+            if not self.cfg.get("filter_to_singlets", True):
+                log.info("filter_to_singlets=false; embedding/showing all wells.")
+                self._keep_indices = None
+                return
+
             try:
                 feat = self.classify.points_layer.features
                 already_run = (
@@ -512,9 +559,52 @@ def _build_finding_dory():
             except Exception as e:
                 log.warning(f"singlet pre-filter skipped: {e}; embedding all wells.")
 
-            self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
-            self.future = self.executor.submit(self._embed_threaded)
-            self.future.add_done_callback(self._on_future_done)
+        def _try_adopt_prewarm(self) -> bool:
+            """Adopt the Classify background pre-warm if present and compatible.
+
+            Returns True if the dock is now waiting on the pre-warm future
+            (so the caller should not start its own pass).
+            """
+            future = getattr(self.classify, "_dory_embed_future", None)
+            if future is None:
+                return False
+            if getattr(self.classify, "_dory_embed_error", None) is not None:
+                log.info("prewarm errored earlier; computing fresh.")
+                return False
+            # The pre-warm must have used the same channels + model bundle,
+            # otherwise its embeddings don't correspond to what we'd compute.
+            if (getattr(self.classify, "_dory_channels", None) != self.channels
+                    or getattr(self.classify, "_dory_mode", None) != self.mode):
+                log.info("prewarm channels/mode differ from dock; computing fresh.")
+                return False
+
+            self.future = future
+            if future.done():
+                self.status_label.setText("Using pre-computed embeddings…")
+            else:
+                self.progress_bar.setRange(0, 0)  # indeterminate while finishing
+                self.status_label.setText("Finishing pre-computed embeddings…")
+            future.add_done_callback(self._on_prewarm_future_done)
+            return True
+
+        def _on_prewarm_future_done(self, future):
+            """Adopt prewarm results (runs on the prewarm worker thread)."""
+            try:
+                extractor, embeds, idx = future.result()
+            except Exception as e:
+                log.warning(f"prewarm result unusable ({e!r}); computing fresh.")
+                self.executor = concurrent.futures.ThreadPoolExecutor(max_workers=1)
+                self.future = self.executor.submit(self._embed_threaded)
+                self.future.add_done_callback(self._on_future_done)
+                return
+            # The pre-warm embeds every well; restrict to the singlet keep-set
+            # here so ``filter_to_singlets`` is honored on adoption too.
+            if self._keep_indices is not None:
+                embeds, idx = _subset_embeddings(embeds, idx, self._keep_indices)
+            self.extractor = extractor
+            self.embeddings = embeds
+            self.well_idx_in_emb = idx
+            self.embed_done_signal.emit()
 
         def _embed_threaded(self):
             """Build the extractor (or mock), embed all channels, return results.

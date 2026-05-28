@@ -71,6 +71,7 @@ class Classify(QObject):
         super().__init__()
         CMMCorePlus.instance()
 
+        self.cfg_dir = cfg_dir
         self.iplate = iplate
         self.total_wells = self.iplate.wells["array_design"]["rows"] * self.iplate.wells["array_design"]["columns"]
         
@@ -145,6 +146,13 @@ class Classify(QObject):
         self.prefix = prefix
         self.expt_dir = expt_dir
         self.save_data()
+
+        # Pre-warm Finding Dory embeddings in the background so the dock is
+        # ready to open instantly. Safe to call here: extract_fish() above has
+        # already populated self.mask, the stitched Image layers exist, and
+        # well centers are available. No-ops if the labeller config is missing
+        # (first run) or prewarm is disabled.
+        self._start_async_embedding()
 
     def _blank(self, event):
         """Empty function used to overwrite hotkeys
@@ -431,6 +439,112 @@ class Classify(QObject):
         points = self._points()
         self._well_mask()
         return self._extract_wells(points, img_flag=True, parallel=True)
+
+    def _start_async_embedding(self):
+        """Pre-warm Finding Dory embeddings after stitching, in the background.
+
+        Embeds *every* well now (find_fish has not necessarily run yet) so the
+        Finding Dory dock can adopt the result on click instead of paying the
+        model-load + forward-pass cost then. The singlet filter, if enabled, is
+        applied by the dock when it adopts these embeddings.
+
+        Results live only on this instance for the session — nothing is written
+        to disk. Silently no-ops when the labeller config is absent (first run,
+        before setup) or ``prewarm_embeddings`` is false.
+        """
+        # Attributes the Finding Dory dock probes for adoption — always defined
+        # so ``getattr`` checks there stay simple.
+        self._dory_embed_future = None
+        self._dory_embeddings = None
+        self._dory_embed_indices = None
+        self._dory_extractor = None
+        self._dory_embed_error = None
+        self._dory_embed_progress = (0, 0)
+        self._dory_channels = None
+        self._dory_mode = None
+        self._dory_embed_executor = None
+
+        cfg_path = self.cfg_dir / "labeller" / "config.json"
+        if not cfg_path.exists():
+            logging.info("Finding Dory prewarm skipped: no labeller config yet.")
+            return
+
+        try:
+            from fish_sorter.helpers.embedding.extractor import (
+                compute_embeddings,
+                load_config,
+                resolve_mode,
+            )
+            cfg = load_config(cfg_path)
+        except Exception as e:
+            logging.warning(f"Finding Dory prewarm skipped: config load failed: {e}")
+            return
+
+        if not cfg.get("prewarm_embeddings", True):
+            logging.info("Finding Dory prewarm disabled via prewarm_embeddings=false.")
+            return
+
+        channels = [
+            l.name for l in self.viewer.layers if isinstance(l, napari.layers.Image)
+        ]
+        if not channels:
+            logging.info("Finding Dory prewarm skipped: no Image layers present.")
+            return
+
+        mode = resolve_mode(cfg, self.picking)
+
+        # Snapshot the napari-side inputs here (GUI thread) so the worker only
+        # touches plain numpy arrays.
+        mosaics = {
+            l.name: np.asarray(l.data)
+            for l in self.viewer.layers
+            if isinstance(l, napari.layers.Image) and l.name in channels
+        }
+        centers = self._points()
+        well_crop_px = tuple(self.mask.shape)
+
+        self._dory_channels = channels
+        self._dory_mode = mode
+
+        def _progress_cb(step, total):
+            self._dory_embed_progress = (step, total)
+
+        def _run():
+            return compute_embeddings(
+                cfg,
+                mode,
+                channels=channels,
+                mosaics=mosaics,
+                well_centers=centers,
+                well_crop_px=well_crop_px,
+                n_total=len(centers),
+                keep_indices=None,  # embed all wells; dock filters on adoption
+                progress_cb=_progress_cb,
+            )
+
+        self._dory_embed_executor = concurrent.futures.ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix="DoryPrewarm",
+        )
+        self._dory_embed_future = self._dory_embed_executor.submit(_run)
+        self._dory_embed_future.add_done_callback(self._dory_embed_done)
+        logging.info(
+            f"Finding Dory prewarm started (mode={mode!r}, {len(centers)} wells, "
+            f"channels={channels})."
+        )
+
+    def _dory_embed_done(self, future):
+        """Stash prewarm results (runs on the prewarm worker thread)."""
+        try:
+            extractor, embeds, idx = future.result()
+            self._dory_extractor = extractor
+            self._dory_embeddings = embeds
+            self._dory_embed_indices = idx
+            logging.info("Finding Dory prewarm complete.")
+        except Exception as e:
+            self._dory_embed_error = e
+            logging.warning(
+                f"Finding Dory prewarm failed: {e}; the dock will compute on click."
+            )
     
     def _extract_wells(self, points, img_flag: bool=True, mask_layer: str=None, parallel: bool=False, sigma: float=0.25) -> dict:
         """Cuts a well centered around the points in the points layer of the image
@@ -1036,11 +1150,13 @@ class Classify(QObject):
                             pass
                 self.contrast_callbacks.clear()
 
-            if getattr(self, 'executor', None) is not None:
-                try:
-                    self.executor.shutdown(wait=False, cancel_futures=True)
-                except TypeError:
-                    self.executor.shutdown(wait=False)
+            for ex_attr in ('executor', '_dory_embed_executor'):
+                ex = getattr(self, ex_attr, None)
+                if ex is not None:
+                    try:
+                        ex.shutdown(wait=False, cancel_futures=True)
+                    except TypeError:
+                        ex.shutdown(wait=False)
         except Exception as e:
             logging.info(f'Classify cleanup exception: {e}')
 
