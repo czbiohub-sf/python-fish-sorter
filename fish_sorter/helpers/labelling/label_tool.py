@@ -1632,11 +1632,28 @@ def _build_label_tool():
             coords = self._view_umap.copy()
             valid = ~np.isnan(coords).any(axis=1)
             valid_coords = coords[valid]
-            if len(valid_coords) > 0:
-                rx = float(valid_coords[:, 0].max() - valid_coords[:, 0].min())
-                ry = float(valid_coords[:, 1].max() - valid_coords[:, 1].min())
-                data_range = max(rx, ry, 1e-6)
-                auto_size = data_range / 200
+
+            # Size = ~30% of the median nearest-neighbour distance. Fish
+            # crops are also median-NN-sized (see ``_render_image_umap``),
+            # so 30% gives a clearly-visible dot well inside the crop —
+            # not a hairline you can't see, not a blob that covers the
+            # fish. Falls back to a range-based heuristic when there's
+            # only one valid point.
+            if len(valid_coords) > 1:
+                try:
+                    from scipy.spatial import cKDTree
+                    tree = cKDTree(valid_coords)
+                    dists, _ = tree.query(valid_coords, k=2)
+                    median_nn = float(np.median(dists[:, 1]))
+                    if median_nn < 1e-8:
+                        rx = float(valid_coords[:, 0].max() - valid_coords[:, 0].min())
+                        ry = float(valid_coords[:, 1].max() - valid_coords[:, 1].min())
+                        median_nn = max(rx, ry, 1e-6) / 100
+                except Exception:
+                    rx = float(valid_coords[:, 0].max() - valid_coords[:, 0].min())
+                    ry = float(valid_coords[:, 1].max() - valid_coords[:, 1].min())
+                    median_nn = max(rx, ry, 1e-6) / 100
+                auto_size = median_nn * 0.3
             else:
                 auto_size = 0.5
 
@@ -1645,19 +1662,20 @@ def _build_label_tool():
             # napari Points use (y, x) order.
             display_coords = np.column_stack([coords[:, 1], coords[:, 0]])
 
-            # Once the layer exists we don't touch its ``size`` again — the
-            # napari layer-controls slider writes the same field, so
-            # overwriting it on every color refresh would fight the user.
-            # ``_force_resize`` flips True when the underlying coord scale
-            # changes substantially (e.g. Cross-Channel mode entry/exit) so
-            # the next ``_update_scatter`` re-applies the auto value.
+            # ``size`` is written exactly once, at layer creation. After
+            # that the napari layer-controls slider owns it. Earlier
+            # versions re-applied an auto size on every color refresh or
+            # mode toggle, which silently clobbered whatever the user had
+            # dialed in (and was the proximate cause of "size slider
+            # doesn't work").
             if self.points_layer is None:
                 self._point_size = auto_size
                 self.points_layer = self.viewer.add_points(
                     display_coords,
                     face_color=colors,
                     size=auto_size,
-                    border_width=0,
+                    border_width=0.15,
+                    border_color="white",
                     name="UMAP",
                 )
                 self.points_layer.mouse_drag_callbacks.append(self._on_point_click)
@@ -1666,10 +1684,6 @@ def _build_label_tool():
             else:
                 self.points_layer.data = display_coords
                 self.points_layer.face_color = colors
-                if getattr(self, "_force_resize", False):
-                    self._point_size = auto_size
-                    self.points_layer.size = auto_size
-                    self._force_resize = False
 
             self._selected_indices = set()
             self.assign_btn.setEnabled(False)
