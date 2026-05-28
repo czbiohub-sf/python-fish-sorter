@@ -1673,17 +1673,27 @@ def _build_label_tool():
                 self.points_layer = self.viewer.add_points(
                     display_coords,
                     face_color=colors,
+                    border_color=colors,
                     size=auto_size,
-                    border_width=0.15,
-                    border_color="white",
+                    border_width=0,
                     name="UMAP",
                 )
                 self.points_layer.mouse_drag_callbacks.append(self._on_point_click)
+                # The napari layer-controls "point size" slider writes to
+                # ``current_size`` only; in many napari versions that
+                # doesn't propagate to the per-point ``size`` array unless
+                # points are selected. Mirror the slider value onto all
+                # points so it always works as the user expects.
+                self._suppress_size_event = False
+                self.points_layer.events.current_size.connect(
+                    self._on_layer_current_size_changed
+                )
                 self._hide_host_layers()
                 self._frame_camera_on_umap(display_coords[valid])
             else:
                 self.points_layer.data = display_coords
                 self.points_layer.face_color = colors
+                self.points_layer.border_color = colors
 
             self._selected_indices = set()
             self.assign_btn.setEnabled(False)
@@ -1814,6 +1824,32 @@ def _build_label_tool():
                 return
             colors = self._build_colors()
             self.points_layer.face_color = colors
+            self.points_layer.border_color = colors
+
+        def _on_layer_current_size_changed(self, event=None):
+            """Propagate napari's point-size slider to every point.
+
+            The layer-controls slider sets ``current_size`` (the default for
+            newly-added points). On many napari versions that doesn't
+            update the per-point ``size`` array, so dragging the slider
+            does nothing visible. We mirror the scalar onto ``size``
+            ourselves and guard against the resulting event reentering
+            this handler.
+            """
+            if self.points_layer is None:
+                return
+            if getattr(self, "_suppress_size_event", False):
+                return
+            try:
+                new_size = float(self.points_layer.current_size)
+            except Exception:
+                return
+            self._suppress_size_event = True
+            try:
+                self.points_layer.size = new_size
+                self._point_size = new_size
+            finally:
+                self._suppress_size_event = False
 
         # ------------------------------------------------------------------
         # Point click
