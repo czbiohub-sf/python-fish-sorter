@@ -410,36 +410,11 @@ def _build_finding_dory():
             for ch in self.channels:
                 self.store._get_scope(f"{self.fish_line}|{ch}")
 
-            # Seed the LabelStore with Finding Nemo's global classifications
-            # (empty/multiple/deformed) so the dock UI shows real counts and
-            # "Hide Assigned" actually hides those wells. We only seed on one
-            # channel; LabelStore propagates global groups across channels.
-            #
-            # Critical: ``empty`` defaults to True for every well (preset in
-            # pick_type_config.json), even after find_fish marks some wells
-            # as singlets. Naïvely reading ``feat["empty"]`` would seed every
-            # well into ``empty`` and lock them out of cluster assignment.
-            # Filter by ``singlet=False`` so only non-singlets get seeded.
-            try:
-                feat = classify.points_layer.features
-                if len(self.channels) > 0:
-                    seed_ch = self.channels[0]
-                    if "singlet" in feat.columns:
-                        singlet = np.asarray(feat["singlet"], dtype=bool)
-                    else:
-                        singlet = np.zeros(len(self.well_ids), dtype=bool)
-                    for flag in ("empty", "multiple", "deformed"):
-                        if flag not in feat.columns:
-                            continue
-                        flagged = np.asarray(feat[flag], dtype=bool)
-                        flagged_wids = [
-                            wid for wid, sing, on in zip(self.well_ids, singlet, flagged)
-                            if (not sing) and on
-                        ]
-                        if flagged_wids:
-                            self.store.assign(self.fish_line, seed_ch, flagged_wids, flag)
-            except Exception as e:
-                log.warning(f"could not seed globals from points_layer.features: {e}")
+            # The LabelStore is seeded with Finding Nemo's global flags later,
+            # inside ``_on_embed_done`` — by that point ``_start_embedding``
+            # has auto-run ``find_fish`` so ``feat["singlet"]`` is accurate.
+            # Seeding here would read singlet=False for every well and lock
+            # every singlet into the ``empty`` group.
 
             # State.
             self.cluster_strategy = build_cluster_strategy(self.cfg)
@@ -619,6 +594,36 @@ def _build_finding_dory():
                 well_crops = self.classify._extract_wells(
                     self.classify._points(), img_flag=True, parallel=True,
                 )
+
+            # Seed the LabelStore with Finding Nemo's globals. Done here (not
+            # in ``__init__``) because ``_start_embedding`` may have just
+            # auto-run ``find_fish``; reading ``feat["singlet"]`` earlier
+            # would see all-False and seed every singlet into ``empty``,
+            # locking them out of cluster assignment.
+            try:
+                feat = self.classify.points_layer.features
+                if len(self.channels) > 0:
+                    seed_ch = self.channels[0]
+                    if "singlet" in feat.columns:
+                        singlet_arr = np.asarray(feat["singlet"], dtype=bool)
+                    else:
+                        singlet_arr = np.zeros(len(self.well_ids), dtype=bool)
+                    for flag in ("empty", "multiple", "deformed"):
+                        if flag not in feat.columns:
+                            continue
+                        flagged = np.asarray(feat[flag], dtype=bool)
+                        flagged_wids = [
+                            wid for wid, sing, on in zip(self.well_ids, singlet_arr, flagged)
+                            if (not sing) and on
+                        ]
+                        if flagged_wids:
+                            self.store.assign(self.fish_line, seed_ch, flagged_wids, flag)
+                    log.info(
+                        f"seeded globals: singlets={int(singlet_arr.sum())}, "
+                        f"non-singlets={len(self.well_ids) - int(singlet_arr.sum())}"
+                    )
+            except Exception as e:
+                log.warning(f"could not seed globals from points_layer.features: {e}")
 
             # Compute per-channel normalization bounds from the labeller
             # config's percentile params (same ones the embedding extractor
