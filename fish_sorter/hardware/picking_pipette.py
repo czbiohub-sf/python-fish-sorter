@@ -52,7 +52,11 @@ class PickingPipette():
 
         self.pipettor_cfg = hardware_dir / 'picker_config.json'
 
-        self.connect(zc=zc)
+        try:
+            self.connect(zc=zc)
+        except Exception as e:
+            logging.info(f'Failed to connect picking hardware: {e}')
+            raise
 
     def connect(self, zc=None, env='prod'):
         """Connect to hardware

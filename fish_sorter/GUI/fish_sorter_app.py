@@ -82,7 +82,13 @@ class FishSorter:
                 logging.critical("Micromanager config folder does not exisit")
 
         logging.info('Initialize picking hardware controller')
-        self.phc = PickingPipette(self.cfg_dir)
+        
+        try:
+            self.phc = PickingPipette(self.cfg_dir)
+        except Exception as e:
+            logging.critical(f'Failed to connect the picking pipette hardware: {e}')
+            sys.exit(1)
+        
         # Load sequence and Mosaic class
         self.image_init()
         self.assign_widgets()

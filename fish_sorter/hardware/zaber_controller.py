@@ -59,6 +59,7 @@ class ZaberController():
             raise
         except Exception as e:
             logging.critical(f'Cannot complete zaber stage connection: {e}')
+            raise
 
     def disconnect(self):
         """Closes the serial Connection
