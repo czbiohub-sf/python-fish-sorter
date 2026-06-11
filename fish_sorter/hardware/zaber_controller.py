@@ -78,6 +78,8 @@ class ZaberController():
         self.stages = self.zaber.detect_devices()
         logging.info('Stage list {} '.format(self.stages))
 
+        x_set = False # Handle X and Y stages with same name
+
         try:
             if len(self.stages) < 3:
                 raise RuntimeError(f'Expected 3 stages but found {len(self.stages)}') 
@@ -88,6 +90,7 @@ class ZaberController():
                 if name == self.config['name']['x']:
                     self.stage_alias[stage] = 'x'
                     stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['x'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)
+                    x_set = True
                 elif name == self.config['name']['y']:
                     self.stage_alias[stage] = 'y'
                     stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['y'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)
