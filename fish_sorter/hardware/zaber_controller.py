@@ -57,6 +57,9 @@ class ZaberController():
         except ConnectionFailedException:
             logging.critical("Could not make connection to zaber stage")
             raise
+        except Exception as e:
+            logging.critical(f'Cannot complete zaber stage connection: {e}')
+            raise
 
     def disconnect(self):
         """Closes the serial Connection
@@ -76,20 +79,28 @@ class ZaberController():
         logging.info('Stage list {} '.format(self.stages))
 
         x_set = False # Handle X and Y stages with same name
-        for stage in self.stages:
-            name = stage.name
-            logging.info(stage.name)
-            if name == self.config['name']['x'] and not x_set:
-                self.stage_alias[stage] = 'x'
-                stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['x'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)
-                x_set = True
-            elif name == self.config['name']['y']:
-                self.stage_alias[stage] = 'y'
-                stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['y'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)
-            elif name == self.config['name']['p']:
-                self.stage_alias[stage] = 'p'
-                stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['p'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)       
-        logging.info('Done setting axis')
+
+        try:
+            if len(self.stages) < 3:
+                raise RuntimeError(f'Expected 3 stages but found {len(self.stages)}') 
+
+            for stage in self.stages:
+                name = stage.name
+                logging.info(stage.name)
+                if name == self.config['name']['x']:
+                    self.stage_alias[stage] = 'x'
+                    stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['x'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)
+                    x_set = True
+                elif name == self.config['name']['y']:
+                    self.stage_alias[stage] = 'y'
+                    stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['y'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)
+                elif name == self.config['name']['p']:
+                    self.stage_alias[stage] = 'p'
+                    stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['p'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)       
+            logging.info('Done setting axis')
+        except Exception as e:
+            logging.critical(f'Failed to initialize stages: {e}')
+            raise
 
     def home_arm(self, arm: Optional[list]=None):
         """Home either all or a subset of the devices
@@ -109,6 +120,7 @@ class ZaberController():
             try:
                 self.move_arm(h)
             except:
+                logging.info('Failed home the zaber stages')
                 raise
     
     def move_arm(self, arm: str, dist: Optional[float]=None, is_relative: bool=False):
