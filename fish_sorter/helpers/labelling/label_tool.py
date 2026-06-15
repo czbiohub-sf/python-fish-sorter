@@ -432,14 +432,7 @@ def _build_label_tool():
                     except Exception:
                         pass
                     setattr(self, _exec_attr, None)
-            conn = getattr(self, "_toolbar_vis_conn", None)
             dock = getattr(self, "_toolbar_dock", None)
-            if conn is not None and dock is not None:
-                try:
-                    dock.visibilityChanged.disconnect(conn)
-                except Exception:
-                    pass
-                self._toolbar_vis_conn = None
             if dock is not None:
                 try:
                     self.viewer.window.remove_dock_widget(dock)
@@ -454,37 +447,6 @@ def _build_label_tool():
         def _scope(self) -> Tuple[str, str]:
             """Return current (fish_line, channel) scope."""
             return (self._current_line, self._current_channel)
-
-        def _on_toolbar_visibility(self, visible):
-            """Resize the shared top dock area as its tab is swapped.
-
-            The toolbar is tabified with the napari-micromanager main view in
-            the top dock area; both share the area's height. Cap the toolbar to
-            its single row while its tab is shown, and release the cap when the
-            main view tab takes over so it can reclaim the full top-bar height.
-            """
-            toolbar = getattr(self, "_toolbar", None)
-            dock = getattr(self, "_toolbar_dock", None)
-            if toolbar is None:
-                return
-            if visible:
-                toolbar.setMaximumHeight(self._toolbar_compact_h)
-                # Capping the widget alone isn't enough: the shared top dock
-                # area keeps whatever height the main-view tab left it at, so
-                # the compact toolbar sits above empty space. resizeDocks forces
-                # the area itself down to the single-row height.
-                qt_window = getattr(self.viewer.window, "_qt_window", None)
-                if qt_window is not None and dock is not None:
-                    try:
-                        qt_window.resizeDocks(
-                            [dock], [self._toolbar_compact_h], Qt.Vertical
-                        )
-                    except Exception:
-                        log.exception("toolbar dock resize failed")
-            else:
-                # QWIDGETSIZE_MAX — drop the cap so the main view tab expands
-                # the shared area back to its own (much taller) size hint.
-                toolbar.setMaximumHeight(16777215)
 
         # ------------------------------------------------------------------
         # UI construction
@@ -623,29 +585,13 @@ def _build_label_tool():
                 toolbar, name="Finding Dory", area="top", tabify=True
             )
 
-            # The toolbar is a single control row, but it tabifies with the
-            # napari-micromanager "main view" dock, which also lives in the top
-            # area (see FishSorter.__init__). Tabified docks SHARE the dock-area
-            # height, so a permanent cap on the toolbar would squash the main
-            # view too. Instead, drive the cap off the toolbar dock's own
-            # ``visibilityChanged`` signal (Qt fires it on tab swaps): compact
-            # our row when the Finding Dory tab is shown, release the cap when
-            # the main view tab takes over so it reclaims the full height.
+            # The toolbar is a single control row, so cap it to its natural
+            # single-row height — without this it inherits the full top dock
+            # area height (sized for the main-window top bar) and wastes the
+            # vertical space below it. A fixed cap is enough for now; if more
+            # controls ever move into the top tab this can grow with them.
             toolbar.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
-            self._toolbar = toolbar
-            self._toolbar_compact_h = toolbar.sizeHint().height()
-            self._toolbar_vis_conn = None
-            try:
-                self._toolbar_vis_conn = (
-                    self._toolbar_dock.visibilityChanged.connect(
-                        self._on_toolbar_visibility
-                    )
-                )
-            except Exception:
-                log.exception("toolbar visibility hook unavailable")
-            # Apply the cap for the dock's current tab state up front; the
-            # signal only fires on subsequent swaps.
-            self._on_toolbar_visibility(self._toolbar_dock.isVisible())
+            toolbar.setMaximumHeight(toolbar.sizeHint().height())
 
             # ── Groups panel ─────────────────────────────────────────────
             groups_panel = QWidget()
@@ -2554,9 +2500,8 @@ def _build_label_tool():
                 click_fn = lambda event, gn=group_name: self._quick_assign(gn)
                 thumb = self._get_group_thumbnail(group_name)
                 bold = group_name in GLOBAL_GROUPS
-                lock = " [L]" if bold else ""
                 card = _make_card(
-                    f" {group_name} ({count}){lock}",
+                    f" {group_name} ({count})",
                     r, g, b, text_color, click_fn, thumb, bold=bold,
                 )
                 grid.addWidget(card, idx // cols, idx % cols)
