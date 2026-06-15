@@ -464,12 +464,26 @@ def _build_label_tool():
             main view tab takes over so it can reclaim the full top-bar height.
             """
             toolbar = getattr(self, "_toolbar", None)
+            dock = getattr(self, "_toolbar_dock", None)
             if toolbar is None:
                 return
             if visible:
                 toolbar.setMaximumHeight(self._toolbar_compact_h)
+                # Capping the widget alone isn't enough: the shared top dock
+                # area keeps whatever height the main-view tab left it at, so
+                # the compact toolbar sits above empty space. resizeDocks forces
+                # the area itself down to the single-row height.
+                qt_window = getattr(self.viewer.window, "_qt_window", None)
+                if qt_window is not None and dock is not None:
+                    try:
+                        qt_window.resizeDocks(
+                            [dock], [self._toolbar_compact_h], Qt.Vertical
+                        )
+                    except Exception:
+                        log.exception("toolbar dock resize failed")
             else:
-                # QWIDGETSIZE_MAX — drop the cap so the main view tab expands.
+                # QWIDGETSIZE_MAX — drop the cap so the main view tab expands
+                # the shared area back to its own (much taller) size hint.
                 toolbar.setMaximumHeight(16777215)
 
         # ------------------------------------------------------------------
@@ -645,7 +659,7 @@ def _build_label_tool():
             self.group_list = QListWidget()
             self.group_list.currentTextChanged.connect(self._on_group_focus_changed)
             self.group_list.itemDoubleClicked.connect(self._on_group_double_click)
-            groups_layout.addWidget(self.group_list)
+            groups_layout.addWidget(self.group_list, 2)
 
             # Right-side button column.
             btn_col = QVBoxLayout()
@@ -696,7 +710,7 @@ def _build_label_tool():
             self.status_label.setStyleSheet("font-size: 10px; color: #aaa;")
             btn_col.addWidget(self.status_label)
 
-            groups_layout.addLayout(btn_col)
+            groups_layout.addLayout(btn_col, 1)
 
             root_layout.addWidget(groups_panel)
 
