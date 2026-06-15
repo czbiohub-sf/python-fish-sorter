@@ -16,8 +16,9 @@ from PyQt6.QtCore import QThread
 from qtpy.QtGui import QColor
 from qtpy.QtWidgets import (
     QCheckBox,
-    QComboBox, 
-    QHBoxLayout, 
+    QComboBox,
+    QFrame,
+    QHBoxLayout,
     QLabel,
     QMessageBox,
     QPushButton, 
@@ -96,6 +97,35 @@ def map_combos_to_wells(combos, wells):
     mapped = [(wells[i], combo) for i, combo in enumerate(combos[:len(wells)])]
     dropped = max(0, len(combos) - len(wells))
     return mapped, dropped
+
+
+def group_features_for_display(features, well_class):
+    """Partition a row's features into display lines.
+
+    :returns: ``(well_class_feats, channel_groups, ungrouped)`` where ``channel_groups``
+        is an ordered list of ``[channel, [feature, ...]]`` for the per-channel
+        ``{channel}_{group}`` columns (channel = text before the first ``_``). Well-class
+        columns are separated out first so e.g. ``wrong_o`` is never mistaken for a
+        channel; columns with no ``_`` (classical feature_class) go to ``ungrouped``.
+        Every feature lands in exactly one bucket.
+    """
+    wc_set = set(well_class)
+    well_class_feats = [f for f in features if f in wc_set]
+    channel_groups = []
+    pos = {}
+    ungrouped = []
+    for f in features:
+        if f in wc_set:
+            continue
+        if '_' in f:
+            channel = f.split('_', 1)[0]
+            if channel not in pos:
+                pos[channel] = len(channel_groups)
+                channel_groups.append([channel, []])
+            channel_groups[pos[channel]][1].append(f)
+        else:
+            ungrouped.append(f)
+    return well_class_feats, channel_groups, ungrouped
 
 
 class SelectGUI(QWidget):
@@ -252,7 +282,8 @@ class SelectGUI(QWidget):
         """
 
         row = AddRow(self.well, self.features, self.deselect, on_delete=self.delete_row,
-                     preset_well=preset_well, preset_checks=preset_checks)
+                     preset_well=preset_well, preset_checks=preset_checks,
+                     well_class=self.well_class)
         self.rows.append(row)
         self.rows_layout.addWidget(row)
 
@@ -287,7 +318,7 @@ class AddRow(QWidget):
     """
 
     def __init__(self, wells, features, deselect, on_delete=None,
-                 preset_well=None, preset_checks=None):
+                 preset_well=None, preset_checks=None, well_class=None):
         """
         :param wells: well names passed from dispense plate well names
         :type wells: list
@@ -302,6 +333,9 @@ class AddRow(QWidget):
         :param preset_checks: {feature: bool/int} to pre-check; when given it fully
             determines checkbox state (otherwise `singlet` defaults to checked)
         :type preset_checks: dict | None
+        :param well_class: standard well-class feature names (kept on the top line);
+            remaining features are grouped onto one line per channel for readability
+        :type well_class: list | None
         """
 
         super().__init__()
@@ -310,27 +344,61 @@ class AddRow(QWidget):
         self.deselect_cols = deselect
         self.on_delete = on_delete
 
-        self.layout = QHBoxLayout(self)
-        self.well_dropdown = QComboBox()
-        self.well_dropdown.addItems(wells)
-        if preset_well is not None and preset_well in wells:
-            self.well_dropdown.setCurrentText(preset_well)
-        self.layout.addWidget(self.well_dropdown)
+        well_class_feats, channel_groups, ungrouped = group_features_for_display(
+            features, well_class or []
+        )
 
         self.checkboxes = {}
-        for col in features:
+
+        def _make_checkbox(col):
             cb = QCheckBox(col)
             if preset_checks is not None:
                 cb.setChecked(bool(preset_checks.get(col, False)))
             elif col == 'singlet':
                 cb.setChecked(True)
             self.checkboxes[col] = cb
-            self.layout.addWidget(cb)
-        self.setLayout(self.layout)
+            return cb
+
+        outer = QVBoxLayout(self)
+
+        # Top line: dispense-well dropdown + standard well-class checkboxes + Delete.
+        top = QHBoxLayout()
+        self.well_dropdown = QComboBox()
+        self.well_dropdown.addItems(wells)
+        if preset_well is not None and preset_well in wells:
+            self.well_dropdown.setCurrentText(preset_well)
+        top.addWidget(self.well_dropdown)
+        for col in well_class_feats:
+            top.addWidget(_make_checkbox(col))
+        top.addStretch(1)
         self.delete_btn = QPushButton("Delete")
         self.delete_btn.clicked.connect(self._delete_self)
-        self.layout.addWidget(self.delete_btn)
-        self.setLayout(self.layout)
+        top.addWidget(self.delete_btn)
+        outer.addLayout(top)
+
+        # Classical feature_class columns (no channel prefix) share one line.
+        if ungrouped:
+            line = QHBoxLayout()
+            line.addWidget(QLabel("features:"))
+            for col in ungrouped:
+                line.addWidget(_make_checkbox(col))
+            line.addStretch(1)
+            outer.addLayout(line)
+
+        # One line per channel for the per-channel `{channel}_{group}` cluster columns.
+        for channel, feats in channel_groups:
+            line = QHBoxLayout()
+            line.addWidget(QLabel(f"{channel}:"))
+            for col in feats:
+                line.addWidget(_make_checkbox(col))
+            line.addStretch(1)
+            outer.addLayout(line)
+
+        # Visual separator so stacked multi-line rows stay distinct.
+        sep = QFrame()
+        sep.setFrameShape(QFrame.Shape.HLine)
+        sep.setFrameShadow(QFrame.Shadow.Sunken)
+        outer.addWidget(sep)
 
     def get_row_select(self):
         """Return results from selection

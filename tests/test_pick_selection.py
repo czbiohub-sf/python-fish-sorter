@@ -15,6 +15,7 @@ from fish_sorter.GUI.finding_dory import write_wide_csv
 from fish_sorter.GUI.picking import Pick, latest_classifications_csv
 from fish_sorter.GUI.selection_gui import (
     discover_pick_features_and_combos,
+    group_features_for_display,
     map_combos_to_wells,
 )
 from fish_sorter.helpers.labelling.store import LabelStore
@@ -141,6 +142,42 @@ def test_map_combos_no_overflow():
     mapped, dropped = map_combos_to_wells(combos, ["w0", "w1", "w2"])
     assert dropped == 0
     assert len(mapped) == 1
+
+
+# ---------------------------------------------------------------------------
+# group_features_for_display (one line per channel)
+# ---------------------------------------------------------------------------
+
+
+def test_group_features_one_line_per_channel():
+    features = WELL_CLASS + ["GFP_a", "GFP_b", "TXR_x"]
+    wc, channel_groups, ungrouped = group_features_for_display(features, WELL_CLASS)
+    assert wc == WELL_CLASS
+    assert channel_groups == [["GFP", ["GFP_a", "GFP_b"]], ["TXR", ["TXR_x"]]]
+    assert ungrouped == []
+
+
+def test_group_features_classical_features_ungrouped():
+    features = WELL_CLASS + ["gEye", "gHeart"]
+    wc, channel_groups, ungrouped = group_features_for_display(features, WELL_CLASS)
+    assert channel_groups == []
+    assert ungrouped == ["gEye", "gHeart"]
+
+
+def test_group_features_well_class_with_underscore_not_a_channel():
+    # wrong_o has an underscore but is well-class — must not become channel 'wrong'.
+    features = ["wrong_o", "singlet", "GFP_x"]
+    wc, channel_groups, ungrouped = group_features_for_display(features, WELL_CLASS)
+    assert "wrong_o" in wc
+    assert channel_groups == [["GFP", ["GFP_x"]]]
+    assert ungrouped == []
+
+
+def test_group_features_covers_every_feature():
+    features = WELL_CLASS + ["GFP_a", "TXR_x", "gEye"]
+    wc, channel_groups, ungrouped = group_features_for_display(features, WELL_CLASS)
+    flat = list(wc) + [f for _, feats in channel_groups for f in feats] + list(ungrouped)
+    assert sorted(flat) == sorted(features)  # no feature dropped or duplicated
 
 
 # ---------------------------------------------------------------------------
