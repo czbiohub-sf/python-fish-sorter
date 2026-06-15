@@ -107,9 +107,12 @@ class LabelStore:
 
     def delete_group(self, fish_line: str, channel: str, name: str) -> int:
         scope = self._get_scope(_scope_key(fish_line, channel))
-        if name not in scope["groups"]:
-            return 0
-        scope["groups"].remove(name)
+        # Purge assignments referencing ``name`` even if it has drifted out
+        # of ``groups`` — the assignment vector is the source of truth, so
+        # we never leave orphaned wells (which would still render/count as
+        # assigned). Return the true number of wells unassigned.
+        if name in scope["groups"]:
+            scope["groups"].remove(name)
         removed = 0
         for wid in list(scope["assignments"]):
             if scope["assignments"][wid] == name:
@@ -156,14 +159,17 @@ class LabelStore:
                         other_scope["assignments"].pop(wid, None)
 
     def _channels_for_line(self, fish_line: str) -> List[str]:
+        # Single deduping chokepoint for the channel list: every consumer
+        # gets an order-stable, duplicate-free list so cross-channel tuples
+        # have exactly one entry per distinct channel.
         if fish_line in self._line_channels:
-            return list(self._line_channels[fish_line])
+            return list(dict.fromkeys(self._line_channels[fish_line]))
         channels = []
         prefix = fish_line + "|"
         for sk in self._scopes:
             if sk.startswith(prefix):
                 channels.append(sk[len(prefix):])
-        return channels
+        return list(dict.fromkeys(channels))
 
     def _propagate_global_groups(self):
         """Re-propagate all global group assignments to all channels per line."""

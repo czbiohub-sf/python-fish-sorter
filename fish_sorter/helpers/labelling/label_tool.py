@@ -247,7 +247,7 @@ def _build_label_tool():
             self.store = store
             # Register every channel for this single fish line so global
             # group propagation works (upstream behaviour).
-            self.store._line_channels[self._fish_line] = list(self._all_channels)
+            self.store._line_channels[self._fish_line] = list(dict.fromkeys(self._all_channels))
             # Ensure scopes exist for each channel.
             for ch in self._all_channels:
                 self.store._get_scope(_scope_key(self._fish_line, ch))
@@ -959,7 +959,10 @@ def _build_label_tool():
             growing into one tall single column.
             """
             fl = self._current_line
-            channels = sorted(self.store._line_channels.get(fl, []))
+            # Derive channels through the store accessor so the list is
+            # deduplicated at one source — otherwise duplicate channel
+            # entries produce malformed combo labels (e.g. GFP:GFP × TXR).
+            channels = sorted(self.store._channels_for_line(fl))
             self._cross_channels = channels
             if not channels or self._view_indices is None:
                 self._cross_classes = {}
@@ -2823,10 +2826,19 @@ def _build_label_tool():
                 f"Delete '{group}' and unassign {count} wells?",
             )
             if reply == QMessageBox.Yes:
-                self.store.delete_group(fl, ch, group)
+                removed = self.store.delete_group(fl, ch, group)
                 self._refresh_group_list()
-                self._update_point_colors()
+                if self._cross_channel_mode:
+                    # Combos changed — re-bucket from the store so counts
+                    # and the grid don't read a stale _cross_classes cache.
+                    self._compute_cross_channel_grid()
+                    self._update_scatter()
+                else:
+                    self._update_point_colors()
                 self._update_status()
+                self.crop_info.setText(
+                    f"Deleted '{group}', unassigned {removed} wells"
+                )
 
         def _clear_global_locks(
             self, fish_line: str, channel: str, well_ids: List[str], target_group: str,

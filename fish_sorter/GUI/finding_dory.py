@@ -427,7 +427,7 @@ def _build_finding_dory():
                 "well_name": well_names,
             })
             self.store = LabelStore(metadata)
-            self.store._line_channels[self.fish_line] = list(self.channels)
+            self.store._line_channels[self.fish_line] = list(dict.fromkeys(self.channels))
             for ch in self.channels:
                 self.store._get_scope(f"{self.fish_line}|{ch}")
 
