@@ -2813,13 +2813,45 @@ def _build_label_tool():
                 self._update_point_colors()
 
         def _on_delete_group(self):
+            fl = self._current_line
+
+            if self._cross_channel_mode:
+                # Deleting a combo = remove its wells from every channel so
+                # the combo empties out of the grid. No single-channel group
+                # deletion in combo mode.
+                item = self.group_list.currentItem()
+                key = item.data(Qt.UserRole) if item is not None else None
+                if not isinstance(key, tuple):
+                    QMessageBox.warning(
+                        self, "Can't delete", "Select a combo to delete."
+                    )
+                    return
+                member_wids = list(self._cross_classes.get(key, []))
+                label = " × ".join(
+                    f"{c}:{g}" for c, g in zip(self._cross_channels, key)
+                )
+                reply = QMessageBox.question(
+                    self, "Delete Combo",
+                    f"Delete '{label}' and unassign {len(member_wids)} "
+                    "wells from every channel?",
+                )
+                if reply == QMessageBox.Yes:
+                    for ch_i in self._cross_channels:
+                        self.store.unassign(fl, ch_i, member_wids)
+                    self._post_mutation_refresh()
+                    self.crop_info.setText(
+                        f"Deleted combo '{label}', unassigned "
+                        f"{len(member_wids)} wells"
+                    )
+                return
+
             group = self._get_selected_group_name()
             if not group or group in GLOBAL_GROUPS:
                 QMessageBox.warning(
                     self, "Can't delete", "Default groups can't be deleted."
                 )
                 return
-            fl, ch = self._scope()
+            _, ch = self._scope()
             count = len(self.store.get_group_members(fl, ch, group))
             reply = QMessageBox.question(
                 self, "Delete Group",
@@ -2827,15 +2859,7 @@ def _build_label_tool():
             )
             if reply == QMessageBox.Yes:
                 removed = self.store.delete_group(fl, ch, group)
-                self._refresh_group_list()
-                if self._cross_channel_mode:
-                    # Combos changed — re-bucket from the store so counts
-                    # and the grid don't read a stale _cross_classes cache.
-                    self._compute_cross_channel_grid()
-                    self._update_scatter()
-                else:
-                    self._update_point_colors()
-                self._update_status()
+                self._post_mutation_refresh()
                 self.crop_info.setText(
                     f"Deleted '{group}', unassigned {removed} wells"
                 )
@@ -2859,66 +2883,110 @@ def _build_label_tool():
             if to_clear:
                 self.store.unassign(fish_line, channel, to_clear)
 
+        def _selected_well_ids(self) -> List[str]:
+            """Well IDs for the current scatter selection (``_selected_indices``)."""
+            out = []
+            for li_pos in self._selected_indices:
+                meta_idx = self._view_indices[li_pos]
+                out.append(self.metadata.iloc[meta_idx]["well_id"])
+            return out
+
+        def _post_mutation_refresh(self):
+            """Refresh all views after an assignment/unassignment/delete.
+
+            In cross-channel mode the group list reads the ``_cross_classes``
+            cache, so the grid must be re-bucketed from the store *before*
+            the list is rebuilt — otherwise the combo rows/counts show stale
+            membership.
+            """
+            if self._cross_channel_mode:
+                self._compute_cross_channel_grid()
+                self._refresh_group_list()
+                self._update_scatter()
+            else:
+                self._refresh_group_list()
+                self._update_point_colors()
+            self._update_status()
+
         def _on_assign(self):
-            """Commit current selection to the chosen group.
+            """Commit current selection to the chosen group / combo.
 
             Verify-before-commit: ``_selected_indices`` was populated by the
             lasso or click handlers; this button only fires the assignment.
+            In cross-channel mode the target is a *combo* (one group per
+            channel) and the wells adopt every channel's component — there is
+            no single-channel assignment in combo mode.
             """
-            group = self._get_selected_group_name()
-            if not group:
-                QMessageBox.warning(
-                    self, "No Group Selected", "Select a group in the list first.",
+            well_ids = self._selected_well_ids()
+            fl = self._current_line
+
+            if self._cross_channel_mode:
+                item = self.group_list.currentItem()
+                key = item.data(Qt.UserRole) if item is not None else None
+                if not isinstance(key, tuple):
+                    QMessageBox.warning(
+                        self, "No Combo Selected",
+                        "Select a target combo in the list first.",
+                    )
+                    return
+                if not well_ids:
+                    QMessageBox.warning(
+                        self, "No Wells Selected",
+                        "Select wells to move first.",
+                    )
+                    return
+                # Move the wells into the target combo: set each channel's
+                # per-well group to that combo's component for the channel.
+                for ch_i, g_i in zip(self._cross_channels, key):
+                    self._clear_global_locks(fl, ch_i, well_ids, g_i)
+                    self.store.assign(fl, ch_i, well_ids, g_i)
+                label = " × ".join(
+                    f"{c}:{g}" for c, g in zip(self._cross_channels, key)
                 )
-                return
+                msg = f"Moved {len(well_ids)} wells to '{label}'"
+            else:
+                group = self._get_selected_group_name()
+                if not group:
+                    QMessageBox.warning(
+                        self, "No Group Selected",
+                        "Select a group in the list first.",
+                    )
+                    return
+                _, ch = self._scope()
+                # In Finding Dory the user expects an embedding-driven
+                # reassignment to override Finding Nemo's coarse
+                # empty/multiple/deformed labels. Upstream LabelStore.assign
+                # blocks this via ``is_finalized``; clear the global lock
+                # first so the new assignment lands.
+                self._clear_global_locks(fl, ch, well_ids, group)
+                self.store.assign(fl, ch, well_ids, group)
+                msg = f"Assigned {len(well_ids)} wells to '{group}'"
 
-            fl, ch = self._scope()
-            well_ids = []
-            for li_pos in self._selected_indices:
-                meta_idx = self._view_indices[li_pos]
-                wid = self.metadata.iloc[meta_idx]["well_id"]
-                well_ids.append(wid)
-
-            # In Finding Dory the user expects an embedding-driven reassignment
-            # to override Finding Nemo's coarse empty/multiple/deformed labels.
-            # Upstream LabelStore.assign blocks this via ``is_finalized``; clear
-            # the global lock first so the new assignment lands.
-            self._clear_global_locks(fl, ch, well_ids, group)
-            self.store.assign(fl, ch, well_ids, group)
-            n = len(well_ids)
             self._selected_indices = set()
             self._focused_group = None
-            self._refresh_group_list()
-            if self._cross_channel_mode:
-                # Combos changed — re-bucket wells and re-layout the grid.
-                self._compute_cross_channel_grid()
-                self._update_scatter()
-            else:
-                self._update_point_colors()
-            self._update_status()
+            self._post_mutation_refresh()
             self._set_selected_wells([])
             self._rearm_lasso()
-            self.crop_info.setText(f"Assigned {n} wells to '{group}'")
+            self.crop_info.setText(msg)
 
         def _on_unassign(self):
-            fl, ch = self._scope()
-            well_ids = []
-            for li_pos in self._selected_indices:
-                meta_idx = self._view_indices[li_pos]
-                wid = self.metadata.iloc[meta_idx]["well_id"]
-                well_ids.append(wid)
+            well_ids = self._selected_well_ids()
+            fl = self._current_line
 
-            self.store.unassign(fl, ch, well_ids)
+            if self._cross_channel_mode:
+                # Remove the wells from every channel so they drop out of all
+                # combos (a well appears in a combo only when assigned in
+                # every channel).
+                for ch_i in self._cross_channels:
+                    self.store.unassign(fl, ch_i, well_ids)
+            else:
+                _, ch = self._scope()
+                self.store.unassign(fl, ch, well_ids)
+
             n = len(well_ids)
             self._selected_indices = set()
             self._focused_group = None
-            self._refresh_group_list()
-            if self._cross_channel_mode:
-                self._compute_cross_channel_grid()
-                self._update_scatter()
-            else:
-                self._update_point_colors()
-            self._update_status()
+            self._post_mutation_refresh()
             self._set_selected_wells([])
             self._rearm_lasso()
             self.crop_info.setText(f"Unassigned {n} wells")
