@@ -432,7 +432,14 @@ def _build_label_tool():
                     except Exception:
                         pass
                     setattr(self, _exec_attr, None)
+            conn = getattr(self, "_toolbar_vis_conn", None)
             dock = getattr(self, "_toolbar_dock", None)
+            if conn is not None and dock is not None:
+                try:
+                    dock.visibilityChanged.disconnect(conn)
+                except Exception:
+                    pass
+                self._toolbar_vis_conn = None
             if dock is not None:
                 try:
                     self.viewer.window.remove_dock_widget(dock)
@@ -447,6 +454,23 @@ def _build_label_tool():
         def _scope(self) -> Tuple[str, str]:
             """Return current (fish_line, channel) scope."""
             return (self._current_line, self._current_channel)
+
+        def _on_toolbar_visibility(self, visible):
+            """Resize the shared top dock area as its tab is swapped.
+
+            The toolbar is tabified with the napari-micromanager main view in
+            the top dock area; both share the area's height. Cap the toolbar to
+            its single row while its tab is shown, and release the cap when the
+            main view tab takes over so it can reclaim the full top-bar height.
+            """
+            toolbar = getattr(self, "_toolbar", None)
+            if toolbar is None:
+                return
+            if visible:
+                toolbar.setMaximumHeight(self._toolbar_compact_h)
+            else:
+                # QWIDGETSIZE_MAX — drop the cap so the main view tab expands.
+                toolbar.setMaximumHeight(16777215)
 
         # ------------------------------------------------------------------
         # UI construction
@@ -585,17 +609,47 @@ def _build_label_tool():
                 toolbar, name="Finding Dory", area="top", tabify=True
             )
 
+            # The toolbar is a single control row, but it tabifies with the
+            # napari-micromanager "main view" dock, which also lives in the top
+            # area (see FishSorter.__init__). Tabified docks SHARE the dock-area
+            # height, so a permanent cap on the toolbar would squash the main
+            # view too. Instead, drive the cap off the toolbar dock's own
+            # ``visibilityChanged`` signal (Qt fires it on tab swaps): compact
+            # our row when the Finding Dory tab is shown, release the cap when
+            # the main view tab takes over so it reclaims the full height.
+            toolbar.setSizePolicy(QSizePolicy.Preferred, QSizePolicy.Maximum)
+            self._toolbar = toolbar
+            self._toolbar_compact_h = toolbar.sizeHint().height()
+            self._toolbar_vis_conn = None
+            try:
+                self._toolbar_vis_conn = (
+                    self._toolbar_dock.visibilityChanged.connect(
+                        self._on_toolbar_visibility
+                    )
+                )
+            except Exception:
+                log.exception("toolbar visibility hook unavailable")
+            # Apply the cap for the dock's current tab state up front; the
+            # signal only fires on subsequent swaps.
+            self._on_toolbar_visibility(self._toolbar_dock.isVisible())
+
             # ── Groups panel ─────────────────────────────────────────────
             groups_panel = QWidget()
-            groups_layout = QVBoxLayout(groups_panel)
+            # Horizontal split: scrollable group list on the left, the control
+            # buttons stacked in a column on the right. Keeps the buttons from
+            # eating vertical space and lets the list use the freed height.
+            groups_layout = QHBoxLayout(groups_panel)
             groups_layout.setContentsMargins(2, 2, 2, 2)
             groups_layout.setSpacing(2)
 
             self.group_list = QListWidget()
-            self.group_list.setMaximumHeight(140)
             self.group_list.currentTextChanged.connect(self._on_group_focus_changed)
             self.group_list.itemDoubleClicked.connect(self._on_group_double_click)
             groups_layout.addWidget(self.group_list)
+
+            # Right-side button column.
+            btn_col = QVBoxLayout()
+            btn_col.setSpacing(2)
 
             grp_row = QHBoxLayout()
             grp_row.setSpacing(2)
@@ -611,7 +665,7 @@ def _build_label_tool():
             self.delete_group_btn.setToolTip("Delete group")
             self.delete_group_btn.clicked.connect(self._on_delete_group)
             grp_row.addWidget(self.delete_group_btn)
-            groups_layout.addLayout(grp_row)
+            btn_col.addLayout(grp_row)
 
             action_row = QHBoxLayout()
             action_row.setSpacing(2)
@@ -625,18 +679,24 @@ def _build_label_tool():
             self.unassign_btn.setEnabled(False)
             self.unassign_btn.clicked.connect(self._on_unassign)
             action_row.addWidget(self.unassign_btn)
-            groups_layout.addLayout(action_row)
+            btn_col.addLayout(action_row)
 
             # Save — emits save_requested for FindingDory to handle.
             self.save_btn = QPushButton("Save")
             self.save_btn.setToolTip("Emit save_requested to FindingDory")
             self.save_btn.clicked.connect(self.save_requested.emit)
-            groups_layout.addWidget(self.save_btn)
+            btn_col.addWidget(self.save_btn)
 
+            btn_col.addStretch()
+
+            # Compact status line — transient updates (errors, "Focused: …")
+            # and the one-line scope summary from _update_status.
             self.status_label = QLabel("")
             self.status_label.setWordWrap(True)
             self.status_label.setStyleSheet("font-size: 10px; color: #aaa;")
-            groups_layout.addWidget(self.status_label)
+            btn_col.addWidget(self.status_label)
+
+            groups_layout.addLayout(btn_col)
 
             root_layout.addWidget(groups_panel)
 
@@ -2520,7 +2580,7 @@ def _build_label_tool():
                 else:
                     crop_lbl.clear()
                 crop_lbl.setFixedHeight(h)
-                title_lbl.setFixedHeight(h)
+                title_lbl.setFixedHeight(16)   # single-line 10px title; was tied to crop height h
 
         def _get_group_thumbnail(self, group_name: str) -> Optional[np.ndarray]:
             """Representative RGB crop for the group — first member found.
@@ -2905,16 +2965,10 @@ def _build_label_tool():
             assigned = sum(
                 1 for i in indices if self.metadata.iloc[i]["well_id"] in asgn
             )
-            counts = self.store.counts(fl, ch)
-            lines = [
-                f"Scope: {fl} | {ch}",
-                f"Wells: {assigned}/{total} assigned",
-            ]
-            for g in self.store.groups(fl, ch):
-                c = counts.get(g, 0)
-                if c > 0:
-                    lines.append(f"  {g}: {c}")
-            self.status_label.setText("\n".join(lines))
+            # Compact single-line summary — keeps status_label short so it
+            # doesn't waste vertical space. Per-group counts are available by
+            # focusing a group (see _on_group_focus_changed).
+            self.status_label.setText(f"{fl} | {ch} | {assigned}/{total} assigned")
 
         # ------------------------------------------------------------------
         # Image UMAP (thumbnails-on-scatter overlay)
