@@ -539,6 +539,10 @@ class FishSorter:
 
         if hasattr(self, 'selection') and self.selection is not None:
             if self.selection.isVisible():
+                # Re-sync the open panel to the just-saved classification so the
+                # user can switch classifiers (classical <-> Finding Dory) without
+                # restarting the software.
+                self.selection.refresh()
                 self.selection.raise_()
                 self.selection.setFocus()
                 return

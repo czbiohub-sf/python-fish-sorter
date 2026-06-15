@@ -520,6 +520,10 @@ class PickerThread(QThread):
             self.status_update.emit('Matching to pick parameters')
             self._check_state()
             self.picking.pick.match_pick()
+            if getattr(self.picking.pick, 'match_warning', None):
+                # Stale/mismatched pickable: block picking without stopping the app.
+                self.status_update.emit(self.picking.pick.match_warning)
+                return
             self.status_update.emit('Start of picking')
 
             for checkpoint, log_me in self.picking.pick.pick_me():

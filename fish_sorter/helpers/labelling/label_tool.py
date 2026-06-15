@@ -2374,7 +2374,18 @@ def _build_label_tool():
                 # returns empty and reads as "has no members").
                 from qtpy.QtWidgets import QListWidgetItem
                 fl = self._current_line
+                # Always surface the global "empty"/"multiple"/"deformed"
+                # combos as assignment targets, even with zero members —
+                # mirrors how they're always pinned in single-channel mode.
+                # They're global groups, so a well in one is in it across
+                # every channel: the combo key is (group,) * n_channels.
+                n_ch = len(self._cross_channels)
+                guaranteed = [tuple([g] * n_ch) for g in DEFAULT_GROUPS]
+                display_keys = list(guaranteed)
                 for key in self._cross_sorted_keys:
+                    if key not in display_keys:
+                        display_keys.append(key)
+                for key in display_keys:
                     parts = [
                         f"{c}:{g}" for c, g in zip(self._cross_channels, key)
                     ]
@@ -2892,17 +2903,19 @@ def _build_label_tool():
             return out
 
         def _post_mutation_refresh(self):
-            """Refresh all views after an assignment/unassignment/delete.
+            """Refresh views after an assignment/unassignment/delete.
 
-            In cross-channel mode the group list reads the ``_cross_classes``
-            cache, so the grid must be re-bucketed from the store *before*
-            the list is rebuilt — otherwise the combo rows/counts show stale
-            membership.
+            In cross-channel mode we deliberately do *not* re-bucket or
+            re-lay-out the grid here: the points and fish thumbnails stay
+            put and only their colors update, so reassigning doesn't make
+            the whole grid jump around. The full re-bucket / re-layout
+            (combo list, point positions, fish reposition) is reserved for
+            the Refresh Grid button (``_on_cross_refresh``). In
+            single-channel mode positions are fixed anyway, so we refresh
+            the group list and recolor.
             """
             if self._cross_channel_mode:
-                self._compute_cross_channel_grid()
-                self._refresh_group_list()
-                self._update_scatter()
+                self._update_point_colors()
             else:
                 self._refresh_group_list()
                 self._update_point_colors()

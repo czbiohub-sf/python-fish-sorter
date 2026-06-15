@@ -86,9 +86,13 @@ def write_wide_csv(
 
     Schema (one row per well_id, columns in this order):
 
-        well_name, empty, singlet, multiple, deformed, lHead,
+        slotName, empty, singlet, multiple, deformed, lHead,
         {channel0}_{custom_group0}, {channel0}_{custom_group1}, ...,
         {channel1}_{custom_group0}, ...
+
+    The identifier column is named ``slotName`` (not ``well_name``) so the wide
+    CSV is a drop-in for `classify.py`'s output — `picking.py:match_pick`/`pick_me`
+    join and drive hardware on ``slotName``.
 
     Sources for the default columns:
       - If `well_defaults[well_id]` provides a column (`empty`, `singlet`,
@@ -148,7 +152,7 @@ def write_wide_csv(
             lhead_v = int(bool(lhead_map.get(wid, False)))
 
         row = {
-            "well_name": well_name_by_id.get(wid, wid),
+            "slotName": well_name_by_id.get(wid, wid),
             "empty": empty_v,
             "singlet": singlet_v,
             "multiple": multiple_v,

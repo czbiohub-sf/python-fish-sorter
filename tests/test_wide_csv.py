@@ -59,7 +59,7 @@ def test_wide_csv_default_columns_present(tmp_path):
     )
     df = pd.read_csv(out)
     # Default columns appear in this order before per-channel ones.
-    expected_prefix = ["well_name", "empty", "singlet", "multiple", "deformed", "lHead"]
+    expected_prefix = ["slotName", "empty", "singlet", "multiple", "deformed", "lHead"]
     assert list(df.columns)[: len(expected_prefix)] == expected_prefix
     assert df["empty"].tolist() == [0, 0]
     assert df["singlet"].tolist() == [1, 1]
@@ -91,7 +91,7 @@ def test_wide_csv_global_groups_propagate(tmp_path):
         path=str(out),
     )
     df = pd.read_csv(out)
-    df = df.set_index("well_name")
+    df = df.set_index("slotName")
 
     assert df.loc["A01", "empty"] == 1
     assert df.loc["A01", "singlet"] == 0
@@ -121,7 +121,7 @@ def test_wide_csv_custom_per_channel_columns(tmp_path):
         fish_line=fish_line,
         path=str(out),
     )
-    df = pd.read_csv(out).set_index("well_name")
+    df = pd.read_csv(out).set_index("slotName")
 
     assert "GFP_speckled" in df.columns
     assert "GFP_smooth" in df.columns
@@ -153,7 +153,7 @@ def test_wide_csv_lhead_map(tmp_path):
         fish_line=fish_line,
         path=str(out),
     )
-    df = pd.read_csv(out).set_index("well_name")
+    df = pd.read_csv(out).set_index("slotName")
     assert df.loc["A01", "lHead"] == 1
     assert df.loc["A02", "lHead"] == 0
 
@@ -229,7 +229,7 @@ def test_wide_csv_well_defaults_override_globals(tmp_path):
             "expA_A02": {"empty": 1, "singlet": 0, "multiple": 0, "deformed": 0, "lHead": 0},
         },
     )
-    df = pd.read_csv(out).set_index("well_name")
+    df = pd.read_csv(out).set_index("slotName")
 
     assert df.loc["A01", "empty"] == 0    # override wins over LabelStore global
     assert df.loc["A01", "singlet"] == 1
@@ -256,7 +256,7 @@ def test_wide_csv_well_defaults_partial_falls_back(tmp_path):
             "expA_A01": {"lHead": 0},
         },
     )
-    df = pd.read_csv(out).set_index("well_name")
+    df = pd.read_csv(out).set_index("slotName")
     assert df.loc["A01", "lHead"] == 0  # explicit override beats lhead_map
     assert df.loc["A01", "singlet"] == 1  # inferred from no globals
 
@@ -276,4 +276,4 @@ def test_wide_csv_row_order_matches_well_order(tmp_path):
         path=str(out),
     )
     df = pd.read_csv(out)
-    assert df["well_name"].tolist() == ["B02", "A01", "A02"]
+    assert df["slotName"].tolist() == ["B02", "A01", "A02"]

@@ -15,6 +15,27 @@ from fish_sorter.hardware.dispense_plate import DispensePlate
 
 log = logging.getLogger(__name__)
 
+
+def latest_classifications_csv(pick_dir: str) -> Optional[str]:
+    """Return the newest (by mtime) ``*classifications.csv`` in ``pick_dir``, or None.
+
+    Shared by ``Pick.get_classified`` and the Pick Selection GUI so both operate on
+    the same classification file when several exist (e.g. after switching between the
+    classical and Finding Dory classifiers — the latest save wins).
+    """
+    if not pick_dir or not os.path.isdir(pick_dir):
+        return None
+    candidates = [
+        os.path.join(pick_dir, f)
+        for f in os.listdir(pick_dir)
+        if f.endswith('classifications.csv')
+    ]
+    if not candidates:
+        return None
+    candidates.sort(key=lambda p: os.path.getmtime(p), reverse=True)
+    return candidates[0]
+
+
 class Pick():
     """Loads files of classifications and pick parameters, iterates through pick parameters,
     and coordiates all hardware operations to pick from the source to the destination locations
@@ -90,6 +111,7 @@ class Pick():
         self.iplate = iplate
         
         self.matches = None
+        self.match_warning = None
         self.pick_offset = offset
         self.dtime = dtime
         self.phc.pick_h = pick_h
@@ -142,19 +164,18 @@ class Pick():
 
         logging.info('Load classification and picking files')
 
-        pickable_files = []
+        class_path = latest_classifications_csv(self.pick_dir)
+        if class_path is not None:
+            self.class_file = pd.read_csv(class_path)
+            logging.info(f'Loaded latest classification file: {os.path.basename(class_path)}')
+        else:
+            logging.info('No classification files found')
 
-        for filename in os.listdir(self.pick_dir):
-            if filename.endswith('.csv'):
-                file_path = os.path.join(self.pick_dir, filename)
-                try:
-                    if 'classifications.csv' in filename:
-                        self.class_file = pd.read_csv(file_path)
-                        logging.info('Loaded {}'.format(filename))
-                    elif 'pickable.csv' in filename:
-                        pickable_files.append(file_path)
-                except FileNotFoundError:
-                    logging.critical("File not found")
+        pickable_files = [
+            os.path.join(self.pick_dir, f)
+            for f in os.listdir(self.pick_dir)
+            if f.endswith('pickable.csv')
+        ]
 
         if pickable_files:
             pickable_files.sort(key=lambda x: os.path.getmtime(x), reverse=True)
@@ -248,10 +269,33 @@ class Pick():
     @requires_setup
     def match_pick(self):
         """Matches the desired pick parameters to the classification
+
+        Guard: if the pickable file references feature columns that are *used*
+        (set to 1 somewhere) but absent from the loaded classification — e.g. a
+        stale pickable paired with a newer, differently-shaped classification after
+        switching classifiers — the pick list is left empty and ``self.match_warning``
+        is set instead of silently matching on only the shared columns (which would
+        over-pick every well sharing the standard well-class values). Picking stays
+        blocked, the app keeps running, and a matching pickable Save unblocks it.
         """
 
         class_drop = self.class_file.reset_index(drop=True)
         pick_param_drop = self.pick_param_file.reset_index(drop=True)
+
+        pick_feats = [c for c in pick_param_drop.columns if c not in ('dispenseWell', 'slotName')]
+        active = [c for c in pick_feats if (pick_param_drop[c] != 0).any()]
+        missing = [c for c in active if c not in class_drop.columns]
+        if missing:
+            self.matches = pd.DataFrame(columns=['slotName', 'dispenseWell', 'lHead'])
+            self.match_warning = (
+                "Pick list NOT built — pickable.csv references classes absent from the "
+                f"latest classification: {missing}. Re-open Pick Selection, Save against "
+                "the current classification, then pick again."
+            )
+            logging.warning(self.match_warning)
+            return
+        self.match_warning = None
+
         matching = class_drop.columns.intersection(pick_param_drop.columns).difference(['slotName', 'dispenseWell'])
         merge = pd.merge(class_drop, pick_param_drop, on=list(matching), how='inner')
         merge_sorted = pd.merge(self.pick_param_file[['dispenseWell']], merge, on='dispenseWell', how='inner')

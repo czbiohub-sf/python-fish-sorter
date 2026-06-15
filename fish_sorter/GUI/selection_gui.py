@@ -27,7 +27,7 @@ from qtpy.QtWidgets import (
     QWidget
 )
 
-from fish_sorter.GUI.picking import Pick
+from fish_sorter.GUI.picking import Pick, latest_classifications_csv
 
 COLOR_TYPES = Union[
     QColor,
@@ -39,6 +39,64 @@ COLOR_TYPES = Union[
 ]
 
 log = logging.getLogger(__name__)
+
+
+def discover_pick_features_and_combos(class_df, well_class_features):
+    """Derive Pick Selection feature columns + prepopulation combos from a classification.
+
+    ``feature_cols`` = the standard well-class checkboxes (from config) followed by the
+    *dynamic* feature columns found in ``class_df`` — i.e. every column beyond the
+    identifier/global set and the well-class set. For a Finding Dory wide CSV those are
+    the per-channel ``{channel}_{group}`` columns; for a classical CSV they are the
+    ``feature_class`` columns (gEye, …). Sourcing them from the file guarantees the
+    names line up with ``picking.match_pick``'s column-intersection join.
+
+    ``combos`` = one prepopulation row per distinct combination of the dynamic columns
+    among ``singlet`` wells (including the all-zero "singlet, no group" catch-all),
+    sorted by descending well-count (most-assigned first). Each combo is
+    ``{'checks': {col: 1, ...}, 'count': n}`` with ``singlet`` always checked.
+    empty/multiple/deformed wells never form combos (they are not picked).
+
+    :returns: ``(feature_cols, combos)``
+    """
+    standard_ids = {'slotName', 'well_name', 'lHead'}
+    wc = list(well_class_features)
+    dynamic = [c for c in class_df.columns if c not in wc and c not in standard_ids]
+    feature_cols = wc + dynamic
+
+    combos = []
+    if 'singlet' in class_df.columns:
+        singlets = class_df[class_df['singlet'] == 1]
+    else:
+        singlets = class_df.iloc[0:0]
+
+    if len(singlets) and dynamic:
+        grouped = singlets.groupby(dynamic, sort=False).size().reset_index(name='count')
+        for _, grow in grouped.iterrows():
+            checks = {'singlet': 1}
+            for col in dynamic:
+                if int(grow[col]) == 1:
+                    checks[col] = 1
+            combos.append({'checks': checks, 'count': int(grow['count'])})
+        combos.sort(key=lambda c: c['count'], reverse=True)
+    elif len(singlets):
+        # No dynamic feature columns at all → a single catch-all singlet combo.
+        combos.append({'checks': {'singlet': 1}, 'count': int(len(singlets))})
+
+    return feature_cols, combos
+
+
+def map_combos_to_wells(combos, wells):
+    """Pair combos with dispense wells in order, capped to the number of wells.
+
+    :returns: ``(mapped, dropped)`` — ``mapped`` is a list of ``(well, combo)`` for
+        the first ``len(wells)`` combos (the most-assigned ones, since combos arrive
+        sorted by descending count) and ``dropped`` is how many combos had no well.
+    """
+    mapped = [(wells[i], combo) for i, combo in enumerate(combos[:len(wells)])]
+    dropped = max(0, len(combos) - len(wells))
+    return mapped, dropped
+
 
 class SelectGUI(QWidget):
 
@@ -58,6 +116,8 @@ class SelectGUI(QWidget):
         self._setup(pick_type)
 
         self.rows = []
+        self.features = []
+        self.combos = []
         self.layout = QVBoxLayout(self)
         self.rows_layout = QVBoxLayout()
         self.rows_container = QWidget()
@@ -68,16 +128,21 @@ class SelectGUI(QWidget):
         self.layout.addWidget(self.scroll)
 
         self.add_row_btn = QPushButton('Add Row')
-        self.add_row_btn.clicked.connect(self.add_row)
+        self.add_row_btn.clicked.connect(lambda: self.add_row())
+
+        self.refresh_btn = QPushButton('Refresh')
+        self.refresh_btn.setToolTip('Reload classes + combos from the latest saved classification')
+        self.refresh_btn.clicked.connect(lambda: self.refresh())
 
         self.save_btn = QPushButton('Save')
         self.save_btn.clicked.connect(self.save_select)
         btn_layout = QHBoxLayout()
         btn_layout.addWidget(self.add_row_btn)
+        btn_layout.addWidget(self.refresh_btn)
         btn_layout.addWidget(self.save_btn)
         self.layout.addLayout(btn_layout)
 
-        self.add_row()
+        self.refresh()
 
     def _setup(self, pick_type):
         """Setup the features
@@ -109,17 +174,85 @@ class SelectGUI(QWidget):
             feat for feat in list(feat_data['well_class']['deselect'].keys())
             if feat != 'description'
         )
-        exclude = {'lHead', 'deselect'}
-        self.features = [
-            feat for feat in list(feat_data['well_class'].keys()) + list(feat_data['feature_class'].keys())
-            if feat not in exclude
-            ]
+        # Split config classes: well_class are the standard per-well checkboxes; the
+        # feature_class is the *fallback* feature set used only when no classification
+        # CSV exists yet (otherwise features are discovered from the CSV in _discover).
+        self.well_class = [
+            feat for feat in feat_data['well_class'].keys() if feat != 'deselect'
+        ]
+        self.feature_class = [
+            feat for feat in feat_data['feature_class'].keys() if feat != 'lHead'
+        ]
 
-    def add_row(self):
+    def _discover(self):
+        """Discover pick features + cross-channel combos from the latest classification.
+
+        Decoupled from the live LabelStore: reads the newest ``*classifications.csv``
+        in the pick directory so Pick Selection reflects whatever was saved last
+        (classical or Finding Dory). Falls back to the config feature set when no
+        classification exists yet.
+        """
+        class_path = latest_classifications_csv(self.pick.pick_dir)
+        if class_path is not None:
+            try:
+                class_df = pd.read_csv(class_path)
+                self.features, self.combos = discover_pick_features_and_combos(
+                    class_df, self.well_class
+                )
+                logging.info(
+                    f'Pick Selection discovered {len(self.features)} features and '
+                    f'{len(self.combos)} combo(s) from {os.path.basename(class_path)}'
+                )
+                return
+            except Exception as e:
+                logging.warning(
+                    f'Could not read {class_path}: {e}; falling back to config features.'
+                )
+        # Fallback: no classification (or unreadable) → config well_class + feature_class.
+        self.features = list(self.well_class) + list(self.feature_class)
+        self.combos = []
+
+    def refresh(self):
+        """Reload features/combos from the latest classification and rebuild rows.
+
+        Lets the user switch classifiers (classical <-> Finding Dory) and re-pick
+        without restarting the app. Existing rows are discarded because the feature
+        columns differ between modes.
+        """
+        self._discover()
+
+        for row in list(self.rows):
+            self.rows_layout.removeWidget(row)
+            row.setParent(None)
+        self.rows = []
+
+        if self.combos:
+            mapped, dropped = map_combos_to_wells(self.combos, self.well)
+            for well, combo in mapped:
+                self.add_row(preset_well=well, preset_checks=combo['checks'])
+            if dropped > 0:
+                msg = (
+                    f"{dropped} combo(s) were not auto-mapped: only {len(self.well)} dispense "
+                    f"well(s) available for {len(self.combos)} combo(s). The most-assigned "
+                    f"combos were kept; add rows manually for the rest if needed."
+                )
+                logging.warning(msg)
+                QMessageBox.warning(self, 'Not enough dispense wells', msg)
+        else:
+            self.add_row()
+
+    def add_row(self, preset_well=None, preset_checks=None):
         """Adds a row to the selection GUI
+
+        :param preset_well: dispense well to pre-select in the dropdown
+        :type preset_well: str | None
+        :param preset_checks: {feature: bool/int} to pre-check; when given it fully
+            determines checkbox state (otherwise `singlet` defaults to checked)
+        :type preset_checks: dict | None
         """
 
-        row = AddRow(self.well, self.features, self.deselect, on_delete=self.delete_row)
+        row = AddRow(self.well, self.features, self.deselect, on_delete=self.delete_row,
+                     preset_well=preset_well, preset_checks=preset_checks)
         self.rows.append(row)
         self.rows_layout.addWidget(row)
 
@@ -153,7 +286,8 @@ class AddRow(QWidget):
     """Widget helper to add a row to the pick selection GUI
     """
 
-    def __init__(self, wells, features, deselect, on_delete=None):
+    def __init__(self, wells, features, deselect, on_delete=None,
+                 preset_well=None, preset_checks=None):
         """
         :param wells: well names passed from dispense plate well names
         :type wells: list
@@ -163,6 +297,11 @@ class AddRow(QWidget):
         :type deselect: list
         :param on_delete: delete callback
         :type on_delete: function callback
+        :param preset_well: dispense well to pre-select (else first well)
+        :type preset_well: str | None
+        :param preset_checks: {feature: bool/int} to pre-check; when given it fully
+            determines checkbox state (otherwise `singlet` defaults to checked)
+        :type preset_checks: dict | None
         """
 
         super().__init__()
@@ -174,12 +313,16 @@ class AddRow(QWidget):
         self.layout = QHBoxLayout(self)
         self.well_dropdown = QComboBox()
         self.well_dropdown.addItems(wells)
+        if preset_well is not None and preset_well in wells:
+            self.well_dropdown.setCurrentText(preset_well)
         self.layout.addWidget(self.well_dropdown)
 
         self.checkboxes = {}
         for col in features:
             cb = QCheckBox(col)
-            if col == 'singlet':
+            if preset_checks is not None:
+                cb.setChecked(bool(preset_checks.get(col, False)))
+            elif col == 'singlet':
                 cb.setChecked(True)
             self.checkboxes[col] = cb
             self.layout.addWidget(cb)
