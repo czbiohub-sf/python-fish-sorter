@@ -149,14 +149,9 @@ class SelectGUI(QWidget):
         self.features = []
         self.combos = []
         self.layout = QVBoxLayout(self)
-        self.rows_layout = QVBoxLayout()
-        self.rows_container = QWidget()
-        self.rows_container.setLayout(self.rows_layout)
-        self.scroll = QScrollArea()
-        self.scroll.setWidgetResizable(True)
-        self.scroll.setWidget(self.rows_container)
-        self.layout.addWidget(self.scroll)
 
+        # Button bar kept at the top so Add Row / Refresh / Save stay reachable even
+        # when the prepopulated row list is taller than the dock (the rows scroll below).
         self.add_row_btn = QPushButton('Add Row')
         self.add_row_btn.clicked.connect(lambda: self.add_row())
 
@@ -171,6 +166,18 @@ class SelectGUI(QWidget):
         btn_layout.addWidget(self.refresh_btn)
         btn_layout.addWidget(self.save_btn)
         self.layout.addLayout(btn_layout)
+
+        # Scrollable row list — expands to fill the dock and scrolls when the rows
+        # exceed the visible height, so the buttons above never get pushed off-screen.
+        self.rows_layout = QVBoxLayout()
+        self.rows_layout.setAlignment(Qt.AlignmentFlag.AlignTop)
+        self.rows_container = QWidget()
+        self.rows_container.setLayout(self.rows_layout)
+        self.scroll = QScrollArea()
+        self.scroll.setWidgetResizable(True)
+        self.scroll.setWidget(self.rows_container)
+        self.scroll.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        self.layout.addWidget(self.scroll, 1)
 
         self.refresh()
 
