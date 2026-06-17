@@ -141,11 +141,15 @@ def _build_label_tool():
     from qtpy.QtWidgets import (
         QCheckBox,
         QComboBox,
+        QDialog,
+        QDialogButtonBox,
+        QFormLayout,
         QFrame,
         QGridLayout,
         QHBoxLayout,
         QInputDialog,
         QLabel,
+        QLineEdit,
         QListWidget,
         QMessageBox,
         QPushButton,
@@ -2013,7 +2017,21 @@ def _build_label_tool():
             dists[valid] = np.linalg.norm(coords[valid] - click_pos, axis=1)
 
             nearest = int(np.argmin(dists))
-            if dists[nearest] > self._point_size * 3:
+            # Generous, zoom-independent hit radius: accept the click when
+            # the nearest point is within a fixed number of *screen pixels*,
+            # so tiny dots are still easy to hit. ``camera.zoom`` is canvas
+            # pixels per data unit, so ``pixel_tol / zoom`` converts the
+            # pixel budget into a data-space radius. Never tighter than the
+            # old ``point_size * 3`` (which dominates when zoomed way in).
+            pixel_tol = 20.0
+            data_tol = self._point_size * 3
+            try:
+                zoom = float(self.viewer.camera.zoom)
+                if zoom > 0:
+                    data_tol = max(data_tol, pixel_tol / zoom)
+            except Exception:
+                pass
+            if dists[nearest] > data_tol:
                 return
 
             meta_idx = self._view_indices[nearest]
@@ -2430,15 +2448,155 @@ def _build_label_tool():
                         self.group_list.setCurrentRow(i)
                         break
             self.group_list.blockSignals(False)
-            if hasattr(self, "_assign_scroll") and not self._cross_channel_mode:
-                # Skip the per-channel quick-assign card grid while in
-                # cross-channel mode — its single-channel layout would
-                # contradict the combo list above. Untick Cross-Channel to
-                # bring it back.
-                self._rebuild_quick_assign_buttons()
+            if hasattr(self, "_assign_scroll"):
+                # Keep the quick-assign card grid in lockstep with the list
+                # above: per-channel group cards normally, cross-channel
+                # combo cards while Cross-Channel is ticked. Rebuilding (not
+                # skipping) is what stops the cards from freezing on the old
+                # channel when the mode flips.
+                if self._cross_channel_mode:
+                    self._rebuild_cross_combo_cards()
+                else:
+                    self._rebuild_quick_assign_buttons()
             # Keep the Select-by value combo in sync when "Group" is active.
             if hasattr(self, "select_by_combo") and self.select_by_combo.currentData() == "group":
                 self._on_select_by_changed(self.select_by_combo.currentIndex())
+
+        def _make_assign_card(self, label_text, r, g, b, text_color, click_fn,
+                              thumb, bold=False):
+            """Build one quick-assign card (title bar + thumbnail).
+
+            Shared by the single-channel group grid
+            (``_rebuild_quick_assign_buttons``) and the cross-channel combo
+            grid (``_rebuild_cross_combo_cards``). Appends the
+            (title, crop, pixmap) triple to ``self._assign_crop_labels`` so
+            ``_rescale_assign_crops`` can resize the thumbnails on resize.
+            """
+            card = QWidget()
+            card_lay = QVBoxLayout(card)
+            card_lay.setContentsMargins(0, 0, 0, 0)
+            card_lay.setSpacing(0)
+            card_lay.setAlignment(Qt.AlignTop)
+            card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
+            card.setCursor(Qt.PointingHandCursor)
+            card.mousePressEvent = click_fn
+
+            weight = "bold" if bold else "normal"
+            title = QLabel(label_text)
+            title.setStyleSheet(
+                f"background-color: rgb({r},{g},{b}); color: {text_color}; "
+                f"font-size: 10px; font-weight: {weight}; padding: 1px 4px;"
+            )
+            title.setCursor(Qt.PointingHandCursor)
+            title.mousePressEvent = click_fn
+            card_lay.addWidget(title)
+
+            crop_lbl = QLabel()
+            crop_lbl.setAlignment(Qt.AlignLeft | Qt.AlignTop)
+            crop_lbl.setStyleSheet("background: #111;")
+            crop_lbl.setCursor(Qt.PointingHandCursor)
+            crop_lbl.mousePressEvent = click_fn
+            card_lay.addWidget(crop_lbl)
+
+            full_pm = None
+            if thumb is not None:
+                th, tw = thumb.shape[:2]
+                qimg = QImage(thumb.data, tw, th, tw * 3, QImage.Format_RGB888)
+                full_pm = QPixmap.fromImage(qimg)
+
+            self._assign_crop_labels.append((title, crop_lbl, full_pm))
+            return card
+
+        def _rebuild_cross_combo_cards(self):
+            """Build the quick-assign card grid for cross-channel combos.
+
+            Mirrors the combo list in ``_refresh_group_list``: the guaranteed
+            global combos (empty/multiple/deformed across every channel) come
+            first, then the discovered combos, with Unassign last. Clicking a
+            card moves the current well into that combo — its per-channel
+            group in *every* channel — the cross-channel analogue of
+            ``_quick_assign``. Counts come from the cached ``_cross_classes``;
+            like the dock Assign path they don't re-bucket here (see
+            ``_post_mutation_refresh``), so the grid doesn't jump around.
+            """
+            fl = self._current_line
+            n_ch = len(self._cross_channels)
+            if n_ch == 0:
+                return
+
+            guaranteed = [tuple([g] * n_ch) for g in DEFAULT_GROUPS]
+            ordered = list(guaranteed)
+            for key in self._cross_sorted_keys:
+                if key not in ordered:
+                    ordered.append(key)
+
+            cols = 3
+            inner = QWidget()
+            grid = QGridLayout(inner)
+            grid.setContentsMargins(0, 0, 0, 0)
+            grid.setHorizontalSpacing(4)
+            grid.setVerticalSpacing(4)
+            grid.setAlignment(Qt.AlignTop)
+            for c in range(cols):
+                grid.setColumnStretch(c, 1)
+
+            self._assign_crop_labels = []
+
+            idx = 0
+            for key in ordered:
+                # Uniform combos (same group in every channel) collapse to
+                # the bare group name; mixed combos show the full
+                # "ch:group × ch:group" so the per-channel split is explicit.
+                if len(set(key)) == 1:
+                    label = key[0]
+                else:
+                    label = " × ".join(
+                        f"{c}:{g}" for c, g in zip(self._cross_channels, key)
+                    )
+                count = len(self._cross_classes.get(key, []))
+                # Tint from the first channel's component group; group_color
+                # already falls back to the unassigned color for unknowns.
+                color = self.store.group_color(fl, self._cross_channels[0], key[0])
+                r = int(color[0] * 255)
+                g = int(color[1] * 255)
+                b = int(color[2] * 255)
+                lum = 0.299 * color[0] + 0.587 * color[1] + 0.114 * color[2]
+                text_color = "#000" if lum > 0.5 else "#fff"
+                click_fn = lambda event, k=key: self._quick_assign_combo(k)
+                thumb = self._get_combo_thumbnail(key)
+                bold = all(grp in GLOBAL_GROUPS for grp in key)
+                card = self._make_assign_card(
+                    f" {label} ({count})",
+                    r, g, b, text_color, click_fn, thumb, bold=bold,
+                )
+                grid.addWidget(card, idx // cols, idx % cols)
+                idx += 1
+
+            unassign_card = self._make_assign_card(
+                " Unassign", 68, 68, 68, "#ccc",
+                lambda event: self._quick_unassign_combo(), None,
+            )
+            grid.addWidget(unassign_card, idx // cols, idx % cols)
+
+            self._assign_scroll.setWidget(inner)
+            self._rescale_assign_crops()
+
+        def _get_combo_thumbnail(self, key) -> Optional[np.ndarray]:
+            """Representative composite RGB crop for a cross-channel combo.
+
+            Pulls the first member's blend from ``self._crop_cache``, which
+            holds the all-channel composites while in cross-channel mode.
+            """
+            members = self._cross_classes.get(key, [])
+            for wid in members:
+                widx = self._wid_to_widx.get(wid)
+                if widx is None or widx >= len(self.metadata):
+                    continue
+                row = self.metadata.iloc[widx]
+                rgb = self._crop_cache.get((row["well_name"], row["experiment"]))
+                if rgb is not None:
+                    return rgb
+            return None
 
         def _rebuild_quick_assign_buttons(self):
             """Build the 3-column grid of group cards with thumbnails.
@@ -2466,42 +2624,6 @@ def _build_label_tool():
 
             self._assign_crop_labels = []
 
-            def _make_card(label_text, r, g, b, text_color, click_fn, thumb, bold=False):
-                card = QWidget()
-                card_lay = QVBoxLayout(card)
-                card_lay.setContentsMargins(0, 0, 0, 0)
-                card_lay.setSpacing(0)
-                card_lay.setAlignment(Qt.AlignTop)
-                card.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Maximum)
-                card.setCursor(Qt.PointingHandCursor)
-                card.mousePressEvent = click_fn
-
-                weight = "bold" if bold else "normal"
-                title = QLabel(label_text)
-                title.setStyleSheet(
-                    f"background-color: rgb({r},{g},{b}); color: {text_color}; "
-                    f"font-size: 10px; font-weight: {weight}; padding: 1px 4px;"
-                )
-                title.setCursor(Qt.PointingHandCursor)
-                title.mousePressEvent = click_fn
-                card_lay.addWidget(title)
-
-                crop_lbl = QLabel()
-                crop_lbl.setAlignment(Qt.AlignLeft | Qt.AlignTop)
-                crop_lbl.setStyleSheet("background: #111;")
-                crop_lbl.setCursor(Qt.PointingHandCursor)
-                crop_lbl.mousePressEvent = click_fn
-                card_lay.addWidget(crop_lbl)
-
-                full_pm = None
-                if thumb is not None:
-                    th, tw = thumb.shape[:2]
-                    qimg = QImage(thumb.data, tw, th, tw * 3, QImage.Format_RGB888)
-                    full_pm = QPixmap.fromImage(qimg)
-
-                self._assign_crop_labels.append((title, crop_lbl, full_pm))
-                return card
-
             idx = 0
             for group_name in ordered:
                 color = self.store.group_color(fl, ch, group_name)
@@ -2514,14 +2636,14 @@ def _build_label_tool():
                 click_fn = lambda event, gn=group_name: self._quick_assign(gn)
                 thumb = self._get_group_thumbnail(group_name)
                 bold = group_name in GLOBAL_GROUPS
-                card = _make_card(
+                card = self._make_assign_card(
                     f" {group_name} ({count})",
                     r, g, b, text_color, click_fn, thumb, bold=bold,
                 )
                 grid.addWidget(card, idx // cols, idx % cols)
                 idx += 1
 
-            unassign_card = _make_card(
+            unassign_card = self._make_assign_card(
                 " Unassign", 68, 68, 68, "#ccc",
                 lambda event: self._quick_unassign(), None,
             )
@@ -2618,6 +2740,53 @@ def _build_label_tool():
             wid = match.iloc[0]["well_id"]
             fl, ch = self._scope()
             self.store.unassign(fl, ch, [wid])
+            self.crop_info.setText(f"{wn} | {exp} -> unassigned")
+            self._advance_after_action()
+
+        def _quick_assign_combo(self, key):
+            """Assign the current well to a cross-channel combo and advance.
+
+            The well adopts every channel's component of the combo — the
+            cross-channel analogue of ``_quick_assign``. Mirrors the dock
+            Assign path: no re-bucket here, so combo counts only refresh on
+            Refresh Grid (see ``_post_mutation_refresh``).
+            """
+            if not self._selected_well_list:
+                return
+            wn, exp = self._selected_well_list[self._current_well_view_idx]
+            match = self.metadata[
+                (self.metadata["experiment"] == exp) & (self.metadata["well_name"] == wn)
+            ]
+            if match.empty:
+                return
+            wid = match.iloc[0]["well_id"]
+            fl = self._current_line
+            for ch_i, g_i in zip(self._cross_channels, key):
+                self._clear_global_locks(fl, ch_i, [wid], g_i)
+                self.store.assign(fl, ch_i, [wid], g_i)
+            if len(set(key)) == 1:
+                label = key[0]
+            else:
+                label = " × ".join(
+                    f"{c}:{g}" for c, g in zip(self._cross_channels, key)
+                )
+            self.crop_info.setText(f"{wn} | {exp} -> {label}")
+            self._advance_after_action()
+
+        def _quick_unassign_combo(self):
+            """Unassign the current well from every cross-channel and advance."""
+            if not self._selected_well_list:
+                return
+            wn, exp = self._selected_well_list[self._current_well_view_idx]
+            match = self.metadata[
+                (self.metadata["experiment"] == exp) & (self.metadata["well_name"] == wn)
+            ]
+            if match.empty:
+                return
+            wid = match.iloc[0]["well_id"]
+            fl = self._current_line
+            for ch_i in self._cross_channels:
+                self.store.unassign(fl, ch_i, [wid])
             self.crop_info.setText(f"{wn} | {exp} -> unassigned")
             self._advance_after_action()
 
@@ -2806,6 +2975,12 @@ def _build_label_tool():
                 self._refresh_group_list()
 
         def _on_rename_group(self):
+            # In cross-channel mode the selected row is a combo (one cluster
+            # per channel), not a single group — so renaming asks for a new
+            # name for *each* channel's cluster at once.
+            if self._cross_channel_mode:
+                self._rename_combo()
+                return
             old = self._get_selected_group_name()
             if not old or old in GLOBAL_GROUPS:
                 QMessageBox.warning(
@@ -2822,6 +2997,95 @@ def _build_label_tool():
                     return
                 self._refresh_group_list()
                 self._update_point_colors()
+
+        def _rename_combo(self):
+            """Rename the per-channel clusters that make up the selected combo.
+
+            A combo row is a tuple of one cluster per channel. Renaming it
+            pops a single dialog with one field per channel so the user
+            names every channel's cluster at once. Global clusters
+            (empty/multiple/deformed) aren't renamable and are shown
+            read-only. Because each field renames a per-channel group in the
+            store, the new name takes effect in *every* combo that shares
+            that cluster — so we re-bucket the grid afterwards.
+            """
+            item = self.group_list.currentItem()
+            key = item.data(Qt.UserRole) if item is not None else None
+            if not isinstance(key, tuple):
+                QMessageBox.warning(
+                    self, "Can't rename", "Select a combo to rename."
+                )
+                return
+            if all(g in GLOBAL_GROUPS for g in key):
+                QMessageBox.warning(
+                    self, "Can't rename", "Default clusters can't be renamed."
+                )
+                return
+
+            dlg = QDialog(self)
+            dlg.setWindowTitle("Rename Combo Clusters")
+            outer = QVBoxLayout(dlg)
+            note = QLabel(
+                "Name each channel's cluster. Renaming a cluster updates it "
+                "everywhere it appears, not just this combo."
+            )
+            note.setWordWrap(True)
+            outer.addWidget(note)
+
+            form = QFormLayout()
+            edits = []  # (channel, old_name, QLineEdit | None)
+            for ch_i, old in zip(self._cross_channels, key):
+                edit = QLineEdit(old)
+                if old in GLOBAL_GROUPS:
+                    edit.setEnabled(False)
+                    edit.setToolTip("Default clusters can't be renamed.")
+                    edits.append((ch_i, old, None))
+                else:
+                    edits.append((ch_i, old, edit))
+                form.addRow(f"{ch_i}:", edit)
+            outer.addLayout(form)
+
+            buttons = QDialogButtonBox(
+                QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+            )
+            buttons.accepted.connect(dlg.accept)
+            buttons.rejected.connect(dlg.reject)
+            outer.addWidget(buttons)
+
+            if dlg.exec_() != QDialog.Accepted:
+                return
+
+            fl = self._current_line
+            renamed_any = False
+            failures = []
+            for ch_i, old, edit in edits:
+                if edit is None:
+                    continue
+                new_name = edit.text().strip()
+                if not new_name or new_name == old:
+                    continue
+                if self.store.rename_group(fl, ch_i, old, new_name):
+                    renamed_any = True
+                else:
+                    failures.append(f"{ch_i}: '{old}' → '{new_name}'")
+
+            if failures:
+                QMessageBox.warning(
+                    self, "Rename failed",
+                    "Couldn't rename (name conflict or unknown cluster):\n"
+                    + "\n".join(failures),
+                )
+
+            if renamed_any:
+                # Renames change the combo keys, so re-bucket and re-lay-out
+                # like the Refresh Grid button (crops are unchanged, so the
+                # composite cache is left intact).
+                self._compute_cross_channel_grid()
+                self._update_scatter()
+                self._refresh_group_list()
+                self._update_status()
+                if self.image_umap_checkbox.isChecked():
+                    self._render_image_umap()
 
         def _on_delete_group(self):
             fl = self._current_line
