@@ -951,16 +951,16 @@ def _build_label_tool():
             if self.image_umap_checkbox.isChecked():
                 self._render_image_umap()
 
-        def _compute_cross_channel_grid(self):
-            """Bucket wells by cartesian-product assignment, lay out as a grid.
+        def _rebucket_cross_classes(self):
+            """Recompute combo membership from the live store assignments.
 
-            Only includes wells with a non-empty assignment in *every*
-            channel for the current fish line. Each (ch0_group, ch1_group,
-            …) tuple becomes one cluster_id with its own sub-grid of well
-            thumbnails. Sub-grids are arranged into major columns of at
-            most ``max_combos_per_major_col`` combos each, so the canvas
-            fills horizontally when there are many combos instead of
-            growing into one tall single column.
+            Sets ``_cross_channels`` / ``_cross_classes`` /
+            ``_cross_sorted_keys`` but does NOT touch the scatter layout
+            (``_view_umap`` / ``_view_clusters``). ``_compute_cross_channel_grid``
+            calls it before laying the grid out; the in-view assignment paths
+            call it on its own so the combo list / card *counts* refresh in
+            real time while the points stay put — the full re-layout stays
+            reserved for Refresh Grid.
             """
             fl = self._current_line
             # Derive channels through the store accessor so the list is
@@ -974,13 +974,15 @@ def _build_label_tool():
                 return
 
             from collections import defaultdict as _dd
+            # Fetch each channel's assignment map once instead of per well.
+            ch_asgn = {ch: self.store.assignments(fl, ch) for ch in channels}
             classes: Dict[tuple, List[str]] = _dd(list)
             for meta_idx in self._view_indices:
                 wid = self.metadata.iloc[meta_idx]["well_id"]
                 assignments = []
                 ok = True
                 for ch in channels:
-                    g = self.store.assignments(fl, ch).get(wid)
+                    g = ch_asgn[ch].get(wid)
                     if not g:
                         ok = False
                         break
@@ -1004,6 +1006,21 @@ def _build_label_tool():
                 return (0 if all_global else 1, per_ch)
 
             self._cross_sorted_keys = sorted(classes.keys(), key=_sort_key)
+
+        def _compute_cross_channel_grid(self):
+            """Bucket wells by cartesian-product assignment, lay out as a grid.
+
+            Only includes wells with a non-empty assignment in *every*
+            channel for the current fish line. Each (ch0_group, ch1_group,
+            …) tuple becomes one cluster_id with its own sub-grid of well
+            thumbnails. Sub-grids are arranged into major columns of at
+            most ``max_combos_per_major_col`` combos each, so the canvas
+            fills horizontally when there are many combos instead of
+            growing into one tall single column.
+            """
+            self._rebucket_cross_classes()
+            if not self._cross_channels or self._view_indices is None:
+                return
 
             # Sub-grid layout per combo.
             max_sub_cols = 4         # wells per row inside one combo
@@ -1047,10 +1064,10 @@ def _build_label_tool():
                 x_origin = major_col * major_col_step
                 y_offset = 0.0
                 for key in col_keys:
-                    n_w = len(classes[key])
+                    n_w = len(self._cross_classes[key])
                     n_sub_rows = max(1, (n_w + max_sub_cols - 1) // max_sub_cols)
                     combo_idx = combo_index[key]
-                    wids = classes[key]
+                    wids = self._cross_classes[key]
                     for i, wid in enumerate(wids):
                         sub_row = i // max_sub_cols
                         sub_col = i % max_sub_cols
@@ -2811,7 +2828,19 @@ def _build_label_tool():
         def _advance_after_action(self):
             if not self._selected_well_list:
                 return
-            self._selected_well_list.pop(self._current_well_view_idx)
+            removed_wn, removed_exp = self._selected_well_list.pop(
+                self._current_well_view_idx
+            )
+            # Keep the lasso selection (``_selected_indices``, which the
+            # Assign / Unassign buttons commit) in sync with the nav list:
+            # the well we just quick-assigned must drop out, otherwise a
+            # later mass-assign would clobber its individual label.
+            for li_pos in list(self._selected_indices):
+                meta_idx = self._view_indices[li_pos]
+                row = self.metadata.iloc[meta_idx]
+                if row["well_name"] == removed_wn and row["experiment"] == removed_exp:
+                    self._selected_indices.discard(li_pos)
+                    break
             if not self._selected_well_list:
                 self._current_well_view_idx = 0
                 self.nav_label.setText("")
@@ -2827,8 +2856,21 @@ def _build_label_tool():
                 has_nav = len(self._selected_well_list) > 1
                 self.prev_btn.setEnabled(has_nav)
                 self.next_btn.setEnabled(has_nav)
+            # Quick-assign in cross-channel mode mutated per-channel groups,
+            # so re-bucket the combos to keep the list / card counts honest
+            # (positions stay put — full re-layout is Refresh Grid only).
+            if self._cross_channel_mode:
+                self._rebucket_cross_classes()
             self._refresh_group_list()
             self._update_point_colors()
+            # Re-show the shrunken selection so the highlight matches what
+            # the Assign button would still act on; clear the buttons once
+            # nothing is left selected.
+            if self._selected_indices:
+                self._highlight_selected(np.array(sorted(self._selected_indices)))
+            else:
+                self.assign_btn.setEnabled(False)
+                self.unassign_btn.setEnabled(False)
 
         def _get_selected_group_name(self) -> Optional[str]:
             item = self.group_list.currentItem()
@@ -3187,20 +3229,19 @@ def _build_label_tool():
         def _post_mutation_refresh(self):
             """Refresh views after an assignment/unassignment/delete.
 
-            In cross-channel mode we deliberately do *not* re-bucket or
-            re-lay-out the grid here: the points and fish thumbnails stay
-            put and only their colors update, so reassigning doesn't make
-            the whole grid jump around. The full re-bucket / re-layout
-            (combo list, point positions, fish reposition) is reserved for
-            the Refresh Grid button (``_on_cross_refresh``). In
-            single-channel mode positions are fixed anyway, so we refresh
-            the group list and recolor.
+            In cross-channel mode we re-bucket the combo *membership* so the
+            list / card counts update immediately, then refresh the list and
+            recolor — but we deliberately do *not* re-lay-out the grid here:
+            the points and fish thumbnails stay put, so reassigning doesn't
+            make the whole grid jump around. The full re-layout (point
+            positions, fish reposition) is reserved for the Refresh Grid
+            button (``_on_cross_refresh``). In single-channel mode positions
+            are fixed anyway, so we just refresh the group list and recolor.
             """
             if self._cross_channel_mode:
-                self._update_point_colors()
-            else:
-                self._refresh_group_list()
-                self._update_point_colors()
+                self._rebucket_cross_classes()
+            self._refresh_group_list()
+            self._update_point_colors()
             self._update_status()
 
         def _on_assign(self):
