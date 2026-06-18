@@ -773,7 +773,21 @@ def _build_finding_dory():
                         singlet_arr = np.asarray(feat["singlet"], dtype=bool)
                     else:
                         singlet_arr = np.zeros(len(self.well_ids), dtype=bool)
-                    for flag in ("empty", "multiple", "deformed"):
+                    # When not filtering to singlets the whole plate is on
+                    # view, and Finding Nemo's coarse "empty" default would
+                    # otherwise finalize (lock out of clustering) every
+                    # undetected well. Skip seeding "empty" in that mode so
+                    # those wells stay free to land in their embedding
+                    # cluster; multiple/deformed are real calls and still
+                    # seed.
+                    seed_flags = ("empty", "multiple", "deformed")
+                    if not self.cfg.get("filter_to_singlets", True):
+                        seed_flags = ("multiple", "deformed")
+                        log.info(
+                            "filter_to_singlets=false; not seeding 'empty' so "
+                            "it doesn't override cluster groups."
+                        )
+                    for flag in seed_flags:
                         if flag not in feat.columns:
                             continue
                         flagged = np.asarray(feat[flag], dtype=bool)

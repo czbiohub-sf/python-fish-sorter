@@ -1013,34 +1013,52 @@ def _build_label_tool():
             major_col_gap = 12.0     # horizontal gap between major columns
             max_combos_per_major_col = 6
 
-            # Per-combo dimensions, so we know how tall each combo's
-            # sub-grid is when stacking them into a major column.
-            combo_heights = []
-            for key in self._cross_sorted_keys:
-                n_w = len(classes[key])
-                n_sub_rows = max(1, (n_w + max_sub_cols - 1) // max_sub_cols)
-                combo_heights.append(n_sub_rows * row_spacing)
-
             sub_width = max_sub_cols * col_spacing
             major_col_step = sub_width + major_col_gap
 
+            # Wall the always-global combos (empty/multiple/deformed in every
+            # channel) off into their own leading major column(s) so they
+            # never interleave with the cluster combos. The cluster combos
+            # keep their sorted order and start in a fresh column after them.
+            global_keys = [
+                k for k in self._cross_sorted_keys
+                if all(g in GLOBAL_GROUPS for g in k)
+            ]
+            custom_keys = [
+                k for k in self._cross_sorted_keys
+                if not all(g in GLOBAL_GROUPS for g in k)
+            ]
+
+            def _chunk(keys):
+                return [
+                    keys[i : i + max_combos_per_major_col]
+                    for i in range(0, len(keys), max_combos_per_major_col)
+                ]
+
+            major_columns = _chunk(global_keys) + _chunk(custom_keys)
+
+            # combo_idx (drives cluster_ids / point colors) stays tied to the
+            # sorted-keys ordering so the color mapping is unaffected by the
+            # column regrouping.
+            combo_index = {k: i for i, k in enumerate(self._cross_sorted_keys)}
+
             wid_to_grid: Dict[str, Tuple[float, float, int]] = {}
-            for combo_idx, key in enumerate(self._cross_sorted_keys):
-                major_col = combo_idx // max_combos_per_major_col
-                within_col = combo_idx % max_combos_per_major_col
-                # Sum heights of preceding combos in this major column.
-                start = major_col * max_combos_per_major_col
-                y_offset = sum(
-                    combo_heights[start : start + within_col]
-                ) + within_col * combo_v_gap
+            for major_col, col_keys in enumerate(major_columns):
                 x_origin = major_col * major_col_step
-                wids = classes[key]
-                for i, wid in enumerate(wids):
-                    sub_row = i // max_sub_cols
-                    sub_col = i % max_sub_cols
-                    x = x_origin + sub_col * col_spacing
-                    y = -(y_offset + sub_row * row_spacing)
-                    wid_to_grid[wid] = (y, x, combo_idx)
+                y_offset = 0.0
+                for key in col_keys:
+                    n_w = len(classes[key])
+                    n_sub_rows = max(1, (n_w + max_sub_cols - 1) // max_sub_cols)
+                    combo_idx = combo_index[key]
+                    wids = classes[key]
+                    for i, wid in enumerate(wids):
+                        sub_row = i // max_sub_cols
+                        sub_col = i % max_sub_cols
+                        x = x_origin + sub_col * col_spacing
+                        y = -(y_offset + sub_row * row_spacing)
+                        wid_to_grid[wid] = (y, x, combo_idx)
+                    # Stack the next combo below this one within the column.
+                    y_offset += n_sub_rows * row_spacing + combo_v_gap
 
             n = len(self._view_indices)
             grid = np.full((n, 2), np.nan, dtype=np.float32)
