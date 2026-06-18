@@ -146,21 +146,3 @@ def apply_normalization(
         k = np.float32(asinh_knee)
         out = np.arcsinh(out * k) / np.arcsinh(k)
     return out
-
-
-def normalize_mosaic(
-    mosaic: np.ndarray, channel_name: str, contrast_cfg: ChannelContrastConfig
-) -> np.ndarray:
-    """One-shot helper: compute (low, high) plate-wide and apply the curve.
-
-    Prefer `compute_channel_stats(mosaic, cfg)` + `apply_normalization(crop, ...)`
-    when you want to crop *before* materializing the full float32 mosaic —
-    that path is memory-cheaper and produces bitwise-identical wells (the
-    normalization is pointwise after the percentiles are known).
-
-    `channel_name` is unused here but kept in the signature so callers
-    document intent at the call site.
-    """
-    del channel_name  # explicit: only used for documentation
-    low, high = compute_channel_stats(mosaic, contrast_cfg)
-    return apply_normalization(mosaic, low, high, contrast_cfg.asinh_knee)

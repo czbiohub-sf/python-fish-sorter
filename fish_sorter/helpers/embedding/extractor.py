@@ -8,10 +8,6 @@ arrays.
 The extractor consumes raw uint16 mosaics directly (`napari.layers.Image.data`)
 because percentile normalization is plate-wide — cropping before computing
 percentiles would shift the statistics and produce out-of-distribution input.
-
-No caching of any kind: each call recomputes from scratch. Backbone construction
-is paid once per `EmbeddingExtractor` instance lifetime (typically once per app
-session) and is independent of the per-plate `extract_from_mosaic` calls.
 """
 
 from __future__ import annotations
@@ -75,7 +71,7 @@ _BATCH_DEFAULTS = {"cuda": 32, "mps": 16, "cpu": 8}
 
 
 class EmbeddingExtractor:
-    """Loads a checkpoint once; embeds many plates over its lifetime."""
+    """Loads the model, runs the forward pass, and returns per-channel embeddings."""
 
     def __init__(self, cfg: dict, mode: str, batch_size: Optional[int] = None):
         if mode not in cfg.get("models", {}):
@@ -95,12 +91,11 @@ class EmbeddingExtractor:
         self.device = _resolve_device(device_arg)
         log.info(f"EmbeddingExtractor device: {self.device} (config: {device_arg!r})")
         self.batch_size = batch_size or _BATCH_DEFAULTS.get(self.device.type, 8)
-        # Default True for speed; set false at top-level config to force fp32
-        # forward (useful for parity checks or on Pascal where fp16 has no
-        # Tensor Core acceleration anyway).
+        # Default True for speed; set false at top-level config to force fp32 forward.
         self.use_autocast = bool(cfg.get("autocast", True))
 
         # Per-channel contrast bundles.
+        # these allow custom normalization parameters per channel (ie DAPI can normalize differently from GFP if needed), but require a "_FLUOR" fallback for default params.
         contrast_block = model_cfg.get("contrast", {})
         if "_FLUOR" not in contrast_block:
             raise ValueError(
@@ -132,7 +127,7 @@ class EmbeddingExtractor:
             log.info(f"multi_contrast={multi_contrast} (detected from ckpt)")
 
         # Build the backbone.
-        variant = model_cfg.get("model_arch", "vits16")
+        variant = model_cfg.get("model_arch", "vitb16")
         repo_path = cfg.get("dinov3_repo_path")
         weights_dir = cfg.get("dinov3_weights_dir")
         weights_path = (
@@ -183,6 +178,7 @@ class EmbeddingExtractor:
         # Try common prefixes; pick whichever gives a non-empty stripped dict.
         # Lightning typically saves the FishDINOv3 under "online_network.backbone."
         # for BYOL, but other entry points can wrap differently.
+        # this is a bit hacky but it's robust to whatever wrapping the training code did, and ammendable if the training repo is updated.
         candidate_prefixes = (
             "online_backbone.",
             "online_network.backbone.",
@@ -210,6 +206,8 @@ class EmbeddingExtractor:
                 raise RuntimeError("Could not find a usable key prefix in checkpoint.")
 
         result = self.backbone.load_state_dict(stripped, strict=False)
+        # note if missing keys are found, the model may or may not produce meaningful embeddings.
+        # this is a sanity check log.
         log.info(
             f"checkpoint loaded with prefix={chosen!r}: "
             f"{len(stripped) - len(result.unexpected_keys)} keys applied, "
@@ -344,7 +342,7 @@ class EmbeddingExtractor:
                 autocast_dtype = torch.float16
             elif self.device.type == "cpu":
                 autocast_dtype = torch.bfloat16
-            # MPS stays fp32 (autocast for ViT is still flaky).
+            # MPS stays fp32
 
         n_batches = (n + bs - 1) // bs
         log.info(
@@ -483,8 +481,8 @@ def compute_embeddings(
     Qt-free so it can run on a worker thread owned by either caller.
 
     Honors ``cfg['dev_mock_embeddings']``: generates well-separated synthetic
-    clusters per channel and skips the model entirely, so the dock UI can be
-    iterated in seconds.
+    clusters per channel and skips the model entirely, useful for testing the pipeline
+    without the overhead of loading the model and running the forward pass.
 
     Args:
         cfg: Parsed labeller config.

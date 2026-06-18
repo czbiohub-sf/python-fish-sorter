@@ -1,6 +1,6 @@
 """Fish line parsing from experiment folder names.
 
-Vendored from `zebrafish-unsupervised-classification/fish_classify/labelling/fish_line.py`.
+Was used to mass label experiments by line for the initial training set, but may be useful for future organization or sanity checks as well.
 
 Experiment folders follow the convention::
 

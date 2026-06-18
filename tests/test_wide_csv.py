@@ -202,18 +202,21 @@ def test_wide_csv_singlet_inference_off(tmp_path):
     assert df["singlet"].tolist() == [0]
 
 
-def test_wide_csv_well_defaults_override_globals(tmp_path):
-    """When `well_defaults` is supplied (Finding Dory's mode), it wins over LabelStore.
+def test_wide_csv_store_globals_win_over_well_defaults(tmp_path):
+    """The LabelStore is authoritative; `well_defaults` (Finding Nemo) only
+    initializes wells the store never touched — it never overrides a store
+    assignment.
 
-    Finding Nemo owns empty/singlet/multiple/deformed/lHead; Finding Dory
-    passes those values through `points_layer.features` and they should appear
-    verbatim in the CSV, even if LabelStore globals say something different.
+    When Finding Dory is used, the user's labels are what get saved. Finding
+    Nemo's per-well defaults seed untouched wells but lose to any store call.
+    `lHead` is not a store concept, so it always comes from `well_defaults`.
     """
     wells = ["expA_A01", "expA_A02"]
     store = _make_store(wells)
     fish_line = "myo6b"
 
-    # LabelStore says A01 is empty — but the points_layer override says otherwise.
+    # User marked A01 empty in Finding Dory — Nemo's default disagrees, but the
+    # store wins. A02 is untouched in the store, so Nemo's default seeds it.
     store.assign(fish_line, "GFP", ["expA_A01"], "empty")
 
     out = tmp_path / "out.csv"
@@ -231,10 +234,11 @@ def test_wide_csv_well_defaults_override_globals(tmp_path):
     )
     df = pd.read_csv(out).set_index("slotName")
 
-    assert df.loc["A01", "empty"] == 0    # override wins over LabelStore global
-    assert df.loc["A01", "singlet"] == 1
-    assert df.loc["A01", "lHead"] == 1
-    assert df.loc["A02", "empty"] == 1
+    assert df.loc["A01", "empty"] == 1     # store global wins over Nemo
+    assert df.loc["A01", "singlet"] == 0
+    assert df.loc["A01", "lHead"] == 1     # lHead still from well_defaults
+    assert df.loc["A02", "empty"] == 1     # untouched well seeded by Nemo
+    assert df.loc["A02", "singlet"] == 0
 
 
 def test_wide_csv_well_defaults_partial_falls_back(tmp_path):
@@ -259,6 +263,41 @@ def test_wide_csv_well_defaults_partial_falls_back(tmp_path):
     df = pd.read_csv(out).set_index("slotName")
     assert df.loc["A01", "lHead"] == 0  # explicit override beats lhead_map
     assert df.loc["A01", "singlet"] == 1  # inferred from no globals
+
+
+def test_wide_csv_manual_label_survives_disagreeing_nemo(tmp_path):
+    """Manual Finding Dory labels are never lost to Finding Nemo's classification.
+
+    - A01: Nemo called it a singlet, user marked it empty → CSV says empty.
+    - A02: Nemo called it empty, user clustered it (custom group) → CSV says
+      singlet (a categorized fish), not empty.
+    """
+    wells = ["expA_A01", "expA_A02"]
+    store = _make_store(wells)
+    fish_line = "myo6b"
+    store._line_channels[fish_line] = ["GFP"]
+
+    store.assign(fish_line, "GFP", ["expA_A01"], "empty")      # manual override
+    store.assign(fish_line, "GFP", ["expA_A02"], "clusterA")   # manual cluster
+
+    out = tmp_path / "out.csv"
+    write_wide_csv(
+        store=store,
+        well_order=wells,
+        lhead_map={},
+        channels=["GFP"],
+        fish_line=fish_line,
+        path=str(out),
+        well_defaults={
+            "expA_A01": {"empty": 0, "singlet": 1, "multiple": 0, "deformed": 0, "lHead": 0},
+            "expA_A02": {"empty": 1, "singlet": 0, "multiple": 0, "deformed": 0, "lHead": 0},
+        },
+    )
+    df = pd.read_csv(out).set_index("slotName")
+
+    assert df.loc["A01", "empty"] == 1 and df.loc["A01", "singlet"] == 0
+    assert df.loc["A02", "empty"] == 0 and df.loc["A02", "singlet"] == 1
+    assert df.loc["A02", "GFP_clusterA"] == 1
 
 
 def test_wide_csv_row_order_matches_well_order(tmp_path):

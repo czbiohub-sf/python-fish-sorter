@@ -1,10 +1,10 @@
 # Finding Dory labeller config
 
 `config.json` (sibling to this file) tells Finding Dory where your trained
-model checkpoint and DINOv3 assets live. The first time you click **Finding
-Dory** with no `config.json` present, a setup dialog opens and creates one
-for you via file pickers (checkpoint + DINOv3 repo + mode). You can also copy
-`config.example.json` to `config.json` and fill in the paths by hand.
+model checkpoint and DINOv3 assets live. Copy `config.example.json` to
+`config.json` and fill in the paths by hand. If `config.json` is missing or
+unparseable when you click **Finding Dory**, a popup tells you to create it
+and the dock won't open until it exists.
 
 ## What you need before launching Finding Dory
 
@@ -20,14 +20,14 @@ for you via file pickers (checkpoint + DINOv3 repo + mode). You can also copy
    download. Watch the load log: if `missing_keys` is large (hundreds, not
    <10), point at a weights dir as a backstop.
 
-Finding Dory does not download anything. If a path is wrong, the GUI will
-prompt you to pick the right file.
+Finding Dory does not download anything, and does not create or edit the
+config. If a path is wrong it surfaces the error — fix `config.json` by hand.
 
 ## Per-mode fields
 
 - `checkpoint_path` — `best.ckpt` from training for this mode.
-- `model_arch` — `dinov3_vits16` (or whatever variant the ckpt was trained
-  with). The bare variant (`vits16`) is also accepted.
+- `model_arch` — `dinov3_vitb16` (or whatever variant the ckpt was trained
+  with). The bare variant (`vitb16`) is also accepted.
 - `crop_size` — `[H, W]` of the model's expected input. Must match what
   training used; check `MODE_DEFAULTS` in the zebra repo if unsure.
 - `pooling` — currently always `gem` (CLS + GeM-pooled patch tokens).
@@ -57,6 +57,10 @@ prompt you to pick the right file.
   wells Finding Nemo flagged as singlets (auto-running `find_fish` if needed).
   Set `false` to embed and show every well, including empties / multiples /
   deformed.
+- `dev_mock_embeddings` — (default `false`) skip the model entirely and
+  generate well-separated synthetic embeddings per channel. For iterating on
+  the dock UI without loading a checkpoint or running the forward pass; leave
+  `false` for real use.
 - `pick_type_to_mode` — maps fish-sorter `pick_type` values (the dropdown
   in the Setup tab) to model bundles.
 - `clustering.method` / `params` — selects the cluster strategy

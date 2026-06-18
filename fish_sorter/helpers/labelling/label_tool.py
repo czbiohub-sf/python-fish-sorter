@@ -1,44 +1,18 @@
-"""Embeddable napari labeller dock — vendored from zebra ``LabelTool``.
+"""Embeddable napari labeller dock (``LabelTool``).
 
-Vendored from
-``zebrafish-unsupervised-classification/fish_classify/labelling/label_tool.py``
-lines 289-end (the ``LabelTool`` class). The ``LabelStore`` data model
-(upstream lines 1-281) is vendored separately in
-``fish_sorter.helpers.labelling.store`` — import from there, do NOT re-vendor.
+``FindingDory`` constructs this widget once embeddings are ready and mounts it
+as the dock's main content. It renders a per-channel UMAP scatter overlaid with
+fish thumbnails and lets the user lasso wells and assign them to named groups.
+Global groups (``empty``/``multiple``/``deformed``) propagate across all
+channels for the fish line; a cross-channel grid mode combines per-channel
+groups into a final classification.
 
-Eight refactor items (see PR description) applied surgically:
+Assignments live in the injected ``LabelStore``; clustering goes through the
+injected ``ClusterStrategy``. Saving is the caller's job — the Save button
+emits ``save_requested`` and ``FindingDory`` writes the wide CSV.
 
-1. The ``QApplication`` instantiation block in upstream ``__init__`` is dropped.
-   ``FindingDory`` constructs us with a parent already alive in a ``QApplication``.
-2. ``LabelTool.run()`` is replaced with ``as_dock_widget()`` returning ``self``.
-   The parent owns the event loop.
-3. ``napari.Viewer`` is injected by the caller, never created here.
-4. ``well_loaders: Dict[str, object]`` (per-experiment loaders) is replaced
-   with ``well_crops: List[Dict[channel, np.ndarray]]`` — preloaded by
-   ``FindingDory`` from the napari Image layers.
-5. ``mode``/``_fluor_cols`` derivation is dropped; channels come in via the
-   constructor.
-6. Single-experiment simplification: one ``fish_line`` synthesized from
-   ``prefix``; the multi-line tab/combo UI is reduced to a static label.
-7. Direct ``hdbscan.HDBSCAN``/``EmbeddingClusterer`` use is replaced with
-   the injected ``ClusterStrategy``.
-8. ``_on_save`` / ``_on_load`` are dropped; ``FindingDory`` handles persistence
-   via ``write_wide_csv`` and connects to ``save_requested``.
-
-Subsystems dropped wholesale (out of scope for fish-sorter):
-
-- Fine-tune worker (``fish_classify.clustering.fine_tune_worker``).
-- Match panel / learn panel side docks.
-- Cross-channel grid mode (``_enter_cross_channel`` and all helpers).
-- Multi-experiment fish-line tab UI (replaced with a read-only label).
-- ``clusters_as_classes`` constructor parameter.
-- ``LabelStore.save_csv`` / ``load_csv`` UI wiring.
-- Composite-crop preloader and Fish-UMAP contrast slider (the upstream
-  Fish-UMAP overlay system is kept, but uses the active-channel cached
-  crop from ``self._well_crops`` so the user still sees fish thumbnails
-  laid out on the UMAP).
-
-The destination is self-contained: no imports from ``fish_classify.*`` allowed.
+The napari ``Viewer`` and the well crops are injected by the caller; this widget
+never creates a viewer or loads images itself.
 """
 
 from __future__ import annotations
@@ -50,9 +24,8 @@ from typing import Dict, List, Optional, Tuple
 import numpy as np
 import pandas as pd
 
-from fish_sorter.helpers.embedding.clustering import ClusterStrategy  # noqa: F401 (type)
 from fish_sorter.helpers.labelling.fish_line import parse_fish_line
-from fish_sorter.helpers.labelling.store import GLOBAL_GROUPS, LabelStore, _scope_key  # noqa: F401
+from fish_sorter.helpers.labelling.store import GLOBAL_GROUPS, LabelStore, _scope_key
 
 log = logging.getLogger(__name__)
 
@@ -95,10 +68,9 @@ def _uint16_to_rgb(
 ) -> np.ndarray:
     """Normalize a uint16 2-D crop and paint it with the channel's RGB color.
 
-    Mirrors the rendering ``label_tool.py`` upstream does inside
-    ``_preload_crops``/``_show_crop`` — but on a single cached crop, not a
-    full mosaic. Percentile bounds default to 1/99 of the crop itself
-    when not supplied, which is fine for thumbnails.
+    Operates on a single cached crop (not a full mosaic). Percentile bounds
+    default to 1/99 of the crop itself when not supplied, which is fine for
+    thumbnails.
     """
     arr = np.asarray(crop)
     if arr.ndim != 2:
@@ -169,7 +141,7 @@ def _build_label_tool():
             return QSize(0, 0)
 
     class LabelTool(QWidget):
-        """Embeddable labeller dock — refactored from zebra ``LabelTool``.
+        """Embeddable labeller dock.
 
         Constructed by ``FindingDory`` after embeddings finish. All heavy
         work (model loading, embedding, UMAP, clustering) happens before
@@ -250,7 +222,7 @@ def _build_label_tool():
             # Store is created by FindingDory and passed in.
             self.store = store
             # Register every channel for this single fish line so global
-            # group propagation works (upstream behaviour).
+            # group propagation works.
             self.store._line_channels[self._fish_line] = list(dict.fromkeys(self._all_channels))
             # Ensure scopes exist for each channel.
             for ch in self._all_channels:
@@ -258,13 +230,12 @@ def _build_label_tool():
 
             # Embeddings: channel -> (N_filtered, D). per_channel_indices
             # gives the well-row index into self._well_ids that each
-            # embedding row corresponds to (matches upstream convention).
+            # embedding row corresponds to.
             self.per_ch_emb: Dict[str, np.ndarray] = dict(per_channel_embeddings)
             self.per_ch_idx: Dict[str, np.ndarray] = dict(per_channel_indices)
 
             # Per-channel display contrast bounds for the Show-Fish thumbnails.
-            # Upstream computes these once globally via ``WellLoader.channel_stats``;
-            # FindingDory hands them in from each napari Image layer's
+            # FindingDory hands these in from each napari Image layer's
             # ``contrast_limits`` so all thumbnails normalize against the same
             # range as the in-viewer mosaic. Falling back to per-crop
             # percentiles inside ``_uint16_to_rgb`` makes every well look
@@ -311,7 +282,7 @@ def _build_label_tool():
                 self._on_composite_warm_done, Qt.QueuedConnection
             )
 
-            # Re-propagate globals across channels (upstream behaviour).
+            # Re-propagate globals across channels.
             self.store._propagate_global_groups()
 
             # Current view state.
@@ -341,7 +312,7 @@ def _build_label_tool():
             self._color_by = "group"
             self._hidden_indices: set = set()
 
-            # Cross-channel grid mode (ported from upstream). When enabled
+            # Cross-channel grid mode. When enabled
             # the UMAP scatter is replaced with a synthetic 2-D grid that
             # buckets wells by their cartesian-product (ch_a_group,
             # ch_b_group, ...) assignment. Only wells assigned in *every*
@@ -408,8 +379,7 @@ def _build_label_tool():
             """Return the widget for ``FindingDory`` to dock.
 
             The widget IS the dock content — this just makes the contract
-            explicit (replaces upstream ``run()`` which called
-            ``napari.run()``; the parent app owns the event loop now).
+            explicit. The parent app owns the event loop.
             """
             return self
 
@@ -560,9 +530,9 @@ def _build_label_tool():
             self.lasso_btn.toggled.connect(self._toggle_lasso)
             toolbar_layout.addWidget(self.lasso_btn)
 
-            # Select-by attribute (ported from upstream). For Finding Dory the
-            # only attributes that make sense are "Cluster" and "Group" — fluor
-            # phenotype columns and picked-well info aren't part of this dock.
+            # Select-by attribute. The only attributes that make sense here are
+            # "Cluster" and "Group" — fluor phenotype columns and picked-well
+            # info aren't part of this dock.
             toolbar_layout.addWidget(QLabel("Select by:"))
             self.select_by_combo = QComboBox()
             self.select_by_combo.addItem("(choose attribute)", "")
@@ -737,8 +707,7 @@ def _build_label_tool():
         def _on_fish_line_changed(self, line_name: str):
             """Set up the view for our single fish line.
 
-            Upstream supported switching between fish lines; here it's
-            invoked once at startup.
+            Invoked once at startup — this dock handles a single fish line.
             """
             if not line_name:
                 return
@@ -1265,9 +1234,9 @@ def _build_label_tool():
         def _refresh_select_by_combo(self):
             """Populate the "Select by" attribute combo.
 
-            Finding Dory only exposes Cluster and Group; the upstream Fluor /
-            Phenotype-combo / Picked options don't apply here (no per-well
-            phenotype columns on ``self.metadata``, no ``_picked`` map).
+            Only Cluster and Group are exposed; Fluor / Phenotype-combo /
+            Picked options don't apply here (no per-well phenotype columns on
+            ``self.metadata``, no ``_picked`` map).
             """
             if not hasattr(self, "select_by_combo"):
                 return
@@ -3291,9 +3260,9 @@ def _build_label_tool():
                 _, ch = self._scope()
                 # In Finding Dory the user expects an embedding-driven
                 # reassignment to override Finding Nemo's coarse
-                # empty/multiple/deformed labels. Upstream LabelStore.assign
-                # blocks this via ``is_finalized``; clear the global lock
-                # first so the new assignment lands.
+                # empty/multiple/deformed labels. LabelStore.assign blocks this
+                # via ``is_finalized``; clear the global lock first so the new
+                # assignment lands.
                 self._clear_global_locks(fl, ch, well_ids, group)
                 self.store.assign(fl, ch, well_ids, group)
                 msg = f"Assigned {len(well_ids)} wells to '{group}'"

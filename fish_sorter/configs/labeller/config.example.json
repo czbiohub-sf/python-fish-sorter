@@ -4,6 +4,7 @@
   "device": "auto",
   "prewarm_embeddings": true,
   "filter_to_singlets": true,
+  "dev_mock_embeddings": false,
   "fish_line_fallback": "unknown",
   "umap": { "n_neighbors": 15, "min_dist": 0.1, "canvas_px": 8192 },
   "clustering": {
@@ -17,8 +18,8 @@
   "models": {
     "fish": {
       "checkpoint_path": "/PATH/TO/fish/best.ckpt",
-      "model_arch": "dinov3_vits16",
-      "embedding_dim": 384,
+      "model_arch": "dinov3_vitb16",
+      "embedding_dim": 768,
       "pooling": "gem",
       "crop_size": [416, 1808],
       "resize_to": null,
@@ -29,14 +30,14 @@
     },
     "egg": {
       "checkpoint_path": "/PATH/TO/egg/best.ckpt",
-      "model_arch": "dinov3_vits16",
-      "embedding_dim": 384,
+      "model_arch": "dinov3_vitb16",
+      "embedding_dim": 768,
       "pooling": "gem",
       "crop_size": [672, 672],
       "resize_to": null,
       "contrast": {
         "BF":     { "low_percentile": 0.1, "high_percentile": 99.9,  "asinh_knee": 0.0, "adaptive_high": false },
-        "_FLUOR": { "low_percentile": 0.5, "high_percentile": 99.95, "asinh_knee": 5.0, "adaptive_high": true,  "high_gate_percentile": 99.5, "high_trim_percentile": 99.99 }
+        "_FLUOR": { "low_percentile": 0.5, "high_percentile": 99.97, "asinh_knee": 5.0, "adaptive_high": true,  "high_gate_percentile": 99.5, "high_trim_percentile": 99.99 }
       }
     }
   }

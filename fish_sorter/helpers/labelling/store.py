@@ -1,28 +1,14 @@
 """Scoped label store for the Finding Dory workflow.
 
-Vendored from `zebrafish-unsupervised-classification/fish_classify/labelling/label_tool.py`
-lines 1–281. Kept structurally identical to make future syncs with zebra
-straightforward — do not refactor or rename methods without coordinating.
-
-Each *scope* is a ``(fish_line, channel)`` pair; every scope has its own
+Each experiment is a ``(fish_line, channel)`` pair; every picking experiment has its own
 ordered group list and ``well_id -> group_name`` assignment dict. ``well_id``
 is ``<experiment_folder>_<well_name>``.
-
-The wide-CSV serializer (Finding Dory's classify-compatible output) lives in
-`fish_sorter/GUI/finding_dory.py`, NOT here — that keeps this file a thin
-mirror of the upstream class.
 """
 
-import json
-import logging
 from collections import defaultdict
-from pathlib import Path  # noqa: F401  (kept for parity with upstream)
-from typing import Dict, List, Optional, Tuple  # noqa: F401
+from typing import Dict, List
 
-import numpy as np  # noqa: F401  (kept for parity with upstream)
 import pandas as pd
-
-log = logging.getLogger(__name__)
 
 # Default groups always present in every scope
 DEFAULT_GROUPS = ["empty", "multiple", "deformed"]
@@ -56,7 +42,6 @@ _TAB20 = [
     [0.62, 0.85, 0.90, 1.0],
 ]
 
-_NOISE_COLOR = [0.35, 0.35, 0.35, 0.5]
 _UNASSIGNED_COLOR = [0.60, 0.60, 0.60, 0.6]
 
 
@@ -65,9 +50,9 @@ def _scope_key(fish_line: str, channel: str) -> str:
 
 
 class LabelStore:
-    """Per-scope label model.
+    """Per-experiment label model.
 
-    Each *scope* is a ``(fish_line, channel)`` pair.  Every scope has its
+    Each experiment is a ``(fish_line, channel)`` pair.  Every scope has its
     own ordered group list and ``well_id -> group_name`` assignment dict.
     ``well_id`` is ``<experiment_folder>_<well_name>``.
     """
@@ -210,65 +195,3 @@ class LabelStore:
         for g in self.assignments(fish_line, channel).values():
             c[g] += 1
         return dict(c)
-
-    # -- persistence -------------------------------------------------------
-
-    def save_csv(self, path: str):
-        """Save all scoped assignments as a flat (long-format) CSV.
-
-        This is the upstream zebra serializer; Finding Dory uses
-        `write_wide_csv` in `fish_sorter/GUI/finding_dory.py` for the
-        classify-compatible wide format. This method is kept for parity
-        with the upstream class.
-        """
-        rows = []
-        for scope_key, scope in self._scopes.items():
-            fish_line, channel = scope_key.split("|", 1)
-            for wid, group in scope["assignments"].items():
-                match = self.well_metadata[self.well_metadata["well_id"] == wid]
-                if len(match) > 0:
-                    row = match.iloc[0]
-                    rows.append({
-                        "well_id": wid,
-                        "group": group,
-                        "fish_line": fish_line,
-                        "channel": channel,
-                        "experiment": row["experiment"],
-                        "well_name": row["well_name"],
-                    })
-                else:
-                    rows.append({
-                        "well_id": wid,
-                        "group": group,
-                        "fish_line": fish_line,
-                        "channel": channel,
-                        "experiment": "",
-                        "well_name": "",
-                    })
-        df = pd.DataFrame(rows)
-        df.to_csv(path, index=False)
-        total = sum(len(s["assignments"]) for s in self._scopes.values())
-        log.info(f"Saved {total} assignments across {len(self._scopes)} scopes to {path}")
-
-    def load_csv(self, path: str):
-        df = pd.read_csv(path)
-        loaded = 0
-        for _, row in df.iterrows():
-            wid = str(row["well_id"])
-            group = str(row.get("group", ""))
-            fish_line = str(row.get("fish_line", ""))
-            channel = str(row.get("channel", ""))
-            if not group or not fish_line or not channel:
-                continue
-            self.assign(fish_line, channel, [wid], group)
-            loaded += 1
-        log.info(f"Loaded {loaded} assignments from {path}")
-
-    def to_json(self) -> dict:
-        return {"scopes": self._scopes}
-
-    @classmethod
-    def from_json(cls, data: dict, well_metadata: pd.DataFrame) -> "LabelStore":
-        store = cls(well_metadata)
-        store._scopes = data.get("scopes", {})
-        return store

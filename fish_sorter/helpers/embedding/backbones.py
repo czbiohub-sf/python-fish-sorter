@@ -1,10 +1,12 @@
-"""DINOv3 inference backbone (trimmed vendor of zebra-repo `models/backbones.py`).
+"""DINOv3 inference backbone.
 
 Only the forward path needed to produce embeddings is kept: `GeMPooling`,
-`ImageNetNormalize`, and `FishDINOv3` (gem-pooling variant). Training-only
-machinery (BYOL projector heads, freeze helpers, alternative pooling modes,
-`forward_dense`, env-var path defaults) is intentionally removed — paths come
-from the labeller config, never from the environment.
+`ImageNetNormalize`, and `FishDINOv3` (gem-pooling variant). Paths come
+from the labeller config.
+
+The backbone is loaded from a local clone of the DINOv3 repo via
+`torch.hub` (`dinov3_repo_path` in the labeller config):
+https://github.com/facebookresearch/dinov3
 """
 
 import logging
@@ -97,7 +99,7 @@ class FishDINOv3(nn.Module):
 
     def __init__(
         self,
-        variant: str = "vits16",
+        variant: str = "vitb16",
         in_channels: int = 1,
         repo_path: Optional[str] = None,
         weights_path: Optional[str] = None,
@@ -128,7 +130,8 @@ class FishDINOv3(nn.Module):
         """Load a DINOv3 backbone from a local hub clone, optionally applying weights."""
         if repo_path is None:
             raise ValueError(
-                "repo_path is required (set dinov3_repo_path in the labeller config)"
+                "repo_path is required (set dinov3_repo_path in the labeller "
+                "config). Clone it from https://github.com/facebookresearch/dinov3"
             )
         if not Path(repo_path).exists():
             raise FileNotFoundError(f"DINOv3 repo not found at {repo_path}")

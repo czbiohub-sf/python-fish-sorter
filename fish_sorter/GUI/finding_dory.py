@@ -4,12 +4,10 @@
 workflow:
 
   Click Finding Dory -> embeddings compute in background -> UMAP scatter renders
-  -> user lassoes wells, assigns named groups, toggles lHead per well, saves
-  CSV.
+  -> user lassoes wells, assigns named groups accross each channel, and then combines for final classification.
 
-It shares the active `Classify` instance (and therefore the napari viewer,
-points layer, and well coordinates) so it never duplicates the well-extraction
-work Finding Nemo already does. On Save it writes a wide CSV that is a strict
+It shares the active `Finding Nemo` instance (and therefore the napari viewer,
+points layer, and well coordinates). On Save it writes a wide CSV that is a strict
 superset of Finding Nemo's output, so downstream `SelectGUI` reads either
 interchangeably.
 
@@ -37,8 +35,7 @@ from fish_sorter.helpers.labelling.store import GLOBAL_GROUPS, LabelStore
 log = logging.getLogger(__name__)
 
 # umap-learn prints a TensorFlow warning at import advertising the parametric
-# UMAP feature, which we don't use. Silence it so the dock log stays focused
-# on actionable messages.
+# UMAP feature, which we don't use. Silenced.
 warnings.filterwarnings(
     "ignore", message=".*tensorflow.*parametric.*", module=r"umap.*"
 )
@@ -46,10 +43,8 @@ warnings.filterwarnings(
     "ignore", message=".*Tensorflow not installed.*", module=r"umap.*"
 )
 
-# UMAP's first call triggers Numba JIT compilation, which dumps thousands
-# of SSA / bytecode DEBUG lines if the host configured the root logger at
-# DEBUG. Cap the noisiest libraries at WARNING so embedding runs stay
-# legible. Anything genuinely broken still surfaces.
+# UMAP's first call triggers Numba JIT compilation, when logging is set to debug this overflows the log file.
+# set it to warning.
 for _noisy in ("numba", "numba.core", "numba.core.ssa", "numba.core.byteflow",
                "umap", "umap.umap_", "llvmlite"):
     logging.getLogger(_noisy).setLevel(logging.WARNING)
@@ -63,7 +58,7 @@ for _noisy in ("numba", "numba.core", "numba.core.ssa", "numba.core.byteflow",
 def default_csv_path(expt_dir: str, prefix: str, timestamp: Optional[str] = None) -> str:
     """Construct the `{TIMESTAMP}_{PREFIX}_classifications.csv` path.
 
-    Matches `classify.py:316–317` — Finding Dory writes alongside Finding Nemo
+    Matches Finding Nemo format — Finding Dory writes alongside Finding Nemo
     so downstream `SelectGUI` reads either interchangeably.
     """
     if timestamp is None:
@@ -91,19 +86,24 @@ def write_wide_csv(
         {channel1}_{custom_group0}, ...
 
     The identifier column is named ``slotName`` (not ``well_name``) so the wide
-    CSV is a drop-in for `classify.py`'s output — `picking.py:match_pick`/`pick_me`
-    join and drive hardware on ``slotName``.
+    CSV is a drop-in for `classify.py`'s standard output.
 
-    Sources for the default columns:
-      - If `well_defaults[well_id]` provides a column (`empty`, `singlet`,
-        `multiple`, `deformed`, `lHead`), that wins. This is how Finding Dory
-        passes Finding Nemo's `points_layer.features` through.
-      - Otherwise:
-          * `empty`/`multiple`/`deformed` derive from LabelStore global-group
-            assignments (legacy default).
-          * `singlet`, when `infer_singlet=True`, is the complement of the
-            three globals.
-          * `lHead` comes from `lhead_map`.
+    Sources for the default columns. The **LabelStore is authoritative**: when
+    Finding Dory is used, the labels in the store are what get saved. Finding
+    Nemo's classification (passed via `well_defaults`) only *initializes* wells
+    the user never touched — it never overrides a store assignment.
+
+    Per well, in priority order:
+      1. If the store assigns the well to a global group
+         (`empty`/`multiple`/`deformed`), that flag wins and `singlet=0`.
+      2. Else if the store assigns the well to *any* custom group, it's a
+         categorized fish: all globals are 0 and `singlet=1`.
+      3. Else (untouched in the store) fall back to `well_defaults[well_id]`
+         (Finding Nemo's `empty`/`singlet`/`multiple`/`deformed`); with none
+         supplied, all globals are 0 and `singlet` follows `infer_singlet`.
+
+    `lHead` is not a LabelStore concept, so it always comes from
+    `well_defaults[well_id]["lHead"]` if present, else `lhead_map`.
 
     All scoring columns are int (0/1).
     """
@@ -124,27 +124,40 @@ def write_wide_csv(
     for wid in well_order:
         ext = well_defaults.get(wid, {})
 
-        if "empty" in ext or "multiple" in ext or "deformed" in ext:
+        # Inspect the LabelStore across channels: a global assignment (which
+        # propagates to every channel) takes precedence; otherwise note whether
+        # the well landed in any custom group at all.
+        store_global = None
+        store_has_any = False
+        for ch in channels:
+            assigned = store.assignments(fish_line, ch).get(wid)
+            if assigned is None:
+                continue
+            store_has_any = True
+            if assigned in GLOBAL_GROUPS:
+                store_global = assigned
+
+        if store_global is not None:
+            # Finding Dory's call wins — Finding Nemo never overrides it.
+            empty_v = int(store_global == "empty")
+            multiple_v = int(store_global == "multiple")
+            deformed_v = int(store_global == "deformed")
+            singlet_v = 0
+        elif store_has_any:
+            # Assigned to a custom cluster in Finding Dory → a categorized fish.
+            empty_v = multiple_v = deformed_v = 0
+            singlet_v = 1
+        else:
+            # Untouched in the store → initialize from Finding Nemo's defaults.
             empty_v = int(bool(ext.get("empty", 0)))
             multiple_v = int(bool(ext.get("multiple", 0)))
             deformed_v = int(bool(ext.get("deformed", 0)))
-        else:
-            # Legacy fallback: derive from LabelStore globals.
-            store_flags = {g: 0 for g in ("empty", "multiple", "deformed")}
-            for ch in channels:
-                assigned = store.assignments(fish_line, ch).get(wid)
-                if assigned in store_flags:
-                    store_flags[assigned] = 1
-            empty_v = store_flags["empty"]
-            multiple_v = store_flags["multiple"]
-            deformed_v = store_flags["deformed"]
-
-        if "singlet" in ext:
-            singlet_v = int(bool(ext["singlet"]))
-        elif infer_singlet:
-            singlet_v = int(not (empty_v or multiple_v or deformed_v))
-        else:
-            singlet_v = 0
+            if "singlet" in ext:
+                singlet_v = int(bool(ext["singlet"]))
+            elif infer_singlet:
+                singlet_v = int(not (empty_v or multiple_v or deformed_v))
+            else:
+                singlet_v = 0
 
         if "lHead" in ext:
             lhead_v = int(bool(ext["lHead"]))
@@ -196,152 +209,47 @@ def _subset_embeddings(
 
 
 # ---------------------------------------------------------------------------
-# First-time setup dialog
+# Config check
 # ---------------------------------------------------------------------------
 
 
 def ensure_labeller_config(cfg_dir: Path, parent=None) -> bool:
-    """Ensure `<cfg_dir>/labeller/config.json` exists and is valid.
+    """Check that `<cfg_dir>/labeller/config.json` exists and is valid.
 
-    If missing or unreadable, opens a GUI dialog with file pickers for
-    checkpoint + DINOv3 repo and a mode dropdown, then writes a fresh
-    `config.json` derived from `config.example.json` with the chosen paths.
+    Does not create or edit the config — if it's missing or unparseable, shows
+    a popup telling the user to create it (from `config.example.json`) and
+    returns False so the caller can abort.
 
     Returns:
-        True if config.json now exists and parses; False if the user
-        cancelled or the dialog failed.
+        True if config.json exists and parses; False otherwise.
     """
     cfg_path = Path(cfg_dir) / "labeller" / "config.json"
     example_path = Path(cfg_dir) / "labeller" / "config.example.json"
 
-    # Already valid? Skip the dialog entirely.
     if cfg_path.exists():
         try:
             with open(cfg_path) as f:
                 json.load(f)
             return True
-        except Exception:
-            log.warning(f"{cfg_path} exists but failed to parse — running setup.")
-
-    if not example_path.exists():
-        log.error(f"missing template: {example_path}")
-        return False
-
-    # Lazy imports so non-GUI users (tests, scripts) don't pull Qt.
-    from qtpy.QtWidgets import (
-        QComboBox,
-        QDialog,
-        QDialogButtonBox,
-        QFileDialog,
-        QFormLayout,
-        QHBoxLayout,
-        QLabel,
-        QLineEdit,
-        QMessageBox,
-        QPushButton,
-        QVBoxLayout,
-    )
-
-    class _SetupDialog(QDialog):
-        def __init__(self):
-            super().__init__(parent)
-            self.setWindowTitle("Set up Finding Dory")
-            self.setMinimumWidth(560)
-
-            v = QVBoxLayout(self)
-            v.addWidget(QLabel(
-                "<b>Finding Dory first-time setup.</b><br>"
-                "Tell us where your model checkpoint and DINOv3 repo live. "
-                "These paths are stored in the labeller config; you'll only "
-                "do this once per machine."
-            ))
-
-            form = QFormLayout()
-
-            self.ckpt_edit = QLineEdit()
-            self.ckpt_btn = QPushButton("Browse…")
-            self.ckpt_btn.clicked.connect(self._pick_ckpt)
-            ckpt_row = QHBoxLayout()
-            ckpt_row.addWidget(self.ckpt_edit, 1)
-            ckpt_row.addWidget(self.ckpt_btn)
-            form.addRow("Model checkpoint (.ckpt):", _wrap_row(ckpt_row))
-
-            self.repo_edit = QLineEdit()
-            self.repo_btn = QPushButton("Browse…")
-            self.repo_btn.clicked.connect(self._pick_repo)
-            repo_row = QHBoxLayout()
-            repo_row.addWidget(self.repo_edit, 1)
-            repo_row.addWidget(self.repo_btn)
-            form.addRow("DINOv3 repo (folder):", _wrap_row(repo_row))
-
-            self.mode_combo = QComboBox()
-            self.mode_combo.addItems(["fish", "egg"])
-            form.addRow("Mode (which model bundle to use):", self.mode_combo)
-
-            v.addLayout(form)
-
-            self.buttons = QDialogButtonBox(
-                QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+        except Exception as e:
+            log.warning(f"{cfg_path} exists but failed to parse: {e}")
+            message = (
+                f"The labeller config exists but couldn't be parsed:\n\n{cfg_path}\n\n"
+                f"Fix the JSON (or recreate it from {example_path.name}) and try again."
             )
-            self.buttons.accepted.connect(self._accept)
-            self.buttons.rejected.connect(self.reject)
-            v.addWidget(self.buttons)
+    else:
+        log.error(f"missing labeller config: {cfg_path}")
+        message = (
+            f"Finding Dory needs a labeller config, but none was found:\n\n{cfg_path}\n\n"
+            f"Create it by copying {example_path.name} in the same folder and "
+            f"filling in your model checkpoint and DINOv3 repo paths."
+        )
 
-        def _pick_ckpt(self):
-            path, _ = QFileDialog.getOpenFileName(
-                self, "Pick model checkpoint", filter="Checkpoints (*.ckpt);;All (*)"
-            )
-            if path:
-                self.ckpt_edit.setText(path)
+    # Lazy import so non-GUI users (tests, scripts) don't pull Qt.
+    from qtpy.QtWidgets import QMessageBox
 
-        def _pick_repo(self):
-            path = QFileDialog.getExistingDirectory(self, "Pick DINOv3 repo folder")
-            if path:
-                self.repo_edit.setText(path)
-
-        def _accept(self):
-            ckpt = self.ckpt_edit.text().strip()
-            repo = self.repo_edit.text().strip()
-            if not ckpt or not Path(ckpt).exists():
-                QMessageBox.warning(
-                    self, "Pick a real checkpoint",
-                    f"The checkpoint path is missing or doesn't exist:\n{ckpt}",
-                )
-                return
-            if not repo or not Path(repo).exists():
-                QMessageBox.warning(
-                    self, "Pick a real folder",
-                    f"The DINOv3 repo folder is missing or doesn't exist:\n{repo}",
-                )
-                return
-            self._ckpt = ckpt
-            self._repo = repo
-            self._mode = self.mode_combo.currentText()
-            self.accept()
-
-    dlg = _SetupDialog()
-    if dlg.exec_() != dlg.Accepted:
-        return False
-
-    # Compose the new config from the example template.
-    with open(example_path) as f:
-        cfg = json.load(f)
-    cfg["dinov3_repo_path"] = dlg._repo
-    if dlg._mode in cfg.get("models", {}):
-        cfg["models"][dlg._mode]["checkpoint_path"] = dlg._ckpt
-    cfg_path.parent.mkdir(parents=True, exist_ok=True)
-    with open(cfg_path, "w") as f:
-        json.dump(cfg, f, indent=2)
-    log.info(f"wrote initial labeller config to {cfg_path}")
-    return True
-
-
-def _wrap_row(layout):
-    """Wrap a QLayout in a transparent QWidget so it can sit inside a QFormLayout."""
-    from qtpy.QtWidgets import QWidget
-    w = QWidget()
-    w.setLayout(layout)
-    return w
+    QMessageBox.critical(parent, "Finding Dory: config not found", message)
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -382,9 +290,9 @@ def _build_finding_dory():
 
         Construction kicks off a background thread that builds the embedding
         extractor and runs the forward pass over all wells. When that finishes
-        we drop the vendored `LabelTool` widget into the dock as the main
+        label tool widget is added to the dock as the main
         content; the wrapper here keeps a status panel up top and a Save
-        button at the bottom, plus owns the (one-time) lifecycle.
+        button at the bottom.
         """
 
         # Signals — emitted from worker thread, delivered on GUI thread.
@@ -908,17 +816,30 @@ def _build_finding_dory():
         def _on_save(self):
             path = default_csv_path(self.expt_dir, self.prefix)
 
-            # Source of truth for empty/singlet/multiple/deformed/lHead is
-            # Finding Nemo's points_layer.features. Build per-well overrides
-            # so write_wide_csv layers them on top of LabelStore-derived
-            # defaults.
+            # The LabelStore (Finding Dory's labels) is the source of truth.
+            # Finding Nemo's points_layer.features only initializes wells the
+            # user never touched and supplies lHead (not a store concept);
+            # write_wide_csv never lets these override a store assignment.
+            #
+            # When filter_to_singlets=false the whole plate is clustered and
+            # Finding Dory is the sole authority for the empty/singlet/multiple/
+            # deformed classification — Nemo's defaults for those aren't used
+            # (consistent with the seeding step, which skips 'empty' in this
+            # mode). lHead is always taken from Nemo, since it isn't a store
+            # concept; the rest then derives from the store.
+            if self.cfg.get("filter_to_singlets", True):
+                wanted_cols = ("empty", "singlet", "multiple", "deformed", "lHead")
+            else:
+                wanted_cols = ("lHead",)
+                log.info(
+                    "filter_to_singlets=false; saving LabelStore classification "
+                    "(only lHead taken from Finding Nemo)."
+                )
+
             well_defaults: Dict[str, Dict[str, int]] = {}
             try:
                 feat = self.classify.points_layer.features
-                default_cols = [
-                    c for c in ("empty", "singlet", "multiple", "deformed", "lHead")
-                    if c in feat.columns
-                ]
+                default_cols = [c for c in wanted_cols if c in feat.columns]
                 for i, wid in enumerate(self.well_ids):
                     well_defaults[wid] = {
                         c: int(bool(feat[c].iloc[i])) for c in default_cols
