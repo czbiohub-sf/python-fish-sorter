@@ -1,10 +1,10 @@
 {
     "zaber_config": {
-        "port": "COM3",
+        "port": "COM4",
         "name": {
-            "x": "X-LSQ150B-E01",
-            "y": "X-LSQ150B-E01",
-            "p": "X-MCB1",
+            "x": "T-LSQ150D",
+            "y": "A-LSQ150A-E01",
+            "p": "T-LSQ075B",
             "description": "Stage name (typically matches serial number)"
         },
         "home": {
@@ -20,9 +20,9 @@
             "description": "The max stage axis position in mm"
         },
         "max_speed": {
-            "x": 1500000,
-            "y": 1500000,
-            "p": 500000,
+            "x": 65471,
+            "y": 1800000,
+            "p": 32000,
             "description": "The speed of the stages for all general movements in command data units"
         }
     }

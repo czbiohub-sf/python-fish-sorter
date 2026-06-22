@@ -1,4 +1,4 @@
-# For Andor Zyla or Hamamatsu Orca
+# For Andor Zyla
 
 # CAMERA SENSOR PIXEL SIZE UM
 CAM_PX_UM = 6.5
@@ -8,7 +8,7 @@ CAM_X_PX = 2048
 CAM_Y_PX = 2048
 
 # Flip image when stitching mosaic
-MIRROR_X = True
+MIRROR_X = False
 
 # PIXEL_SIZE_UM = CAMERA_PIXEL_SIZE_UM / MAG
 # FOV_WIDTH = CAM_X_PX * PIXEL_SIZE_UM
