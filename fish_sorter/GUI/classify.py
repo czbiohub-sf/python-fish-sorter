@@ -441,12 +441,13 @@ class Classify(QObject):
         return self._extract_wells(points, img_flag=True, parallel=True)
 
     def _start_async_embedding(self):
-        """Pre-warm Finding Dory embeddings after stitching, in the background.
+        """Pre-warm Finding Dory embeddings + UMAP + clustering after stitching.
 
-        Embeds *every* well now (find_fish has not necessarily run yet) so the
-        Finding Dory dock can adopt the result on click instead of paying the
-        model-load + forward-pass cost then. The singlet filter, if enabled, is
-        applied by the dock when it adopts these embeddings.
+        Embeds *every* well now (find_fish has not necessarily run yet), then
+        fits the per-channel UMAP layout and clusters, so the Finding Dory dock
+        can adopt all three on click instead of paying the model-load +
+        forward-pass + UMAP-fit cost then. The singlet filter, if enabled, is
+        applied by the dock when it adopts these results.
 
         Results live only on this instance for the session — nothing is written
         to disk. Silently no-ops when the labeller config is absent (first run,
@@ -521,12 +522,6 @@ class Classify(QObject):
             self._dory_embed_progress = (step, total)
 
         def _run():
-            # Embeddings only. UMAP/clustering are deliberately NOT fit here:
-            # UMAP's first fit triggers numba JIT compilation, which holds the
-            # GIL for the whole compile and freezes the Qt event loop even on a
-            # worker thread. The dock fits UMAP lazily on open instead (behind
-            # its loading panel). Returns empty umap/cluster dicts so the
-            # adoption path stays a no-op (LabelTool fits live).
             extractor, embeds, idx = compute_embeddings(
                 cfg,
                 mode,
@@ -538,7 +533,55 @@ class Classify(QObject):
                 keep_indices=None,  # embed all wells; dock filters on adoption
                 progress_cb=_progress_cb,
             )
-            return extractor, embeds, idx, {}, {}
+
+            # Pre-fit UMAP + clustering per channel so the dock adopts them
+            # instead of fitting live on open. Each array is aligned to
+            # ``idx[ch]`` (same row order as ``embeds[ch]``), which is what
+            # FindingDory._align_precomputed expects. A failure for one channel
+            # just omits it — the dock fits that channel live, so this is a
+            # pure speed-up, never a correctness risk.
+            #
+            # Trade-off: UMAP's first fit JIT-compiles numba kernels and briefly
+            # holds the GIL (freezing the GUI for a few seconds). We now pay that
+            # here, during the post-stitch background phase, so the Finding Dory
+            # dock opens instantly later instead of stalling on first open.
+            from fish_sorter.helpers.embedding.clustering import (
+                build_cluster_strategy,
+                fit_umap_2d,
+            )
+
+            umap_cfg = cfg.get("umap", {}) or {}
+            n_neighbors = int(umap_cfg.get("n_neighbors", 15))
+            min_dist = float(umap_cfg.get("min_dist", 0.1))
+            try:
+                cluster_strategy = build_cluster_strategy(cfg)
+            except Exception as e:
+                logging.warning(f"Finding Dory prewarm: clustering unavailable: {e}")
+                cluster_strategy = None
+
+            umaps = {}
+            clusters = {}
+            for ch, emb in embeds.items():
+                emb = np.asarray(emb)
+                if len(emb) < 2:
+                    continue
+                try:
+                    coords = fit_umap_2d(
+                        emb, n_neighbors=n_neighbors, min_dist=min_dist
+                    )
+                    if coords is not None:
+                        umaps[ch] = coords
+                except Exception as e:
+                    logging.warning(f"Finding Dory prewarm: UMAP failed for {ch}: {e}")
+                if cluster_strategy is not None:
+                    try:
+                        clusters[ch] = np.asarray(cluster_strategy.cluster(emb))
+                    except Exception as e:
+                        logging.warning(
+                            f"Finding Dory prewarm: clustering failed for {ch}: {e}"
+                        )
+
+            return extractor, embeds, idx, umaps, clusters
 
         self._dory_embed_executor = concurrent.futures.ThreadPoolExecutor(
             max_workers=1, thread_name_prefix="DoryPrewarm",

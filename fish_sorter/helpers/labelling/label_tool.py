@@ -976,6 +976,23 @@ def _build_label_tool():
 
             self._cross_sorted_keys = sorted(classes.keys(), key=_sort_key)
 
+        def _thumb_crop_aspect(self) -> float:
+            """Width/height of the well crops, for layouts that must respect
+            the crop shape (wide fish vs square egg).
+
+            Reads a real crop so it adapts to the active model. Prefers a
+            cached RGB crop, falls back to the raw per-well crops, then to the
+            fish ratio if nothing is loaded yet.
+            """
+            for rgb in self._crop_cache.values():
+                if rgb is not None and getattr(rgb, "ndim", 0) >= 2 and rgb.shape[0] > 0:
+                    return rgb.shape[1] / rgb.shape[0]
+            for well in self._well_crops:
+                for crop in well.values():
+                    if crop is not None and getattr(crop, "ndim", 0) >= 2 and crop.shape[0] > 0:
+                        return crop.shape[1] / crop.shape[0]
+            return 1808 / 416
+
         def _compute_cross_channel_grid(self):
             """Bucket wells by cartesian-product assignment, lay out as a grid.
 
@@ -993,8 +1010,14 @@ def _build_label_tool():
 
             # Sub-grid layout per combo.
             max_sub_cols = 4         # wells per row inside one combo
-            col_spacing = 8.0        # horizontal spacing between wells
             row_spacing = 2.5        # vertical spacing between rows of wells
+            # Horizontal spacing tracks the crop aspect so thumbnails tile
+            # without overlapping: a thumbnail's world width is its world
+            # height (~row_spacing) times the crop's width/height. Wide fish
+            # crops therefore need more horizontal room than square eggs; the
+            # 1.1 factor leaves a small gap between neighbours.
+            aspect = self._thumb_crop_aspect()
+            col_spacing = max(row_spacing, row_spacing * aspect * 1.1)
             combo_v_gap = 4.0        # vertical gap between stacked combos
             major_col_gap = 12.0     # horizontal gap between major columns
             max_combos_per_major_col = 6
@@ -2671,13 +2694,16 @@ def _build_label_tool():
             col_w = max(40, (vp - 16) // n_cols)
             for title_lbl, crop_lbl, full_pm in getattr(self, "_assign_crop_labels", []):
                 w = col_w
-                # Square-ish cards — height tracks width with a fish-like aspect.
-                h = max(1, int(w * 416 / 1808))
                 if full_pm is not None and not full_pm.isNull():
                     scaled = full_pm.scaledToWidth(w, Qt.SmoothTransformation)
                     crop_lbl.setPixmap(scaled)
+                    # Card height follows the crop's real aspect (wide fish vs
+                    # square egg) instead of a hardcoded fish-shaped ratio.
+                    h = max(1, scaled.height())
                 else:
                     crop_lbl.clear()
+                    # No thumbnail (e.g. the Unassign card): a thin fish-ish strip.
+                    h = max(1, int(w * 416 / 1808))
                 crop_lbl.setFixedHeight(h)
                 title_lbl.setFixedHeight(16)   # single-line 10px title; was tied to crop height h
 
@@ -2995,6 +3021,12 @@ def _build_label_tool():
             self.crop_info.setText("No selection")
 
         def _on_add_group(self):
+            # In cross-channel mode there's no single channel to add to — a
+            # "class" is a combo (one group per channel), so ask for a name
+            # per channel like rename does.
+            if self._cross_channel_mode:
+                self._add_combo()
+                return
             name, ok = QInputDialog.getText(self, "New Group", "Group name:")
             if ok and name.strip():
                 fl, ch = self._scope()
@@ -3002,6 +3034,84 @@ def _build_label_tool():
                     QMessageBox.warning(self, "Group exists", f"'{name}' already exists.")
                     return
                 self._refresh_group_list()
+
+        def _add_combo(self):
+            """Create a cross-channel combo by naming a class per channel.
+
+            Mirrors ``_rename_combo``'s per-channel dialog: one field per
+            channel. Each named class is created in that channel's scope. If
+            wells are currently selected they're assigned into the new combo so
+            it materializes in the grid immediately — an empty combo has no
+            members and so wouldn't bucket on its own.
+            """
+            if not self._cross_channels:
+                return
+
+            dlg = QDialog(self)
+            dlg.setWindowTitle("New Combo Class")
+            outer = QVBoxLayout(dlg)
+            note = QLabel(
+                "Name a class for each channel. The combo is created across "
+                "all channels; any wells currently selected are assigned into "
+                "it so it appears in the grid."
+            )
+            note.setWordWrap(True)
+            outer.addWidget(note)
+
+            form = QFormLayout()
+            edits = []  # (channel, QLineEdit)
+            for ch_i in self._cross_channels:
+                edit = QLineEdit()
+                edits.append((ch_i, edit))
+                form.addRow(f"{ch_i}:", edit)
+            outer.addLayout(form)
+
+            buttons = QDialogButtonBox(
+                QDialogButtonBox.Ok | QDialogButtonBox.Cancel
+            )
+            buttons.accepted.connect(dlg.accept)
+            buttons.rejected.connect(dlg.reject)
+            outer.addWidget(buttons)
+
+            if dlg.exec_() != QDialog.Accepted:
+                return
+
+            names = []
+            for ch_i, edit in edits:
+                name = edit.text().strip()
+                if not name:
+                    QMessageBox.warning(
+                        self, "Missing name",
+                        f"Enter a class name for every channel (missing: {ch_i}).",
+                    )
+                    return
+                names.append(name)
+
+            fl = self._current_line
+            for ch_i, name in zip(self._cross_channels, names):
+                self.store.create_group(fl, ch_i, name)
+
+            # Assign any current selection into the new combo so it shows up.
+            well_ids = self._selected_well_ids()
+            if well_ids:
+                for ch_i, name in zip(self._cross_channels, names):
+                    self._clear_global_locks(fl, ch_i, well_ids, name)
+                    self.store.assign(fl, ch_i, well_ids, name)
+
+            self._compute_cross_channel_grid()
+            self._update_scatter()
+            self._refresh_group_list()
+            self._update_status()
+            if self.image_umap_checkbox.isChecked():
+                self._render_image_umap()
+
+            label = " × ".join(
+                f"{c}:{g}" for c, g in zip(self._cross_channels, names)
+            )
+            self.crop_info.setText(
+                f"Created combo '{label}'"
+                + (f", assigned {len(well_ids)} wells" if well_ids else "")
+            )
 
         def _on_rename_group(self):
             # In cross-channel mode the selected row is a combo (one cluster

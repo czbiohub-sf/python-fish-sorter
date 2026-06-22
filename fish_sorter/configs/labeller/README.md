@@ -49,14 +49,17 @@ config. If a path is wrong it surfaces the error — fix `config.json` by hand.
   (default) uses a per-device default (cuda `32`, mps `16`, cpu `8`). Raise
   it on a GPU with spare VRAM for faster throughput; lower it if you hit
   out-of-memory errors.
-- `prewarm_embeddings` — (default `true`) compute embeddings in the
-  background as soon as the mosaic finishes stitching, so the Finding Dory
-  dock opens instantly instead of running the model on click. Pre-warm
-  embeds *every* well; the singlet filter (below) is applied when the dock
-  adopts the result. Set `false` on slow/CPU-only machines to defer all
-  embedding work until Finding Dory is actually opened. The very first run on
-  a fresh machine never pre-warms (the config doesn't exist until you finish
-  setup), so that run computes on click regardless.
+- `prewarm_embeddings` — (default `true`) compute embeddings, the per-channel
+  UMAP layout, and clusters in the background as soon as the mosaic finishes
+  stitching, so the Finding Dory dock opens instantly instead of running the
+  model + UMAP fit on click. Pre-warm embeds *every* well; the singlet filter
+  (below) is applied when the dock adopts the result. Note the first UMAP fit
+  JIT-compiles numba kernels and briefly freezes the GUI — with pre-warm on,
+  that cost is paid in the background phase rather than on first dock open. Set
+  `false` on slow/CPU-only machines to defer all embedding work until Finding
+  Dory is actually opened. The very first run on a fresh machine never
+  pre-warms (the config doesn't exist until you finish setup), so that run
+  computes on click regardless.
 - `filter_to_singlets` — (default `true`) restrict the embedding view to
   wells Finding Nemo flagged as singlets (auto-running `find_fish` if needed).
   Set `false` to embed and show every well, including empties / multiples /
