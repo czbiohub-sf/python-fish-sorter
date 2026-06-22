@@ -2365,7 +2365,14 @@ def _build_label_tool():
                 w = (parent.width() - 12) if parent else self.crop_label.width()
                 if w < 1:
                     return
+                # Fit to panel width, but bound the height so near-square egg
+                # crops don't grow tall enough to crowd out the rest of the
+                # panel. Aspect ratio is preserved either way; wide fish crops
+                # stay under the cap and are unaffected.
+                max_h = 240
                 scaled = self._crop_full_pixmap.scaledToWidth(w, Qt.SmoothTransformation)
+                if scaled.height() > max_h:
+                    scaled = self._crop_full_pixmap.scaledToHeight(max_h, Qt.SmoothTransformation)
                 self.crop_label.setPixmap(scaled)
             finally:
                 self._crop_updating = False
@@ -2665,13 +2672,20 @@ def _build_label_tool():
             vp = self._assign_scroll.viewport().width() or 200
             n_cols = 3
             col_w = max(40, (vp - 16) // n_cols)
+            # Cap the thumbnail height so near-square egg crops don't grow to a
+            # full column width and push the rest of the cards out of view. Wide
+            # fish crops scale to well under this and are unaffected.
+            max_h = 96
             for title_lbl, crop_lbl, full_pm in getattr(self, "_assign_crop_labels", []):
                 w = col_w
                 if full_pm is not None and not full_pm.isNull():
+                    # Fit the crop to the column width, but if that makes it
+                    # taller than max_h (tall/square crops), bound by height
+                    # instead — either way aspect ratio is preserved.
                     scaled = full_pm.scaledToWidth(w, Qt.SmoothTransformation)
+                    if scaled.height() > max_h:
+                        scaled = full_pm.scaledToHeight(max_h, Qt.SmoothTransformation)
                     crop_lbl.setPixmap(scaled)
-                    # Card height follows the crop's real aspect (wide fish vs
-                    # square egg) instead of a hardcoded fish-shaped ratio.
                     h = max(1, scaled.height())
                 else:
                     crop_lbl.clear()
