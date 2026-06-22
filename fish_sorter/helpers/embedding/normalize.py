@@ -136,13 +136,16 @@ def apply_normalization(
 
     `arr` may be uint16 (raw mosaic / crop) or float; the stretch is pointwise.
     """
-    arr = arr.astype(np.float32, copy=False)
+    # Always materialize a fresh float32 buffer we own, then transform it
+    # in place — avoids allocating several full-size temporaries per call,
+    # which matters for the multi-GB crop stacks in the embedding pipeline.
+    out = arr.astype(np.float32)
+    out -= low
     if high > low:
-        out = (arr - low) / (high - low)
-    else:
-        out = arr - low
+        out /= (high - low)
     np.clip(out, 0.0, 1.0, out=out)
     if asinh_knee > 0.0:
-        k = np.float32(asinh_knee)
-        out = np.arcsinh(out * k) / np.arcsinh(k)
+        out *= np.float32(asinh_knee)
+        np.arcsinh(out, out=out)
+        out /= np.arcsinh(asinh_knee)
     return out

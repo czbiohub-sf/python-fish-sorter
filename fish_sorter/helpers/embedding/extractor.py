@@ -309,10 +309,14 @@ class EmbeddingExtractor:
             )
 
             t0 = time.perf_counter()
+            # Center-crop the uint16 buffer *first*, then normalize. Normalization
+            # is pointwise (its low/high/asinh come from the full mosaic, not the
+            # crop), so cropping first is identical in result but skips
+            # normalizing the ~40% of pixels the center-crop would discard.
+            crops_u16 = _center_crop(crops_u16, target_h, target_w)
             crops_f32 = apply_normalization(crops_u16, low, high, cfg.asinh_knee)
-            crops_f32 = _center_crop(crops_f32, target_h, target_w)
             log.info(
-                f"[{channel_name}] normalized + center-cropped to {target_h}x{target_w} "
+                f"[{channel_name}] center-cropped to {target_h}x{target_w} + normalized "
                 f"({time.perf_counter()-t0:.2f}s)"
             )
 

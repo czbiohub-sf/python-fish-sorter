@@ -22,7 +22,9 @@ class ChannelDisplayConfig:
 
 
 CHANNEL_DISPLAY_MAP: Dict[str, ChannelDisplayConfig] = {
-    "DAPI": ChannelDisplayConfig("blue", (0.0, 0.0, 1.0), (0.2, 0.2, 1.0, 1.0)),
+    # Cyan (not pure blue) so DAPI is visible on black and mixes cleanly with
+    # red TXR / green GFP in the composite — matches the napari viewer's DAPI.
+    "DAPI": ChannelDisplayConfig("cyan", (0.0, 1.0, 1.0), (0.2, 1.0, 1.0, 1.0)),
     "BF": ChannelDisplayConfig("gray", (0.5, 0.5, 0.5), (0.7, 0.7, 0.7, 1.0)),
     "GFP": ChannelDisplayConfig("green", (0.0, 1.0, 0.0), (0.0, 0.8, 0.0, 1.0)),
     "CIT": ChannelDisplayConfig("green", (0.4, 0.9, 0.0), (0.4, 0.9, 0.0, 1.0)),

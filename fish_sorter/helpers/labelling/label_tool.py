@@ -64,13 +64,14 @@ def _uint16_to_rgb(
     rgb_color: Tuple[float, float, float],
     low: Optional[float] = None,
     high: Optional[float] = None,
-    dark_on_white: bool = False,
 ) -> np.ndarray:
     """Normalize a uint16 2-D crop and paint it with the channel's RGB color.
 
-    Operates on a single cached crop (not a full mosaic). Percentile bounds
-    default to 1/99 of the crop itself when not supplied, which is fine for
-    thumbnails.
+    Additive colour-on-black: each channel lights up its own tint so multiple
+    channels blend like a fluorescence overlay (red TXR + green GFP + cyan
+    DAPI). Operates on a single cached crop (not a full mosaic). Percentile
+    bounds default to 1/99 of the crop itself when not supplied, which is fine
+    for thumbnails.
     """
     arr = np.asarray(crop)
     if arr.ndim != 2:
@@ -86,19 +87,10 @@ def _uint16_to_rgb(
     rng = high - low if high > low else 1.0
     normalized = np.clip((arr.astype(np.float32) - low) / rng, 0.0, 1.0)
     h, w = normalized.shape
-    r_w, g_w, b_w = rgb_color
-    if dark_on_white:
-        rgb = np.full((h, w, 3), 255, dtype=np.uint8)
-        for c, weight in enumerate([r_w, g_w, b_w]):
-            if weight > 0:
-                rgb[:, :, c] = (255 - normalized * weight * 255).astype(np.uint8)
-            else:
-                rgb[:, :, c] = (255 - normalized * 255).astype(np.uint8)
-    else:
-        rgb = np.zeros((h, w, 3), dtype=np.uint8)
-        for c, weight in enumerate([r_w, g_w, b_w]):
-            if weight > 0:
-                rgb[:, :, c] = (normalized * weight * 255).astype(np.uint8)
+    rgb = np.zeros((h, w, 3), dtype=np.uint8)
+    for c, weight in enumerate(rgb_color):
+        if weight > 0:
+            rgb[:, :, c] = (normalized * weight * 255).astype(np.uint8)
     return rgb
 
 
@@ -1146,7 +1138,6 @@ def _build_label_tool():
                 return out
 
             channels = self._cross_channels or self._all_channels
-            dark_on_white = any(ch.upper() in ("DAPI", "CY5") for ch in channels)
             channel_cfgs = {ch: get_channel_display(ch) for ch in channels}
 
             for meta_idx in self._view_indices:
@@ -1169,10 +1160,9 @@ def _build_label_tool():
                 if base is None:
                     continue
                 h, w = base.shape
-                if dark_on_white:
-                    rgb = np.full((h, w, 3), 255, dtype=np.uint8)
-                else:
-                    rgb = np.zeros((h, w, 3), dtype=np.uint8)
+                # Additive colour-on-black overlay — each channel lights up its
+                # own tint and they blend like a fluorescence composite.
+                rgb = np.zeros((h, w, 3), dtype=np.uint8)
 
                 for ch in channels:
                     crop = crops_for_well.get(ch)
@@ -1198,27 +1188,13 @@ def _build_label_tool():
                         # Skip channels whose crop shape doesn't match the
                         # base — composite needs aligned arrays.
                         continue
-                    r_w, g_w, b_w = channel_cfgs[ch].rgb_color
-                    weights = [r_w, g_w, b_w]
-                    if dark_on_white:
-                        for c, wt in enumerate(weights):
-                            if wt > 0:
-                                rgb[:, :, c] = np.minimum(
-                                    rgb[:, :, c],
-                                    (255 - normalized * wt * 255).astype(np.uint8),
-                                )
-                            else:
-                                rgb[:, :, c] = np.minimum(
-                                    rgb[:, :, c],
-                                    (255 - normalized * 255).astype(np.uint8),
-                                )
-                    else:
-                        for c, wt in enumerate(weights):
-                            if wt > 0:
-                                rgb[:, :, c] = np.maximum(
-                                    rgb[:, :, c],
-                                    (normalized * wt * 255).astype(np.uint8),
-                                )
+                    weights = channel_cfgs[ch].rgb_color
+                    for c, wt in enumerate(weights):
+                        if wt > 0:
+                            rgb[:, :, c] = np.maximum(
+                                rgb[:, :, c],
+                                (normalized * wt * 255).astype(np.uint8),
+                            )
 
                 out[(wn, exp)] = rgb
             return out
@@ -1522,7 +1498,8 @@ def _build_label_tool():
                         n_components=2,
                         n_neighbors=n_neighbors,
                         min_dist=float(self._umap_cfg.get("min_dist", 0.1)),
-                        random_state=42,
+                        # No random_state: a fixed seed forces UMAP single-
+                        # threaded; leaving it unset lets it use parallelism.
                     )
                     umap_2d = reducer.fit_transform(valid_emb).astype(np.float32)
                 except Exception as e:
@@ -1682,7 +1659,8 @@ def _build_label_tool():
                         n_components=2,
                         n_neighbors=n_neighbors,
                         min_dist=float(self._umap_cfg.get("min_dist", 0.1)),
-                        random_state=42,
+                        # No random_state: a fixed seed forces UMAP single-
+                        # threaded; leaving it unset lets it use parallelism.
                     )
                     umap_2d = reducer.fit_transform(valid_emb).astype(np.float32)
                 except Exception:
@@ -1695,7 +1673,6 @@ def _build_label_tool():
                 # same logic as ``_preload_crops``.
                 display_cfg = get_channel_display(channel)
                 rgb_color = display_cfg.rgb_color
-                dark_on_white = channel.upper() in ("DAPI", "CY5")
                 low, high = self._contrast_for(channel)
                 crop_cache: Dict[Tuple[str, str], np.ndarray] = {}
                 for meta_idx in line_indices:
@@ -1709,8 +1686,7 @@ def _build_label_tool():
                         continue
                     try:
                         rgb = _uint16_to_rgb(
-                            crop, rgb_color,
-                            low=low, high=high, dark_on_white=dark_on_white,
+                            crop, rgb_color, low=low, high=high,
                         )
                         crop_cache[(wn, exp)] = rgb
                     except Exception:
@@ -2265,7 +2241,6 @@ def _build_label_tool():
             active_channel = self._current_channel
             display_cfg = get_channel_display(active_channel)
             rgb_color = display_cfg.rgb_color
-            dark_on_white = active_channel.upper() in ("DAPI", "CY5")
             low, high = self._contrast_for(active_channel)
 
             loaded = 0
@@ -2283,7 +2258,7 @@ def _build_label_tool():
                     continue
                 try:
                     rgb = _uint16_to_rgb(
-                        crop, rgb_color, low=low, high=high, dark_on_white=dark_on_white,
+                        crop, rgb_color, low=low, high=high,
                     )
                     self._crop_cache[(wn, exp)] = rgb
                     loaded += 1
@@ -2351,12 +2326,10 @@ def _build_label_tool():
                     )
                     return
                 display_cfg = get_channel_display(active_channel)
-                dark_on_white = active_channel.upper() in ("DAPI", "CY5")
                 low, high = self._contrast_for(active_channel)
                 try:
                     rgb = _uint16_to_rgb(
-                        crop, display_cfg.rgb_color,
-                        low=low, high=high, dark_on_white=dark_on_white,
+                        crop, display_cfg.rgb_color, low=low, high=high,
                     )
                     self._crop_cache[key] = rgb
                 except Exception as e:
@@ -2731,11 +2704,9 @@ def _build_label_tool():
                     continue
                 try:
                     cfg = get_channel_display(self._current_channel)
-                    dark_on_white = self._current_channel.upper() in ("DAPI", "CY5")
                     low, high = self._contrast_for(self._current_channel)
                     return _uint16_to_rgb(
-                        crop, cfg.rgb_color,
-                        low=low, high=high, dark_on_white=dark_on_white,
+                        crop, cfg.rgb_color, low=low, high=high,
                     )
                 except Exception:
                     continue

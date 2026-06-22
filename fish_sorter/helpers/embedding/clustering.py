@@ -38,13 +38,18 @@ def fit_umap_2d(
     embeddings: np.ndarray,
     n_neighbors: int = 15,
     min_dist: float = 0.1,
-    random_state: int = 42,
 ):
     """Fit a 2-D UMAP on `embeddings` ((N, D) float). Returns (N, 2) float32.
 
-    Shared by the LabelTool fit site and the Finding Dory pre-warm so the
-    precomputed layout matches what the dock would compute live. Returns
-    ``None`` when there are fewer than 2 rows (UMAP needs a neighborhood).
+    Shared by the LabelTool fit site and the Finding Dory pre-warm, with the
+    same params so the precomputed layout matches what the dock computes live.
+    Returns ``None`` when there are fewer than 2 rows (UMAP needs a
+    neighborhood).
+
+    No ``random_state`` is set: a fixed seed forces UMAP single-threaded, so
+    leaving it unset lets UMAP use parallelism. The layout is therefore not
+    bit-reproducible run to run, which is fine — it's only used for visual
+    grouping, and clustering runs on the embeddings, not the 2-D coords.
     """
     emb = np.asarray(embeddings)
     n = len(emb)
@@ -57,7 +62,6 @@ def fit_umap_2d(
         n_components=2,
         n_neighbors=nn,
         min_dist=float(min_dist),
-        random_state=random_state,
     )
     return reducer.fit_transform(emb).astype(np.float32)
 
