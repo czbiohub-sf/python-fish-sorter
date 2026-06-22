@@ -45,6 +45,10 @@ config. If a path is wrong it surfaces the error — fix `config.json` by hand.
   and the directory containing variant `.pth` files.
 - `device` — `auto` resolves cuda > mps > cpu. Override with `cuda`,
   `mps`, or `cpu`.
+- `batch_size` — inference mini-batch size for the forward pass. `null`
+  (default) uses a per-device default (cuda `32`, mps `16`, cpu `8`). Raise
+  it on a GPU with spare VRAM for faster throughput; lower it if you hit
+  out-of-memory errors.
 - `prewarm_embeddings` — (default `true`) compute embeddings in the
   background as soon as the mosaic finishes stitching, so the Finding Dory
   dock opens instantly instead of running the model on click. Pre-warm

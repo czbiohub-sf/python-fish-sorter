@@ -90,7 +90,12 @@ class EmbeddingExtractor:
         device_arg = cfg.get("device", "auto")
         self.device = _resolve_device(device_arg)
         log.info(f"EmbeddingExtractor device: {self.device} (config: {device_arg!r})")
-        self.batch_size = batch_size or _BATCH_DEFAULTS.get(self.device.type, 8)
+        # Priority: explicit constructor arg > top-level config > per-device default.
+        self.batch_size = (
+            batch_size
+            or cfg.get("batch_size")
+            or _BATCH_DEFAULTS.get(self.device.type, 8)
+        )
         # Default True for speed; set false at top-level config to force fp32 forward.
         self.use_autocast = bool(cfg.get("autocast", True))
 

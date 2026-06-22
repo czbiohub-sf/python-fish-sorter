@@ -2,6 +2,7 @@
   "dinov3_repo_path": "/PATH/TO/dinov3",
   "dinov3_weights_dir": null,
   "device": "auto",
+  "batch_size": null,
   "prewarm_embeddings": true,
   "filter_to_singlets": true,
   "dev_mock_embeddings": false,
