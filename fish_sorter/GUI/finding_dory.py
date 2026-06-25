@@ -590,6 +590,7 @@ def _build_finding_dory():
                 keep_indices=self._keep_indices,
                 progress_cb=_progress_cb,
                 status_cb=self.status_signal.emit,
+                pixel_size_um=self.classify.iplate.px_sz_um,
             )
 
         def _on_future_done(self, future):

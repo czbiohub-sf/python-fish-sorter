@@ -164,11 +164,20 @@ def main() -> int:
             well_indices_to_embed = np.arange(n_keep, dtype=np.int64)
         log.info(f"--limit {args.limit}: embedding first {n_keep} wells only")
 
+    # Optional: plate physical scale (um/px). Set this to zebra's
+    # `pixel_size_um` (grid_plan fov_width / camera px) when the reference run
+    # used a non-2.5x magnification, so fish-sorter resamples to the same scale.
+    # Omit for standard-mag plates (resampling is skipped within tolerance).
+    pixel_size_um = parity.get("pixel_size_um")
+    if pixel_size_um is not None:
+        log.info(f"pixel_size_um: {pixel_size_um} (physical-scale resampling enabled)")
+
     ours, idx_by_ch = extractor.extract_from_mosaic(
         mosaics=mosaics,
         well_centers_px=well_centers,
         well_crop_px=well_crop_px,
         well_indices_to_embed=well_indices_to_embed,
+        pixel_size_um=pixel_size_um,
     )
 
     any_fail = False

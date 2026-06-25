@@ -15,9 +15,10 @@ Pipeline (one pass per channel):
 """
 
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import Dict, List, Optional, Tuple
 
 import numpy as np
+from scipy.ndimage import gaussian_filter
 
 
 @dataclass(frozen=True)
@@ -43,6 +44,7 @@ class ChannelContrastConfig:
     adaptive_high: bool = False
     high_gate_percentile: float = 99.5
     high_trim_percentile: float = 99.99
+    invert: bool = False  # BF: flip polarity so the (dark) embryo becomes bright
 
     @classmethod
     def from_dict(cls, d: dict) -> "ChannelContrastConfig":
@@ -53,6 +55,7 @@ class ChannelContrastConfig:
             adaptive_high=bool(d.get("adaptive_high", False)),
             high_gate_percentile=float(d.get("high_gate_percentile", 99.5)),
             high_trim_percentile=float(d.get("high_trim_percentile", 99.99)),
+            invert=bool(d.get("invert", False)),
         )
 
 
@@ -149,3 +152,99 @@ def apply_normalization(
         np.arcsinh(out, out=out)
         out /= np.arcsinh(asinh_knee)
     return out
+
+
+# ---------------------------------------------------------------------------
+# Multi-contrast (3-view) rendering.
+#
+# Mirrors zebra's `well_loader.render_multicontrast` / `MC_DEFAULTS` after the
+# image-pipeline update that moved multi-contrast from an in-model channel
+# adapter into the *data path*: a single raw channel is rendered into 3
+# complementary views ([linear, high-pass, bright]) and fed to a 3-channel
+# backbone. Kept byte-identical to training so `parity_check.py` holds.
+#
+# Percentile lookup here reuses `_percentiles_from_cdf` (bincount + searchsorted),
+# which is the same algorithm as zebra's `_uint16_percentiles`.
+# ---------------------------------------------------------------------------
+
+# Default multi-contrast parameters (locked via zebra's Stage-1 preview).
+# Percentiles are computed per mosaic; `bright_k` is the asinh compression for
+# the bright view. Overridable per checkpoint via the ckpt's `mc_params` hparam.
+MC_DEFAULTS = dict(
+    low_pct=0.1, mid_pct=99.96, knee_pct=99.99, ref_pct=99.999,
+    bright_k=10.0, blur_sigma=10.0,
+)
+
+
+def resolve_mc_params(mc_params: Optional[dict]) -> dict:
+    """Merge checkpoint-provided `mc_params` over `MC_DEFAULTS`."""
+    return {**MC_DEFAULTS, **(mc_params or {})}
+
+
+def compute_mc_bins(
+    mosaic: np.ndarray, mc: dict
+) -> Tuple[float, float, float, float]:
+    """Return the per-mosaic ``(low, mid, knee, ref)`` intensity bins.
+
+    `mc` is a resolved params dict (see :func:`resolve_mc_params`). `ref` is the
+    raw max when ``ref_pct >= 100`` (so a single hot pixel just clips), else the
+    ``ref_pct`` percentile — matching zebra's bin computation in
+    ``FishWellLoader.__init__``.
+    """
+    _, cdf, total = _uint16_histogram(mosaic)
+    low, mid, knee = _percentiles_from_cdf(
+        cdf, total, [mc["low_pct"], mc["mid_pct"], mc["knee_pct"]]
+    )
+    if mc["ref_pct"] >= 100.0:
+        ref = float(mosaic.max())
+    else:
+        ref = _percentiles_from_cdf(cdf, total, [mc["ref_pct"]])[0]
+    return low, mid, knee, ref
+
+
+def render_multicontrast(
+    raw2d: np.ndarray, low: float, mid: float, knee: float, ref: float,
+    bright_k: float = 10.0, blur_sigma: float = 10.0, invert: bool = False,
+) -> np.ndarray:
+    """Render a raw single-channel crop into 3 complementary views, (3,H,W) [0,1].
+
+    Byte-identical port of zebra's ``render_multicontrast``. Views:
+      [0] linear   = stretch (low, mid), clip [0,1]
+      [1] highpass = linear - gaussianblur(linear), per-image min/max -> [0,1]
+      [2] bright   = asinh threshold: dark below ``mid``; above,
+                     arcsinh(((raw-mid)/(knee-mid))*k) normalized by the same at
+                     the robust reference ``ref`` (NOT the max), clipped [0,1].
+
+    ``invert`` (used for brightfield) flips polarity so the dark embryo becomes
+    bright, matching fluorescence: the linear view is inverted, the bright view
+    is recomputed as an asinh expansion of that inverted-bright signal, and the
+    highpass (structure) is derived from the inverted linear.
+    """
+    raw2d = raw2d.astype(np.float32)
+    if invert:
+        # Absorption BF: don't clip the dark (embryo) end, or it saturates to
+        # pure white after inversion. Uncap the low bound to the raw floor.
+        low = 0.0
+    linear = np.clip((raw2d - low) / max(mid - low, 1e-6), 0.0, 1.0).astype(np.float32)
+
+    if invert:
+        linear = (1.0 - linear).astype(np.float32)
+
+    blurred = gaussian_filter(linear, sigma=blur_sigma, mode="reflect")
+    hp = linear - blurred
+    rng = float(hp.max() - hp.min())
+    hp = ((hp - hp.min()) / (rng if rng > 1e-8 else 1.0)).astype(np.float32)
+
+    if invert:
+        # No meaningful "bright foci" in absorption BF; expand the inverted
+        # (now-bright) embryo signal with the same asinh curve for view 3.
+        bright = np.clip(
+            np.arcsinh(linear * bright_k) / np.arcsinh(bright_k), 0.0, 1.0
+        ).astype(np.float32)
+    else:
+        x = np.clip(raw2d - mid, 0.0, None) / max(knee - mid, 1e-6)
+        b = np.arcsinh(x * bright_k)
+        bref = float(np.arcsinh((ref - mid) / max(knee - mid, 1e-6) * bright_k))
+        bright = np.clip(b / (bref if bref > 1e-8 else 1.0), 0.0, 1.0).astype(np.float32)
+
+    return np.stack([linear, hp, bright], axis=0)

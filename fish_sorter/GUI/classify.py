@@ -532,6 +532,7 @@ class Classify(QObject):
                 n_total=len(centers),
                 keep_indices=None,  # embed all wells; dock filters on adoption
                 progress_cb=_progress_cb,
+                pixel_size_um=self.iplate.px_sz_um,
             )
 
             # Pre-fit UMAP + clustering per channel so the dock adopts them
