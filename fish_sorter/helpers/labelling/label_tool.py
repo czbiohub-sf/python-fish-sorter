@@ -1199,6 +1199,73 @@ def _build_label_tool():
                 out[(wn, exp)] = rgb
             return out
 
+        def _split_crop_for_well(self, widx: int) -> Optional[np.ndarray]:
+            """Build a per-channel *split* montage for one well.
+
+            Unlike ``_compute_composite_crops`` (which ``np.maximum``-blends all
+            channels into one RGB, letting a bright channel wash out dimmer
+            ones), this keeps each channel as its own tinted panel and
+            concatenates them so no channel can override another. Used only for
+            the selected-well preview in Cross-Channel mode; the scatter
+            thumbnails and combo/group cards keep using the composite.
+
+            The montage axis follows the crop shape (the same "wide fish vs
+            square egg" distinction as ``_thumb_crop_aspect``): wide larvae
+            crops stack vertically, square/tall embryo crops sit side-by-side.
+
+            Pure w.r.t. cached state — reads ``_well_crops`` + contrast snapshot
+            and never writes ``_crop_cache`` (that holds the composites the
+            thumbnail/card consumers depend on).
+            """
+            if widx < 0 or widx >= len(self._well_crops):
+                return None
+            crops_for_well = self._well_crops[widx]
+            channels = self._cross_channels or self._all_channels
+
+            # Base shape from the first available channel — panels must align on
+            # the shared concat axis.
+            base = None
+            for ch in channels:
+                crop = crops_for_well.get(ch)
+                if crop is not None and crop.size:
+                    base = crop
+                    break
+            if base is None:
+                return None
+            h, w = base.shape
+
+            panels: List[np.ndarray] = []
+            for ch in channels:
+                crop = crops_for_well.get(ch)
+                if crop is None or crop.size == 0 or crop.shape != (h, w):
+                    continue
+                cfg = get_channel_display(ch)
+                low, high = self._contrast_for(ch)
+                try:
+                    panels.append(_uint16_to_rgb(crop, cfg.rgb_color, low=low, high=high))
+                except Exception as e:
+                    log.debug(f"split crop skipped channel {ch}: {e}")
+            if not panels:
+                return None
+            if len(panels) == 1:
+                return panels[0]
+
+            # Wide larvae → stack vertically (axis 0); square/tall embryo →
+            # side-by-side (axis 1). w == h goes horizontal.
+            axis = 0 if w > h else 1
+            sep_px = 2
+            sep_color = 40  # dim gray gutter on the black background
+            interleaved: List[np.ndarray] = []
+            for i, panel in enumerate(panels):
+                if i:
+                    if axis == 0:
+                        sep = np.full((sep_px, panel.shape[1], 3), sep_color, dtype=np.uint8)
+                    else:
+                        sep = np.full((panel.shape[0], sep_px, 3), sep_color, dtype=np.uint8)
+                    interleaved.append(sep)
+                interleaved.append(panel)
+            return np.concatenate(interleaved, axis=axis)
+
         def _maybe_warm_composite(self):
             """Pre-build composite crops in the background, once per session."""
             if self._composite_warm_started or self._composite_crop_cache is not None:
@@ -2205,8 +2272,14 @@ def _build_label_tool():
                 layer = getattr(event, "source", None)
                 if layer is None or getattr(layer, "name", None) != self._current_channel:
                     return
-                self._crop_cache.clear()
-                self._preload_crops()
+                # In cross-channel mode ``_crop_cache`` holds the all-channel
+                # composites the thumbnails/cards read; rebuilding it with
+                # single-channel crops (``_preload_crops``) would corrupt them.
+                # Skip that here — just re-show the selected well's split
+                # preview (rebuilt from raw crops).
+                if not self._cross_channel_mode:
+                    self._crop_cache.clear()
+                    self._preload_crops()
                 if self._selected_well_list:
                     wn, exp = self._selected_well_list[self._current_well_view_idx]
                     self._show_crop(wn, exp)
@@ -2302,6 +2375,36 @@ def _build_label_tool():
 
         def _show_crop(self, well_name: str, experiment: str):
             key = (well_name, experiment)
+
+            if self._cross_channel_mode:
+                # Split preview: show each channel as its own panel so no
+                # channel washes out the others (built from raw crops, never
+                # the composite ``_crop_cache``).
+                match = self.metadata[
+                    (self.metadata["well_name"] == well_name)
+                    & (self.metadata["experiment"] == experiment)
+                ]
+                rgb = None
+                if not match.empty:
+                    rgb = self._split_crop_for_well(int(match.index[0]))
+                if rgb is None:
+                    self.crop_label.setText(f"No crop for well {well_name}")
+                    return
+                h, w = rgb.shape[:2]
+                qimg = QImage(rgb.data, w, h, w * 3, QImage.Format_RGB888)
+                self._crop_full_pixmap = QPixmap.fromImage(qimg)
+                self._update_crop_display()
+                # Legend: every channel is shown, so highlight them all.
+                legend_parts = []
+                for ch_name in self._all_channels:
+                    cfg = get_channel_display(ch_name)
+                    ri, gi, bi = [int(v * 255) for v in cfg.rgb_color]
+                    legend_parts.append(
+                        f'<span style="color:rgb({ri},{gi},{bi})">[#]</span> {ch_name}'
+                    )
+                self.channel_legend_label.setText("  ".join(legend_parts))
+                return
+
             rgb = self._crop_cache.get(key)
 
             if rgb is None:
