@@ -25,7 +25,7 @@
       "crop_size": [416, 1808],
       "resize_to": null,
       "contrast": {
-        "BF":     { "low_percentile": 0.1, "high_percentile": 99.9,  "asinh_knee": 0.0, "adaptive_high": false },
+        "BF":     { "low_percentile": 0.1, "high_percentile": 99.9,  "asinh_knee": 0.0, "adaptive_high": false, "invert": false },
         "_FLUOR": { "low_percentile": 0.5, "high_percentile": 99.97, "asinh_knee": 5.0, "adaptive_high": true,  "high_gate_percentile": 99.5, "high_trim_percentile": 99.99 }
       }
     },
@@ -37,7 +37,7 @@
       "crop_size": [672, 672],
       "resize_to": null,
       "contrast": {
-        "BF":     { "low_percentile": 0.1, "high_percentile": 99.9,  "asinh_knee": 0.0, "adaptive_high": false },
+        "BF":     { "low_percentile": 0.1, "high_percentile": 99.9,  "asinh_knee": 0.0, "adaptive_high": false, "invert": false },
         "_FLUOR": { "low_percentile": 0.5, "high_percentile": 99.97, "asinh_knee": 5.0, "adaptive_high": true,  "high_gate_percentile": 99.5, "high_trim_percentile": 99.99 }
       }
     }

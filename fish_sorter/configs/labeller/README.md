@@ -35,9 +35,49 @@ config. If a path is wrong it surfaces the error — fix `config.json` by hand.
   with the checkpoint and change between model generations.** Use the
   values the ckpt was trained against; the defaults shipped in
   `config.example.json` are the current zebra-repo defaults at time of
-  writing and may be wrong for older ckpts.
+  writing and may be wrong for older ckpts. A `_FLUOR` block is **required**
+  (the extractor raises without it); `low_percentile` and `high_percentile`
+  are the only required keys inside a block.
   - `BF` block: linear stretch, no asinh.
   - `_FLUOR` block: fallback for any non-BF channel.
+  - `invert` — (default `false`) flip channel polarity so a dark-on-bright
+    subject (the embryo/fish in brightfield) becomes bright-on-dark. Set on
+    the `BF` block when the checkpoint was trained on inverted brightfield.
+    **`invert` is read in every mode, including data-path multi-contrast
+    (below)** — it must match training or embeddings drift.
+  - ⚠️ For **data-path multi-contrast** checkpoints (see below), everything
+    in a contrast block *except* `invert` is ignored — `low/high_percentile`,
+    `asinh_knee`, `adaptive_high`, and the gate/trim percentiles do nothing.
+    The render is driven by `mc_params` instead.
+
+## Multi-contrast modes
+
+A single raw channel can be expanded into 3 complementary views
+(`[linear, high-pass, bright]`) fed to a 3-channel backbone. The extractor
+picks the scheme automatically from the checkpoint:
+
+- **Data-path multi-contrast** — ckpt `hyper_parameters.in_channels == 3`.
+  The 3 views are synthesized in `normalize.render_multicontrast` and the
+  backbone's channel adapter is pass-through. The render is controlled by
+  `mc_params` (`low_pct`, `mid_pct`, `knee_pct`, `ref_pct`, `bright_k`,
+  `blur_sigma`), which are read from the checkpoint's `mc_params` hparam
+  (falling back to `MC_DEFAULTS`). **Leave `mc_params` out of the config
+  unless you deliberately want to override the checkpoint** — the baked
+  values differ per ckpt and a stale config value silently mismatches
+  training.
+- **Single-channel** — ckpt `in_channels == 1`. The per-channel `contrast`
+  percentiles (`low/high_percentile`, `asinh_knee`, `adaptive_high`, the
+  gate/trim percentiles) **are** used to normalize the 1-channel input.
+
+Optional per-model overrides:
+- `multi_contrast` — (`null` | `true` | `false`) force the scheme instead of
+  auto-detecting. Rarely needed; auto-detection from the ckpt is preferred.
+- `mc_params` — override the checkpoint's baked render params (see caveat
+  above).
+
+Watch the startup log — it prints which mode was resolved
+(`multi-contrast: data-path render (in_channels=3), mc={...}` /
+`single-channel mode (no multi-contrast)`).
 
 ## Top-level fields
 
