@@ -14,11 +14,23 @@ Pipeline (one pass per channel):
      fluorescent channels.
 """
 
+import logging
 from dataclasses import dataclass
 from typing import Dict, List, Optional, Tuple
 
 import numpy as np
 from scipy.ndimage import gaussian_filter
+
+log = logging.getLogger(__name__)
+
+# Cap on pixels scanned when deriving GLOBAL percentiles for contrast/MC bins.
+# A full mosaic here is ~3.5 Gpx (7 GB/channel); histogramming it is dominated
+# by page faults because the mosaics are far larger than RAM, so the first scan
+# of each channel can take minutes. Percentiles are statistically identical
+# from a strided subsample, and striding along axis 0 skips whole rows (whole
+# page ranges), which is what actually cuts the faulting. Mosaics at or below
+# this size are scanned in full, so their results stay bit-identical.
+_HIST_MAX_SAMPLES = 64_000_000  # ~64M pixels — >0.999 percentile still stable
 
 
 @dataclass(frozen=True)
@@ -60,9 +72,24 @@ class ChannelContrastConfig:
 
 
 def _uint16_histogram(arr: np.ndarray) -> Tuple[np.ndarray, np.ndarray, float]:
-    """Return (counts, cdf, total) for a uint16 array — one O(N) scan."""
+    """Return (counts, cdf, total) for a uint16 array.
+
+    Scans the full array when it fits within ``_HIST_MAX_SAMPLES``; above that
+    it row-subsamples (a strided view along axis 0) so the histogram stays
+    cheap and, critically, doesn't fault an out-of-core mosaic page by page.
+    The derived percentiles/trimmed-mean are all relative to the returned
+    ``total``, so subsampling doesn't bias them.
+    """
     if arr.dtype != np.uint16:
         raise TypeError(f"_uint16_histogram requires uint16, got {arr.dtype}")
+    if arr.size > _HIST_MAX_SAMPLES and arr.ndim >= 1 and arr.shape[0] > 1:
+        stride = int(np.ceil(arr.size / _HIST_MAX_SAMPLES))
+        sub = arr[::stride]
+        log.info(
+            f"histogram: subsampling {arr.shape} every {stride} rows along axis 0 "
+            f"-> {sub.shape[0]}/{arr.shape[0]} rows ({sub.size/1e6:.1f}M px) for percentiles"
+        )
+        arr = sub
     counts = np.bincount(arr.ravel(), minlength=65536)
     cdf = np.cumsum(counts).astype(np.float64)
     return counts, cdf, float(cdf[-1])
