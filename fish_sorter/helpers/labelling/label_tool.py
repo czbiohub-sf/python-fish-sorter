@@ -147,6 +147,45 @@ def _tile_split_panels(
     return canvas
 
 
+def _format_channel_assignments(
+    channels: List[str], groups_by_channel: Dict[str, Optional[str]]
+) -> str:
+    """Format one well's per-channel groups for the crop-card status line."""
+    if not channels:
+        return "unassigned"
+    return " × ".join(
+        f"{channel}:{groups_by_channel.get(channel) or 'unassigned'}"
+        for channel in channels
+    )
+
+
+def _apply_rgb_display_transform(
+    rgb: np.ndarray,
+    contrast_limits: Tuple[float, float] = (0.0, 255.0),
+    gamma: float = 1.0,
+) -> np.ndarray:
+    """Apply napari's RGB contrast/gamma display transform on the CPU.
+
+    The Fish UMAP atlas is uint8 RGB, so napari applies the same limits to all
+    three color channels and then raises normalized values to ``gamma``. The
+    selected-well preview uses this helper to match that GPU-rendered view
+    without rebuilding the full-resolution UMAP atlas.
+    """
+    arr = np.asarray(rgb)
+    if arr.ndim != 3 or arr.shape[2] != 3:
+        raise ValueError(f"expected RGB image, got shape {arr.shape}")
+    low, high = (float(contrast_limits[0]), float(contrast_limits[1]))
+    if high <= low:
+        raise ValueError("contrast limits must be strictly increasing")
+    gamma = float(gamma)
+    if gamma <= 0:
+        raise ValueError("gamma must be positive")
+    normalized = np.clip((arr.astype(np.float32) - low) / (high - low), 0.0, 1.0)
+    if gamma != 1.0:
+        normalized = np.power(normalized, gamma)
+    return np.rint(normalized * 255.0).astype(np.uint8)
+
+
 def _score_empty_clusters(
     cluster_labels: np.ndarray,
     nemo_empty_mask: np.ndarray,
@@ -411,14 +450,13 @@ def _build_label_tool():
 
             # First-clustering tracking — auto-assign cluster_N to wells only
             # the first time a (line, channel) scope is computed, so manual
-            # edits and reclusters never wipe assignments. See _recompute_view.
+            # edits never wipe assignments. See _recompute_view.
             self._auto_assigned: set = set()
 
             # Per-(line, channel) UMAP/cluster cache and per-channel crop
             # cache. Channel switches restore both instead of re-running
             # UMAP + crop preload every time, which used to make each
-            # switch take tens of seconds. The Recluster button clears the
-            # current scope's entry before recomputing.
+            # switch take tens of seconds.
             self._view_state_cache: Dict[Tuple[str, str], dict] = {}
             self._channel_crop_cache: Dict[str, Dict[Tuple[str, str], np.ndarray]] = {}
 
@@ -501,6 +539,13 @@ def _build_label_tool():
             self._umap_thumb_cache: Optional[List] = None
             self._umap_thumb_size: Tuple[int, int] = (0, 0)
             self._umap_ppu: float = 1.0
+            # Napari applies contrast/gamma to the final uint8 RGB atlas, not
+            # the raw uint16 well crops. Preserve those display settings per
+            # channel (plus a separate cross-channel composite scope) and
+            # mirror them onto the selected-well preview.
+            self._umap_display_settings: Dict[
+                str, Tuple[Tuple[float, float], float]
+            ] = {}
 
             # napari + points layers (created lazily in _update_scatter).
             self.points_layer = None
@@ -678,17 +723,6 @@ def _build_label_tool():
             self.cross_refresh_btn.setEnabled(False)
             self.cross_refresh_btn.clicked.connect(self._on_cross_refresh)
             toolbar_layout.addWidget(self.cross_refresh_btn)
-
-            # Recluster — re-runs UMAP + HDBSCAN on the current channel.
-            # Existing assignments are preserved (auto-assign fires only on
-            # the first clustering pass per scope; see _recompute_view).
-            self.recluster_btn = QPushButton("Recluster")
-            self.recluster_btn.setToolTip(
-                "Re-run UMAP + HDBSCAN for the current channel. "
-                "Existing group assignments are kept."
-            )
-            self.recluster_btn.clicked.connect(self._on_recluster)
-            toolbar_layout.addWidget(self.recluster_btn)
 
             # Lasso toggle.
             self.lasso_btn = QPushButton("Lasso")
@@ -928,26 +962,11 @@ def _build_label_tool():
             if self._selected_well_list:
                 wn, exp = self._selected_well_list[self._current_well_view_idx]
                 self._show_crop(wn, exp)
+                self._show_well_assignment(wn, exp)
 
         def _on_color_changed(self, color_by: str):
             self._color_by = color_by
             self._update_point_colors()
-
-        def _on_recluster(self):
-            """Re-run UMAP + HDBSCAN on the current channel.
-
-            Existing assignments survive because the auto-assignment block
-            in ``_recompute_view`` short-circuits on subsequent passes for a
-            given (line, channel) scope (see ``self._auto_assigned``).
-
-            We invalidate the per-scope view cache so the recompute actually
-            runs instead of being short-circuited by the cached result.
-            """
-            scope_key = (self._current_line, self._current_channel)
-            self._view_state_cache.pop(scope_key, None)
-            self._channel_crop_cache.pop(self._current_channel, None)
-            self._cluster_labels_by_channel.pop(self._current_channel, None)
-            self._recompute_view()
 
         # ------------------------------------------------------------------
         # Eager per-channel clustering
@@ -1776,15 +1795,13 @@ def _build_label_tool():
             Refactor item 7: clustering routes through the injected
             ``ClusterStrategy`` instead of constructing HDBSCAN directly.
 
-            Cached scopes (already visited and not invalidated by Recluster)
-            short-circuit to a cache restore so channel switches are
-            near-instant — the original implementation re-ran UMAP every
+            Cached scopes short-circuit to a cache restore so channel switches
+            are near-instant — the original implementation re-ran UMAP every
             time, which took tens of seconds for hundreds of wells.
             """
             if self._cross_channel_mode:
                 # The grid is the view — recomputing the UMAP would clobber
-                # ``_view_umap`` / ``_view_clusters``. Untick Cross-Channel
-                # first to recluster.
+                # ``_view_umap`` / ``_view_clusters``.
                 return
             if self._view_indices is None or len(self._view_indices) < 2:
                 self.status_label.setText("Too few wells for this fish line.")
@@ -1902,9 +1919,7 @@ def _build_label_tool():
             # First-clustering pass for this scope: drop each singlet into
             # its ``cluster_N`` group. Wells already in *any* group (e.g.
             # find_fish-seeded empty/multiple/deformed, or a prior manual
-            # assignment) are skipped — non-singlets keep their globals,
-            # and reclustering via the Recluster button rebuilds the UMAP
-            # without touching what's already labelled.
+            # assignment) are skipped — non-singlets keep their globals.
             fl, ch = self._scope()
             asgn = self.store.assignments(fl, ch)
             unique_clusters = sorted(set(int(c) for c in valid_labels if c >= 0))
@@ -1946,13 +1961,15 @@ def _build_label_tool():
                     f"non_empty_total={int(mask.sum())}"
                 )
 
+            self._preload_crops()
+            # Group-card thumbnails read from ``_crop_cache``. Load the active
+            # channel first so a newly computed channel never rebuilds its
+            # cards with crops left over from the previously viewed channel.
             self._refresh_group_list()
             self._refresh_select_by_combo()
-            self._preload_crops()
 
-            # Cache this scope so the next visit short-circuits the
-            # UMAP + crop preload. Recluster clears the entry; assigns
-            # don't touch UMAP coords so the cache stays valid.
+            # Cache this scope so the next visit short-circuits the UMAP + crop
+            # preload. Assigns don't touch UMAP coords, so the cache stays valid.
             self._view_state_cache[scope_key] = {
                 "umap": self._view_umap,
                 "clusters": self._view_clusters,
@@ -2456,12 +2473,7 @@ def _build_label_tool():
             self.assign_btn.setEnabled(True)
             self.unassign_btn.setEnabled(True)
 
-            fl, ch = self._scope()
-            wid = row["well_id"]
-            group = self.store.assignments(fl, ch).get(wid, "unassigned")
-            self.crop_info.setText(
-                f"{row['well_name']} | {row['experiment']} | {group}"
-            )
+            self._show_well_assignment(row["well_name"], row["experiment"])
 
         # ------------------------------------------------------------------
         # Lasso selection
@@ -2711,11 +2723,44 @@ def _build_label_tool():
             self._update_nav_label()
             wn, exp = self._selected_well_list[self._current_well_view_idx]
             self._show_crop(wn, exp)
+            self._show_well_assignment(wn, exp)
 
         def _update_nav_label(self):
             n = len(self._selected_well_list)
             i = self._current_well_view_idx + 1
             self.nav_label.setText(f"{i} of {n}")
+
+        def _show_well_assignment(self, well_name: str, experiment: str):
+            """Show the current well's group in the active assignment scope.
+
+            A single-channel view reports that channel's group. Cross-channel
+            mode reports every channel component so mixed combo assignments do
+            not look like the first image channel's group is the final class.
+            """
+            match = self.metadata[
+                (self.metadata["well_name"] == well_name)
+                & (self.metadata["experiment"] == experiment)
+            ]
+            if match.empty:
+                return
+            wid = match.iloc[0]["well_id"]
+            fl, ch = self._scope()
+            if self._cross_channel_mode:
+                channels = self._cross_channels or sorted(
+                    self.store._channels_for_line(fl)
+                )
+                groups = {
+                    channel: self.store.assignments(fl, channel).get(wid)
+                    for channel in channels
+                }
+                assignment = _format_channel_assignments(channels, groups)
+            else:
+                assignment = self.store.assignments(fl, ch).get(
+                    wid, "unassigned"
+                )
+            self.crop_info.setText(
+                f"{well_name} | {experiment} | {assignment}"
+            )
 
         def _show_crop(self, well_name: str, experiment: str):
             key = (well_name, experiment)
@@ -2734,6 +2779,7 @@ def _build_label_tool():
                 if rgb is None:
                     self.crop_label.setText(f"No crop for well {well_name}")
                     return
+                rgb = self._apply_current_umap_display(rgb)
                 h, w = rgb.shape[:2]
                 qimg = QImage(rgb.data, w, h, w * 3, QImage.Format_RGB888)
                 self._crop_full_pixmap = QPixmap.fromImage(qimg)
@@ -2784,6 +2830,7 @@ def _build_label_tool():
                     self.crop_label.setText(f"Render error: {e}")
                     return
 
+            rgb = self._apply_current_umap_display(rgb)
             h, w = rgb.shape[:2]
             qimg = QImage(rgb.data, w, h, w * 3, QImage.Format_RGB888)
             self._crop_full_pixmap = QPixmap.fromImage(qimg)
@@ -2800,6 +2847,35 @@ def _build_label_tool():
                     f'<span style="{style}">[#]</span> {ch_name}'
                 )
             self.channel_legend_label.setText("  ".join(legend_parts))
+
+        def _umap_display_scope(self) -> str:
+            if self._cross_channel_mode:
+                return "__cross_channel__"
+            return self._current_channel
+
+        def _current_umap_display_settings(
+            self,
+        ) -> Tuple[Tuple[float, float], float]:
+            return self._umap_display_settings.get(
+                self._umap_display_scope(), ((0.0, 255.0), 1.0)
+            )
+
+        def _apply_current_umap_display(self, rgb: np.ndarray) -> np.ndarray:
+            contrast_limits, gamma = self._current_umap_display_settings()
+            return _apply_rgb_display_transform(rgb, contrast_limits, gamma)
+
+        def _on_umap_display_changed(self, event=None):
+            """Mirror Fish UMAP layer contrast/gamma onto the crop preview."""
+            layer = getattr(event, "source", None)
+            if layer is None or layer not in self._umap_channel_layers:
+                return
+            self._umap_display_settings[self._umap_display_scope()] = (
+                tuple(float(v) for v in layer.contrast_limits),
+                float(layer.gamma),
+            )
+            if self._selected_well_list:
+                wn, exp = self._selected_well_list[self._current_well_view_idx]
+                self._show_crop(wn, exp)
 
         def _update_crop_display(self):
             if getattr(self, "_crop_updating", False):
@@ -4101,10 +4177,18 @@ def _build_label_tool():
                     rgb=True,
                     blending="additive",
                     opacity=1.0,
+                    contrast_limits=(0.0, 255.0),
                     scale=[inv_scale, inv_scale],
                     translate=[translate_y, translate_x],
                 )
                 self._umap_channel_layers.append(layer)
+                contrast_limits, gamma = self._current_umap_display_settings()
+                layer.contrast_limits = contrast_limits
+                layer.gamma = gamma
+                layer.events.contrast_limits.connect(
+                    self._on_umap_display_changed
+                )
+                layer.events.gamma.connect(self._on_umap_display_changed)
 
                 # Keep points + lasso layers on top.
                 for top_layer in [self.points_layer, self.lasso_layer]:
@@ -4121,6 +4205,13 @@ def _build_label_tool():
 
         def _remove_image_umap(self):
             for layer in self._umap_channel_layers:
+                try:
+                    layer.events.contrast_limits.disconnect(
+                        self._on_umap_display_changed
+                    )
+                    layer.events.gamma.disconnect(self._on_umap_display_changed)
+                except (ValueError, AttributeError):
+                    pass
                 try:
                     self.viewer.layers.remove(layer)
                 except (ValueError, AttributeError):
