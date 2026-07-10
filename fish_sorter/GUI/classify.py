@@ -38,7 +38,6 @@ from qtpy.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from skimage import data, draw
 from tifffile import imread
 from typing import List, Optional, Tuple, Callable
 
@@ -386,11 +385,23 @@ class Classify(QObject):
         self._well_mask()
         self.well_extract = self._extract_wells(points)
     
-    def _well_mask(self, padding: int=100):
-        """Create a mask of the well shape
+    def _well_mask(self, padding: int=0):
+        """Define the well-crop footprint (the ``self.mask`` boolean array).
 
-        :param padding: extra pixels from the edge around the well shape to include in the mask
-        :type padding: int
+        The mask's *shape* is the single source of the well-crop extent — used
+        by the display extraction (``_extract_wells``) and the embedding
+        extractor (``well_crop_px``). With ``padding=0`` it equals the tight
+        slot (``slot_length`` x ``slot_width`` in px), which is the extent the
+        model was trained on: the multi-contrast high-pass view is a spatial
+        blur applied before the center-crop, so a larger extent here would give
+        it different context than training saw. Keep this at 0 for train/infer
+        parity (mirrors zebra's ``FishWellLoader`` ``load_wells(padding=[0,0])``).
+
+        The mask itself is a full rectangle (all True): earlier versions drew a
+        disk for circular arrays, but on the long larvae crop the disk radius
+        (min(H, W)//2) blacked out the fish's head/tail, so the displayed crops
+        showed only the middle and ``find_orientation`` never saw the ends. A
+        full rectangle shows the whole fish with no blacked-out border.
         """
 
         w_h = np.array([self.iplate.wells['array_design']['slot_length'], self.iplate.wells['array_design']['slot_width']])
@@ -402,17 +413,7 @@ class Classify(QObject):
 
         padded_width = width + 2 * padding
         padded_height = height + 2 * padding
-        self.mask = np.zeros((padded_height, padded_width), dtype=bool)
-        
-        if self.iplate.wells["array_design"]["well_shape"] == "rectangular_array":
-            start_row, start_col = padding, padding
-            rr, cc = draw.rectangle(start=(start_row, start_col), extent=(height, width), shape=self.mask.shape)
-        else:
-            center = (padded_height // 2, padded_width // 2)
-            radius = min(height, width) // 2  
-            rr, cc = draw.disk(center, radius, shape=self.mask.shape)
-
-        self.mask[rr, cc] = True
+        self.mask = np.ones((padded_height, padded_width), dtype=bool)
     
     def _start_async_extraction(self):
         """Thread for well extraction
