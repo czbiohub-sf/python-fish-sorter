@@ -173,6 +173,7 @@ def _build_label_tool():
         QScrollArea,
         QSizePolicy,
         QSlider,
+        QSplitter,
         QVBoxLayout,
         QWidget,
     )
@@ -678,8 +679,6 @@ def _build_label_tool():
 
             groups_layout.addLayout(btn_col, 1)
 
-            root_layout.addWidget(groups_panel)
-
             # ── Selected well crop strip ─────────────────────────────────
             crop_widget = QWidget()
             crop_layout = QVBoxLayout(crop_widget)
@@ -714,7 +713,9 @@ def _build_label_tool():
             self._crop_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             self._crop_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
             self._crop_scroll.setMinimumHeight(80)
-            self._crop_scroll.setMaximumHeight(240)
+            self._crop_scroll.setSizePolicy(
+                QSizePolicy.Expanding, QSizePolicy.Expanding
+            )
             self._crop_scroll.setStyleSheet("background-color: #1a1a1a;")
 
             self.crop_label = _ShrinkableLabel()
@@ -734,7 +735,6 @@ def _build_label_tool():
             self.channel_legend_label = QLabel("")
             self.channel_legend_label.setStyleSheet("font-size: 10px; padding: 1px;")
             crop_layout.addWidget(self.channel_legend_label)
-            root_layout.addWidget(crop_widget)
 
             # ── Assign cards (3-column grid of group thumbnails) ────────
             assign_widget = QWidget()
@@ -757,7 +757,26 @@ def _build_label_tool():
                 self._rescale_assign_crops()
 
             assign_widget.resizeEvent = _on_assign_resize
-            root_layout.addWidget(assign_widget, 1)
+
+            # Let users divide the right dock vertically between assignment
+            # controls, the selected-well crop, and the class cards. The crop
+            # starts larger than before but has no fixed maximum; each section
+            # can be resized by dragging either horizontal divider.
+            self._panel_splitter = QSplitter(Qt.Vertical)
+            self._panel_splitter.setChildrenCollapsible(False)
+            self._panel_splitter.setHandleWidth(6)
+            self._panel_splitter.setStyleSheet(
+                "QSplitter::handle:vertical { background-color: #3a3a3a; "
+                "margin: 2px 0; }"
+            )
+            self._panel_splitter.addWidget(groups_panel)
+            self._panel_splitter.addWidget(crop_widget)
+            self._panel_splitter.addWidget(assign_widget)
+            self._panel_splitter.setStretchFactor(0, 2)
+            self._panel_splitter.setStretchFactor(1, 3)
+            self._panel_splitter.setStretchFactor(2, 3)
+            self._panel_splitter.setSizes([220, 320, 320])
+            root_layout.addWidget(self._panel_splitter, 1)
 
             # Initialise the view for our single fish line.
             self._on_fish_line_changed(self._fish_line)
