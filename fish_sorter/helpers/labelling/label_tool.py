@@ -147,6 +147,85 @@ def _tile_split_panels(
     return canvas
 
 
+def _score_empty_clusters(
+    cluster_labels: np.ndarray,
+    nemo_empty_mask: np.ndarray,
+    precision_floor: float = 0.5,
+) -> Dict[int, dict]:
+    """Score non-noise clusters against Finding Nemo's coarse empty hint."""
+    labels = np.asarray(cluster_labels).astype(int).ravel()
+    hints = np.asarray(nemo_empty_mask, dtype=bool).ravel()
+    if len(labels) != len(hints):
+        raise ValueError("cluster labels and Nemo empty mask must have equal length")
+    if not 0.0 <= float(precision_floor) <= 1.0:
+        raise ValueError("precision_floor must be between 0 and 1")
+
+    hint_total = int(hints.sum())
+    scores: Dict[int, dict] = {}
+    for cluster_id in sorted(set(int(v) for v in labels if v >= 0)):
+        members = labels == cluster_id
+        size = int(members.sum())
+        overlap = int(np.logical_and(members, hints).sum())
+        precision = overlap / size if size else 0.0
+        recall = overlap / hint_total if hint_total else 0.0
+        denom = precision + recall
+        f1 = 2.0 * precision * recall / denom if denom else 0.0
+        scores[cluster_id] = {
+            "size": size,
+            "nemo_empty_overlap": overlap,
+            "precision": precision,
+            "recall": recall,
+            "f1": f1,
+            "selected": overlap > 0 and precision >= float(precision_floor),
+        }
+    return scores
+
+
+def _unanimous_empty_candidates(
+    cluster_labels_by_channel: Dict[str, np.ndarray],
+    nemo_empty_mask: np.ndarray,
+    required_channels: List[str],
+    precision_floor: float = 0.5,
+) -> Tuple[np.ndarray, Dict[str, dict]]:
+    """Return wells whose empty-like cluster membership agrees in all channels.
+
+    This deliberately fails closed: a missing/invalid channel or a channel with
+    no cluster clearing the precision floor produces no automatic empty wells.
+    """
+    hints = np.asarray(nemo_empty_mask, dtype=bool).ravel()
+    consensus = np.ones(len(hints), dtype=bool)
+    reports: Dict[str, dict] = {}
+    if not required_channels:
+        return np.zeros(len(hints), dtype=bool), reports
+
+    for channel in required_channels:
+        labels = cluster_labels_by_channel.get(channel)
+        if labels is None:
+            reports[channel] = {"status": "missing_cluster_labels", "scores": {}}
+            return np.zeros(len(hints), dtype=bool), reports
+        labels = np.asarray(labels).astype(int).ravel()
+        if len(labels) != len(hints):
+            reports[channel] = {"status": "misaligned_cluster_labels", "scores": {}}
+            return np.zeros(len(hints), dtype=bool), reports
+
+        scores = _score_empty_clusters(labels, hints, precision_floor)
+        selected = [
+            cluster_id
+            for cluster_id, score in scores.items()
+            if score["selected"]
+        ]
+        reports[channel] = {
+            "status": "ok" if selected else "no_qualifying_cluster",
+            "selected_clusters": selected,
+            "scores": scores,
+        }
+        if not selected:
+            return np.zeros(len(hints), dtype=bool), reports
+        consensus &= np.isin(labels, selected)
+
+    return consensus, reports
+
+
 def _build_label_tool():
     """Defer heavy imports (qtpy/napari/matplotlib/PIL) until first call.
 
@@ -214,6 +293,8 @@ def _build_label_tool():
             umap_cfg: Optional[dict] = None,
             per_channel_umap: Optional[Dict[str, np.ndarray]] = None,
             per_channel_clusters: Optional[Dict[str, np.ndarray]] = None,
+            nemo_empty_mask: Optional[np.ndarray] = None,
+            empty_cluster_cfg: Optional[dict] = None,
             parent=None,
         ):
             super().__init__(parent)
@@ -245,6 +326,44 @@ def _build_label_tool():
             # mode-based egg/fish hardcoding.
             self._all_channels = list(channels)
             self._current_channel: str = channels[0] if channels else ""
+
+            # Cluster-guided empty detection uses Finding Nemo only as a
+            # per-well hint. A well is accepted as empty later only when its
+            # empty-aligned cluster membership agrees across every channel.
+            self._empty_cluster_cfg = dict(empty_cluster_cfg or {})
+            self._empty_cluster_enabled = bool(
+                self._empty_cluster_cfg.get("enabled", False)
+            )
+            try:
+                self._empty_precision_floor = float(
+                    self._empty_cluster_cfg.get("precision_floor", 0.5)
+                )
+            except (TypeError, ValueError):
+                log.warning("invalid empty precision_floor; using 0.5")
+                self._empty_precision_floor = 0.5
+            raw_empty_mask = (
+                np.asarray(nemo_empty_mask, dtype=bool).ravel()
+                if nemo_empty_mask is not None
+                else np.zeros(len(well_ids), dtype=bool)
+            )
+            if len(raw_empty_mask) != len(well_ids):
+                log.warning(
+                    "disabling cluster-guided empty: Nemo mask has "
+                    f"{len(raw_empty_mask)} rows for {len(well_ids)} wells"
+                )
+                raw_empty_mask = np.zeros(len(well_ids), dtype=bool)
+                self._empty_cluster_enabled = False
+            if not 0.0 <= self._empty_precision_floor <= 1.0:
+                log.warning(
+                    "invalid empty precision_floor=%s; using 0.5",
+                    self._empty_precision_floor,
+                )
+                self._empty_precision_floor = 0.5
+            self._nemo_empty_mask = raw_empty_mask
+            self._auto_empty_wids: set = set()
+            self._layout_empty_wids: set = set()
+            self._empty_layout_dirty = False
+            self._layout_generation = 0
 
             # Refactor item 4: per-well crops instead of per-experiment loaders.
             # well_crops[well_idx][channel] -> 2-D uint16 array.
@@ -835,28 +954,37 @@ def _build_label_tool():
         # ------------------------------------------------------------------
 
         def _compute_all_clusters_and_assign(self):
-            """Cluster every channel's embeddings and run the first-time
-            cluster_N auto-assignment up front.
+            """Cluster all channels, seed unanimous empties, then assign groups.
 
             Called from ``__init__`` so Cross-Channel mode has a complete
             per-well assignment in every channel from the moment the dock
             opens, instead of only after the user manually visits each
             channel (which is what triggered the lazy path before).
 
-            HDBSCAN on a few hundred embeddings is fast (~1s/channel) so
-            this adds a small fixed cost to startup; UMAP — the genuinely
-            slow part — stays lazy / backgrounded.
+            The ordering is intentional: initial all-well clusters identify
+            empty-like clusters from Nemo's hint; unanimity across channels
+            produces one global empty set; each channel is then re-clustered
+            without those wells before ``cluster_N`` groups are populated.
             """
             fl = self._fish_line
             n_wells = len(self._well_ids)
             if n_wells < 2 or not self._all_channels:
                 return
             line_indices = np.arange(n_wells)
+
+            # First pass: cluster all available embeddings in every channel.
+            # Keep the aligned embedding matrices so confirmed empties can be
+            # removed and the remaining phenotypes re-clustered below.
+            channel_data: Dict[str, Tuple[np.ndarray, np.ndarray]] = {}
+            initial_labels_by_channel: Dict[str, np.ndarray] = {}
             for channel in self._all_channels:
                 embeddings, valid_positions = self._get_channel_emb_for_line(
                     channel, line_indices
                 )
                 if len(embeddings) < 2:
+                    log.warning(
+                        f"cluster-guided empty: {channel} has too few embeddings"
+                    )
                     continue
                 mask = np.zeros(n_wells, dtype=bool)
                 mask[valid_positions] = True
@@ -867,15 +995,100 @@ def _build_label_tool():
                 valid_emb = full_emb[mask]
                 if len(valid_emb) < 2:
                     continue
+                channel_data[channel] = (full_emb, mask)
                 try:
                     valid_labels = np.asarray(
                         self._cluster_strategy.cluster(valid_emb)
                     )
                 except Exception:
-                    log.exception(f"eager cluster failed for {channel}")
+                    log.exception(f"initial eager cluster failed for {channel}")
                     continue
                 full_labels = np.full(n_wells, -2, dtype=int)
                 full_labels[mask] = valid_labels
+                initial_labels_by_channel[channel] = full_labels
+
+            # Identify empty-like clusters independently, then require every
+            # configured image channel to vote empty for the same well. Missing
+            # or unconvincing channels fail closed and assign no empties.
+            unanimous_empty = np.zeros(n_wells, dtype=bool)
+            if self._empty_cluster_enabled:
+                unanimous_empty, reports = _unanimous_empty_candidates(
+                    initial_labels_by_channel,
+                    self._nemo_empty_mask,
+                    required_channels=self._all_channels,
+                    precision_floor=self._empty_precision_floor,
+                )
+                for channel in self._all_channels:
+                    report = reports.get(channel, {"status": "not_evaluated"})
+                    selected = report.get("selected_clusters", [])
+                    log.info(
+                        f"empty-cluster alignment {channel}: "
+                        f"status={report['status']} selected={selected}"
+                    )
+
+                # Existing globals (notably Nemo's multiple/deformed seeds)
+                # win over the empty heuristic and must never be overwritten.
+                already_finalized = np.array(
+                    [self.store.is_finalized(fl, wid) for wid in self._well_ids],
+                    dtype=bool,
+                )
+                unanimous_empty &= ~already_finalized
+                empty_wids = [
+                    wid for wid, is_empty in zip(self._well_ids, unanimous_empty)
+                    if is_empty
+                ]
+                if empty_wids:
+                    self.store.assign(fl, self._all_channels[0], empty_wids, "empty")
+                    self._auto_empty_wids = set(empty_wids)
+                    log.info(
+                        "cluster-guided empty assigned %d wells by unanimous "
+                        "agreement across %d channels",
+                        len(empty_wids),
+                        len(self._all_channels),
+                    )
+                else:
+                    log.info(
+                        "cluster-guided empty assigned no wells; channel "
+                        "agreement or precision threshold was not met"
+                    )
+
+            current_empty_wids = set(
+                self.store.get_group_members(fl, self._all_channels[0], "empty")
+            )
+            self._layout_empty_wids = set(current_empty_wids)
+            empty_mask = np.array(
+                [wid in current_empty_wids for wid in self._well_ids], dtype=bool
+            )
+
+            # Second pass: remove confirmed empties from each embedding space,
+            # re-cluster the remaining phenotypes, then populate cluster_N.
+            for channel in self._all_channels:
+                data = channel_data.get(channel)
+                initial_labels = initial_labels_by_channel.get(channel)
+                if data is None or initial_labels is None:
+                    continue
+                full_emb, embedding_mask = data
+                phenotype_mask = embedding_mask & ~empty_mask
+
+                if np.array_equal(phenotype_mask, embedding_mask):
+                    full_labels = initial_labels
+                else:
+                    full_labels = np.full(n_wells, -2, dtype=int)
+                    phenotype_emb = full_emb[phenotype_mask]
+                    if len(phenotype_emb) >= 2:
+                        try:
+                            phenotype_labels = np.asarray(
+                                self._cluster_strategy.cluster(phenotype_emb)
+                            )
+                            full_labels[phenotype_mask] = phenotype_labels
+                        except Exception:
+                            log.exception(
+                                f"non-empty eager cluster failed for {channel}"
+                            )
+                            full_labels[phenotype_mask] = -1
+                    elif len(phenotype_emb) == 1:
+                        full_labels[phenotype_mask] = -1
+
                 self._cluster_labels_by_channel[channel] = full_labels
 
                 scope = (fl, channel)
@@ -883,13 +1096,13 @@ def _build_label_tool():
                     continue
                 asgn = self.store.assignments(fl, channel)
                 unique_clusters = sorted(
-                    set(int(c) for c in valid_labels if c >= 0)
+                    set(int(c) for c in full_labels[phenotype_mask] if c >= 0)
                 )
                 cluster_members: Dict[int, List[str]] = {
                     cl: [] for cl in unique_clusters
                 }
                 for li_pos in range(n_wells):
-                    if not mask[li_pos]:
+                    if not phenotype_mask[li_pos]:
                         continue
                     cl = int(full_labels[li_pos])
                     if cl < 0:
@@ -909,7 +1122,8 @@ def _build_label_tool():
                 self._auto_assigned.add(scope)
                 log.info(
                     f"eager auto-assign {fl}|{channel}: "
-                    f"clusters={len(unique_clusters)} assigned={assigned_total}"
+                    f"clusters={len(unique_clusters)} assigned={assigned_total} "
+                    f"empty_excluded={int((embedding_mask & empty_mask).sum())}"
                 )
 
         # ------------------------------------------------------------------
@@ -975,6 +1189,7 @@ def _build_label_tool():
         def _exit_cross_channel(self):
             """Restore the per-channel UMAP layout."""
             self._cross_channel_mode = False
+            needs_empty_refit = self._empty_layout_dirty
             if self._saved_umap is not None:
                 self._view_umap = self._saved_umap
             if self._saved_clusters is not None:
@@ -995,6 +1210,10 @@ def _build_label_tool():
             if hasattr(self, "cross_refresh_btn"):
                 self.cross_refresh_btn.setEnabled(False)
             self._remove_image_umap()
+            if needs_empty_refit:
+                self._empty_layout_dirty = False
+                self._recompute_view()
+                return
             self._update_scatter()
             self._refresh_group_list()
             self._update_status()
@@ -1507,6 +1726,23 @@ def _build_label_tool():
                 np.asarray(valid_positions, dtype=int),
             )
 
+        def _empty_mask_for_line_indices(self, line_indices: np.ndarray) -> np.ndarray:
+            """Global-empty membership aligned to the current line positions."""
+            if not self._all_channels:
+                return np.zeros(len(line_indices), dtype=bool)
+            empty_wids = set(
+                self.store.get_group_members(
+                    self._current_line, self._all_channels[0], "empty"
+                )
+            )
+            return np.array(
+                [
+                    self.metadata.iloc[int(meta_idx)]["well_id"] in empty_wids
+                    for meta_idx in line_indices
+                ],
+                dtype=bool,
+            )
+
         def _precomp_rows(self, store_dict, channel, line_indices, valid_positions):
             """Gather pre-warmed rows for ``channel`` aligned to ``valid_emb``.
 
@@ -1584,8 +1820,10 @@ def _build_label_tool():
                 )
                 return
 
-            mask = np.zeros(n, dtype=bool)
-            mask[valid_positions] = True
+            embedding_mask = np.zeros(n, dtype=bool)
+            embedding_mask[valid_positions] = True
+            empty_mask = self._empty_mask_for_line_indices(line_indices)
+            mask = embedding_mask & ~empty_mask
             self._view_valid_mask = mask
             full_emb = np.full((n, embeddings.shape[1]), np.nan, dtype=np.float32)
             full_emb[valid_positions] = embeddings
@@ -1606,10 +1844,12 @@ def _build_label_tool():
                 full_labels = cached_labels
                 valid_labels = full_labels[mask]
             else:
-                precomp_lbl = self._precomp_rows(
-                    self._precomp_clusters, self._current_channel,
-                    line_indices, valid_positions,
-                )
+                precomp_lbl = None
+                if not empty_mask.any():
+                    precomp_lbl = self._precomp_rows(
+                        self._precomp_clusters, self._current_channel,
+                        line_indices, valid_positions,
+                    )
                 if precomp_lbl is not None and len(precomp_lbl) == len(valid_emb):
                     valid_labels = np.asarray(precomp_lbl).astype(int).ravel()
                 else:
@@ -1628,10 +1868,12 @@ def _build_label_tool():
 
             # UMAP — prefer the pre-warmed layout; fit live only if it's
             # absent or doesn't line up with the current rows.
-            umap_2d = self._precomp_rows(
-                self._precomp_umap, self._current_channel,
-                line_indices, valid_positions,
-            )
+            umap_2d = None
+            if not empty_mask.any():
+                umap_2d = self._precomp_rows(
+                    self._precomp_umap, self._current_channel,
+                    line_indices, valid_positions,
+                )
             if umap_2d is not None and len(umap_2d) == len(valid_emb):
                 umap_2d = np.asarray(umap_2d, dtype=np.float32)
                 log.info(f"using pre-warmed UMAP for {self._current_channel}")
@@ -1701,7 +1943,7 @@ def _build_label_tool():
                     f"assigned={assigned_total} noise={noise_count} "
                     f"skipped_already_assigned={skipped_already_assigned} "
                     f"skipped_finalized={skipped_finalized} "
-                    f"singlets_total={int(mask.sum())}"
+                    f"non_empty_total={int(mask.sum())}"
                 )
 
             self._refresh_group_list()
@@ -1718,6 +1960,7 @@ def _build_label_tool():
                 "embeddings": self._view_embeddings,
             }
             self._channel_crop_cache[self._current_channel] = dict(self._crop_cache)
+            self._empty_layout_dirty = False
 
             self._update_scatter()
             self._update_status()
@@ -1755,10 +1998,20 @@ def _build_label_tool():
             self._warm_executor = concurrent.futures.ThreadPoolExecutor(
                 max_workers=1, thread_name_prefix="LabelToolWarmer",
             )
+            empty_wids = set(
+                self.store.get_group_members(
+                    self._current_line, self._all_channels[0], "empty"
+                )
+            )
+            generation = self._layout_generation
             for ch in others:
-                self._warm_executor.submit(self._warm_one_channel, ch)
+                self._warm_executor.submit(
+                    self._warm_one_channel, ch, set(empty_wids), generation
+                )
 
-        def _warm_one_channel(self, channel: str):
+        def _warm_one_channel(
+            self, channel: str, empty_wids: set, generation: int
+        ):
             """Background worker — compute UMAP + clusters + crops for one
             channel, then hand the payload back to the GUI thread via
             ``warm_done``. Must not touch napari layers, the LabelStore,
@@ -1774,8 +2027,16 @@ def _build_label_tool():
                 if len(embeddings) < 2:
                     return
                 n = len(line_indices)
-                mask = np.zeros(n, dtype=bool)
-                mask[valid_positions] = True
+                embedding_mask = np.zeros(n, dtype=bool)
+                embedding_mask[valid_positions] = True
+                empty_mask = np.array(
+                    [
+                        self.metadata.iloc[int(meta_idx)]["well_id"] in empty_wids
+                        for meta_idx in line_indices
+                    ],
+                    dtype=bool,
+                )
+                mask = embedding_mask & ~empty_mask
                 full_emb = np.full(
                     (n, embeddings.shape[1]), np.nan, dtype=np.float32
                 )
@@ -1844,6 +2105,7 @@ def _build_label_tool():
                     "valid_mask": mask,
                     "embeddings": full_emb,
                     "crops": crop_cache,
+                    "generation": generation,
                 })
             except Exception:
                 log.exception(f"warm worker crashed for {channel}")
@@ -1858,6 +2120,9 @@ def _build_label_tool():
             (and potentially user-modified) state.
             """
             if not isinstance(payload, dict):
+                return
+            if payload.get("generation") != self._layout_generation:
+                log.info(f"discarding stale warm result for {channel}")
                 return
             scope = (self._current_line, channel)
             if scope in self._view_state_cache:
@@ -3047,6 +3312,7 @@ def _build_label_tool():
             # Quick-assign in cross-channel mode mutated per-channel groups,
             # so re-bucket the combos to keep the list / card counts honest
             # (positions stay put — full re-layout is Refresh Grid only).
+            self._note_empty_membership_change()
             if self._cross_channel_mode:
                 self._rebucket_cross_classes()
             self._refresh_group_list()
@@ -3291,6 +3557,7 @@ def _build_label_tool():
                     self._clear_global_locks(fl, ch_i, well_ids, name)
                     self.store.assign(fl, ch_i, well_ids, name)
 
+            self._note_empty_membership_change()
             self._compute_cross_channel_grid()
             self._update_scatter()
             self._refresh_group_list()
@@ -3498,6 +3765,34 @@ def _build_label_tool():
                 out.append(self.metadata.iloc[meta_idx]["well_id"])
             return out
 
+        def _note_empty_membership_change(self):
+            """Invalidate per-channel layouts after a manual empty override.
+
+            Empty-free UMAPs and phenotype clusters depend on the exact global
+            empty set. Cross-Channel membership does not, so edits there update
+            immediately and the affected per-channel layout is rebuilt on exit.
+            """
+            if not self._all_channels:
+                return
+            current = set(
+                self.store.get_group_members(
+                    self._current_line, self._all_channels[0], "empty"
+                )
+            )
+            if current == self._layout_empty_wids:
+                return
+            self._layout_empty_wids = current
+            self._layout_generation += 1
+            self._view_state_cache.clear()
+            self._cluster_labels_by_channel.clear()
+            self._precomp_umap.clear()
+            self._precomp_clusters.clear()
+            self._empty_layout_dirty = True
+            log.info(
+                "empty membership changed; invalidated per-channel UMAP and "
+                "cluster caches"
+            )
+
         def _post_mutation_refresh(self):
             """Refresh views after an assignment/unassignment/delete.
 
@@ -3510,6 +3805,7 @@ def _build_label_tool():
             button (``_on_cross_refresh``). In single-channel mode positions
             are fixed anyway, so we just refresh the group list and recolor.
             """
+            self._note_empty_membership_change()
             if self._cross_channel_mode:
                 self._rebucket_cross_classes()
             self._refresh_group_list()
@@ -3850,6 +4146,8 @@ def LabelTool(
     umap_cfg: Optional[dict] = None,
     per_channel_umap: Optional[Dict[str, np.ndarray]] = None,
     per_channel_clusters: Optional[Dict[str, np.ndarray]] = None,
+    nemo_empty_mask: Optional[np.ndarray] = None,
+    empty_cluster_cfg: Optional[dict] = None,
     parent=None,
 ):
     """Factory wrapper — defers Qt/napari imports until first call.
@@ -3874,5 +4172,7 @@ def LabelTool(
         umap_cfg=umap_cfg,
         per_channel_umap=per_channel_umap,
         per_channel_clusters=per_channel_clusters,
+        nemo_empty_mask=nemo_empty_mask,
+        empty_cluster_cfg=empty_cluster_cfg,
         parent=parent,
     )

@@ -669,6 +669,25 @@ def _build_finding_dory():
                     self.classify._points(), img_flag=True, parallel=True,
                 )
 
+            # Snapshot Finding Nemo's coarse empty calls before LabelTool
+            # creates its own scatter layer. LabelTool treats this only as a
+            # hint for identifying empty-aligned clusters; it never assigns
+            # individual Nemo-empty wells directly in all-wells mode.
+            nemo_empty_mask = np.zeros(len(self.well_ids), dtype=bool)
+            try:
+                feat = self.classify.points_layer.features
+                if "empty" in feat.columns:
+                    candidate = np.asarray(feat["empty"], dtype=bool).ravel()
+                    if len(candidate) == len(self.well_ids):
+                        nemo_empty_mask = candidate
+                    else:
+                        log.warning(
+                            "ignoring Nemo empty hints: feature rows do not "
+                            "match the well list"
+                        )
+            except Exception as e:
+                log.warning(f"could not snapshot Nemo empty hints: {e}")
+
             # Seed the LabelStore with Finding Nemo's globals. Done here (not
             # in ``__init__``) because ``_start_embedding`` may have just
             # auto-run ``find_fish``; reading ``feat["singlet"]`` earlier
@@ -772,6 +791,18 @@ def _build_finding_dory():
                 getattr(self.classify, "_dory_clusters", None)
             )
 
+            empty_cluster_cfg = dict(
+                self.cfg.get("cluster_guided_empty", {}) or {}
+            )
+            empty_cluster_cfg.setdefault("precision_floor", 0.5)
+            empty_cluster_cfg.setdefault(
+                "enabled", not self.cfg.get("filter_to_singlets", True)
+            )
+            if self.cfg.get("filter_to_singlets", True):
+                # In singlet-only mode Nemo empties are not embedded, and the
+                # existing direct global seeding remains authoritative.
+                empty_cluster_cfg["enabled"] = False
+
             try:
                 self.label_tool = _LabelToolFactory(
                     viewer=self.viewer,
@@ -788,6 +819,8 @@ def _build_finding_dory():
                     umap_cfg=self.cfg.get("umap", {}),
                     per_channel_umap=per_channel_umap,
                     per_channel_clusters=per_channel_clusters,
+                    nemo_empty_mask=nemo_empty_mask,
+                    empty_cluster_cfg=empty_cluster_cfg,
                 )
             except Exception as e:
                 log.exception("LabelTool construction failed")

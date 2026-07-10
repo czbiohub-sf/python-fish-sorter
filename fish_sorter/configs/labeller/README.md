@@ -104,6 +104,17 @@ Watch the startup log — it prints which mode was resolved
   wells Finding Nemo flagged as singlets (auto-running `find_fish` if needed).
   Set `false` to embed and show every well, including empties / multiples /
   deformed.
+- `cluster_guided_empty.enabled` — (default `true` when
+  `filter_to_singlets=false`) use Nemo's coarse empty calls only to identify
+  empty-like embedding clusters. A well is auto-assigned to the global
+  `empty` group only when its empty-like cluster membership agrees in every
+  image channel. Missing or weak evidence in any channel assigns nothing.
+  Confirmed empties stay in Cross-Channel view but are excluded from each
+  channel's phenotype UMAP and re-clustering. This option is disabled in
+  singlet-only mode because Nemo-empty wells are not embedded there.
+- `cluster_guided_empty.precision_floor` — (default `0.5`) minimum fraction of
+  a cluster that must carry Nemo's empty hint before that channel may vote the
+  cluster empty. Multiple clusters per channel may qualify.
 - `dev_mock_embeddings` — (default `false`) skip the model entirely and
   generate well-separated synthetic embeddings per channel. For iterating on
   the dock UI without loading a checkpoint or running the forward pass; leave

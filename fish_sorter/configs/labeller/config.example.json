@@ -8,6 +8,10 @@
   "dev_mock_embeddings": false,
   "fish_line_fallback": "unknown",
   "umap": { "n_neighbors": 15, "min_dist": 0.1, "canvas_px": 8192 },
+  "cluster_guided_empty": {
+    "enabled": true,
+    "precision_floor": 0.5
+  },
   "clustering": {
     "method": "hdbscan",
     "params": { "min_cluster_size": 10, "min_samples": null }
