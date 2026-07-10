@@ -94,6 +94,59 @@ def _uint16_to_rgb(
     return rgb
 
 
+def _tile_split_panels(
+    panels: List[np.ndarray],
+    max_primary: int = 2,
+    separator_px: int = 2,
+    separator_value: int = 40,
+) -> np.ndarray:
+    """Tile same-sized RGB channel panels into a compact preview grid.
+
+    Wide fish crops fill at most ``max_primary`` rows before wrapping into a
+    new column. Square or tall embryo crops fill that many columns before
+    wrapping into a new row. This keeps each channel reasonably large while
+    avoiding the old three-panel strip in either direction.
+    """
+    if not panels:
+        raise ValueError("at least one RGB panel is required")
+    if max_primary < 1:
+        raise ValueError("max_primary must be at least 1")
+    if separator_px < 0:
+        raise ValueError("separator_px cannot be negative")
+
+    first = np.asarray(panels[0])
+    if first.ndim != 3 or first.shape[2] != 3:
+        raise ValueError(f"expected RGB panels, got shape {first.shape}")
+    h, w, _ = first.shape
+    for panel in panels[1:]:
+        if np.asarray(panel).shape != first.shape:
+            raise ValueError("all RGB panels must have the same shape")
+
+    count = len(panels)
+    wide = w > h
+    if wide:
+        rows = min(max_primary, count)
+        cols = (count + rows - 1) // rows
+    else:
+        cols = min(max_primary, count)
+        rows = (count + cols - 1) // cols
+
+    canvas_h = rows * h + max(0, rows - 1) * separator_px
+    canvas_w = cols * w + max(0, cols - 1) * separator_px
+    canvas = np.full(
+        (canvas_h, canvas_w, 3), separator_value, dtype=first.dtype
+    )
+    for i, panel in enumerate(panels):
+        if wide:
+            row, col = i % rows, i // rows
+        else:
+            row, col = i // cols, i % cols
+        y = row * (h + separator_px)
+        x = col * (w + separator_px)
+        canvas[y:y + h, x:x + w] = panel
+    return canvas
+
+
 def _build_label_tool():
     """Defer heavy imports (qtpy/napari/matplotlib/PIL) until first call.
 
@@ -347,6 +400,7 @@ def _build_label_tool():
             self._contrast_subscriptions: List[Tuple[object, object]] = []
 
             self._crop_full_pixmap = None
+            self._split_preview_panel_shape: Optional[Tuple[int, int]] = None
             self._assign_crop_labels: List[Tuple[QLabel, QLabel, Optional[QPixmap]]] = []
 
             # Cluster labels cached per channel so ``_recompute_view`` and the
@@ -654,12 +708,28 @@ def _build_label_tool():
             nav_row.addWidget(self.next_btn)
             crop_layout.addLayout(nav_row)
 
+            self._crop_scroll = QScrollArea()
+            self._crop_scroll.setWidgetResizable(False)
+            self._crop_scroll.setFrameShape(QFrame.NoFrame)
+            self._crop_scroll.setHorizontalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self._crop_scroll.setVerticalScrollBarPolicy(Qt.ScrollBarAsNeeded)
+            self._crop_scroll.setMinimumHeight(80)
+            self._crop_scroll.setMaximumHeight(240)
+            self._crop_scroll.setStyleSheet("background-color: #1a1a1a;")
+
             self.crop_label = _ShrinkableLabel()
             self.crop_label.setAlignment(Qt.AlignLeft | Qt.AlignTop)
             self.crop_label.setStyleSheet("background-color: #1a1a1a;")
-            self.crop_label.setMinimumHeight(80)
-            self.crop_label.resizeEvent = lambda e: self._update_crop_display()
-            crop_layout.addWidget(self.crop_label)
+            self._crop_scroll.setWidget(self.crop_label)
+
+            _orig_crop_scroll_resize = self._crop_scroll.resizeEvent
+
+            def _on_crop_scroll_resize(event):
+                _orig_crop_scroll_resize(event)
+                self._update_crop_display()
+
+            self._crop_scroll.resizeEvent = _on_crop_scroll_resize
+            crop_layout.addWidget(self._crop_scroll)
 
             self.channel_legend_label = QLabel("")
             self.channel_legend_label.setStyleSheet("font-size: 10px; padding: 1px;")
@@ -1209,14 +1279,17 @@ def _build_label_tool():
             the selected-well preview in Cross-Channel mode; the scatter
             thumbnails and combo/group cards keep using the composite.
 
-            The montage axis follows the crop shape (the same "wide fish vs
-            square egg" distinction as ``_thumb_crop_aspect``): wide larvae
-            crops stack vertically, square/tall embryo crops sit side-by-side.
+            The montage follows the crop shape (the same "wide fish vs square
+            egg" distinction as ``_thumb_crop_aspect``): wide larvae fill two
+            rows before adding a column, while square/tall embryo crops fill two
+            columns before adding a row.
 
-            Pure w.r.t. cached state — reads ``_well_crops`` + contrast snapshot
-            and never writes ``_crop_cache`` (that holds the composites the
-            thumbnail/card consumers depend on).
+            Reads ``_well_crops`` + the contrast snapshot and never writes
+            ``_crop_cache`` (that holds the composites the thumbnail/card
+            consumers depend on). It only records the source panel shape so the
+            scrollable preview can preserve a useful per-channel display size.
             """
+            self._split_preview_panel_shape = None
             if widx < 0 or widx >= len(self._well_crops):
                 return None
             crops_for_well = self._well_crops[widx]
@@ -1247,24 +1320,11 @@ def _build_label_tool():
                     log.debug(f"split crop skipped channel {ch}: {e}")
             if not panels:
                 return None
+            self._split_preview_panel_shape = (h, w)
             if len(panels) == 1:
                 return panels[0]
 
-            # Wide larvae → stack vertically (axis 0); square/tall embryo →
-            # side-by-side (axis 1). w == h goes horizontal.
-            axis = 0 if w > h else 1
-            sep_px = 2
-            sep_color = 40  # dim gray gutter on the black background
-            interleaved: List[np.ndarray] = []
-            for i, panel in enumerate(panels):
-                if i:
-                    if axis == 0:
-                        sep = np.full((sep_px, panel.shape[1], 3), sep_color, dtype=np.uint8)
-                    else:
-                        sep = np.full((panel.shape[0], sep_px, 3), sep_color, dtype=np.uint8)
-                    interleaved.append(sep)
-                interleaved.append(panel)
-            return np.concatenate(interleaved, axis=axis)
+            return _tile_split_panels(panels, max_primary=2)
 
         def _maybe_warm_composite(self):
             """Pre-build composite crops in the background, once per session."""
@@ -2406,6 +2466,7 @@ def _build_label_tool():
                 return
 
             rgb = self._crop_cache.get(key)
+            self._split_preview_panel_shape = None
 
             if rgb is None:
                 # On-demand: look up the well's uint16 crop and render.
@@ -2464,19 +2525,44 @@ def _build_label_tool():
                 if self._crop_full_pixmap is None or self._crop_full_pixmap.isNull():
                     self.crop_label.clear()
                     return
-                parent = self.crop_label.parent()
-                w = (parent.width() - 12) if parent else self.crop_label.width()
-                if w < 1:
+                viewport = self._crop_scroll.viewport()
+                available_w = viewport.width() - 2
+                if available_w < 1:
                     return
-                # Fit to panel width, but bound the height so near-square egg
-                # crops don't grow tall enough to crowd out the rest of the
-                # panel. Aspect ratio is preserved either way; wide fish crops
-                # stay under the cap and are unaffected.
-                max_h = 240
-                scaled = self._crop_full_pixmap.scaledToWidth(w, Qt.SmoothTransformation)
-                if scaled.height() > max_h:
-                    scaled = self._crop_full_pixmap.scaledToHeight(max_h, Qt.SmoothTransformation)
+
+                panel_shape = self._split_preview_panel_shape
+                if self._cross_channel_mode and panel_shape is not None:
+                    panel_h, panel_w = panel_shape
+                    if panel_w > panel_h:
+                        # One wide crop fits the viewport width. Extra columns
+                        # retain that readable scale and scroll horizontally.
+                        target_w = round(
+                            self._crop_full_pixmap.width()
+                            * available_w
+                            / max(1, panel_w)
+                        )
+                        scaled = self._crop_full_pixmap.scaledToWidth(
+                            max(1, target_w), Qt.SmoothTransformation
+                        )
+                    else:
+                        # Up to two square/tall crops share the viewport width;
+                        # extra rows remain reachable by vertical scrolling.
+                        scaled = self._crop_full_pixmap.scaledToWidth(
+                            available_w, Qt.SmoothTransformation
+                        )
+                else:
+                    # Preserve the single-channel sizing: fit to panel width,
+                    # with a height cap for near-square egg crops.
+                    max_h = 240
+                    scaled = self._crop_full_pixmap.scaledToWidth(
+                        available_w, Qt.SmoothTransformation
+                    )
+                    if scaled.height() > max_h:
+                        scaled = self._crop_full_pixmap.scaledToHeight(
+                            max_h, Qt.SmoothTransformation
+                        )
                 self.crop_label.setPixmap(scaled)
+                self.crop_label.resize(scaled.size())
             finally:
                 self._crop_updating = False
 
