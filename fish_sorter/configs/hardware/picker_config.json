@@ -7,7 +7,7 @@
         },
         "stage": {
             "pick": {
-                "p": 73.25,
+                "p": 0.0,
                 "description": "The pipette height to pick, in mm"
             },
             "clearance": {
@@ -15,7 +15,7 @@
                 "description": "The pipette height to clear the destination plate, in mm"
             },
             "dispense": {
-                "p": 20.67,
+                "p": 0.0,
                 "description": "The pipette height to dispense, in mm"
             },
             "pipette_swing": {

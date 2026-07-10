@@ -74,12 +74,15 @@ class ZaberController():
         
         self.stages = self.zaber.detect_devices()
         logging.info('Stage list {} '.format(self.stages))
+
+        x_set = False # Handle X and Y stages with same name
         for stage in self.stages:
             name = stage.name
             logging.info(stage.name)
-            if name == self.config['name']['x']:
+            if name == self.config['name']['x'] and not x_set:
                 self.stage_alias[stage] = 'x'
                 stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['x'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)
+                x_set = True
             elif name == self.config['name']['y']:
                 self.stage_alias[stage] = 'y'
                 stage.generic_command_with_units(CommandCode.SET_TARGET_SPEED, data = self.config['max_speed']['y'], from_unit = Units.NATIVE, to_unit = Units.NATIVE, timeout = 0.0)
